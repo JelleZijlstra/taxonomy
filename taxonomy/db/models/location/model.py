@@ -833,12 +833,22 @@ class Location(BaseModel):
         location_lint.LINT.clear_caches()
 
     def is_general(self) -> bool:
-        return self.has_tag(LocationTag.General) or self.name in (
-            self.region.name,
-            f"{self.region.name} fossil",
-            f"{self.region.name} Pleistocene",
-        )
+        if self.has_tag(LocationTag.General):
+            return True
+        if (
+            self.min_period == self.max_period
+            and self.min_period is not None
+            and get_expected_general_name(self.region, self.min_period) == self.name
+        ):
+            return True
+        if (
+            self.stratigraphic_unit is not None
+            and self.name == f"{self.stratigraphic_unit.name} ({self.region.name})"
+        ):
+            return True
+        return False
 
+    # TODO: remove in favor of is_general()
     def should_be_specified(self) -> bool:
         if self.region.has_children() or self.is_general():
             return True
@@ -974,6 +984,9 @@ class LocationTag(adt.ADT):
 
     # Indicate that after some research, it is unclear where this place is
     Unplaced(comment=NotRequired[Markdown], tag=6)  # type: ignore[name-defined]
+
+    # Region that is nearby and used as a base for a disambiguator
+    NearbyRegion(region=Region, tag=7)  # type: ignore[name-defined]
 
 
 def get_expected_general_name(region: Region, period: Period) -> str:

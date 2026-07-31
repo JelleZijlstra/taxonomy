@@ -67,6 +67,10 @@ places with the same base name in the same Region; document such an exception wi
 `IgnoreLintLocation` tag if the disambiguator lint cannot verify it. The generic
 disambiguators `island` and `region` are always allowed for geographic features whose
 scope would otherwise be unclear, as in `Saint Martin (island)` and `Guinea (region)`.
+If there is a modifier and the location is outside the region designated by the base
+name (for example, the nearby coast, or an "X km N" locality that crosses a border), the
+region of the base name is acceptable as a disambiguator; this can be indicated with a
+"NearbyRegion" tag on the location.
 
 The modifier distinguishes a more specific place associated with the base feature. It
 may be free-form text such as `mouth`, `upper`, or `near the bridge`. A completely

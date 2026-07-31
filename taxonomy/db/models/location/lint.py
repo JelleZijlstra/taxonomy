@@ -1211,12 +1211,29 @@ def _is_stratigraphic_unit_disambiguator(
     return False
 
 
+def _get_nearby_regions(location: Location) -> tuple[Region, ...]:
+    parsed_name = ParsedLocationName.parse(location.name)
+    if parsed_name.modifier is None:
+        return ()
+    return tuple(
+        tag.region for tag in location.get_tags(location.tags, LocationTag.NearbyRegion)
+    )
+
+
 def _is_sane_disambiguator(location: Location, disambiguator: str) -> bool:
     if disambiguator.casefold() in _ALWAYS_ALLOWED_DISAMBIGUATORS:
         return True
+    regions = (
+        location.region,
+        *location.region.all_parents(),
+        *(
+            candidate
+            for nearby_region in _get_nearby_regions(location)
+            for candidate in (nearby_region, *nearby_region.all_parents())
+        ),
+    )
     if any(
-        disambiguator in _get_qualified_name_variants(region.name)
-        for region in (location.region, *location.region.all_parents())
+        disambiguator in _get_qualified_name_variants(region.name) for region in regions
     ):
         return True
     if _is_period_disambiguator(location, disambiguator):
@@ -2851,6 +2868,25 @@ def _get_base_name_to_locations() -> dict[str, tuple[Location, ...]]:
     }
 
 
+def _regions_are_related(first: Region, second: Region) -> bool:
+    return first in (second, *second.all_parents()) or second in (
+        first,
+        *first.all_parents(),
+    )
+
+
+def _locations_share_base_region(first: Location, second: Location) -> bool:
+    if first.region == second.region:
+        return True
+    return any(
+        _regions_are_related(nearby_region, second.region)
+        for nearby_region in _get_nearby_regions(first)
+    ) or any(
+        _regions_are_related(nearby_region, first.region)
+        for nearby_region in _get_nearby_regions(second)
+    )
+
+
 @LINT.add(
     "should_have_disambiguator", clear_caches=_get_base_name_to_locations.cache_clear
 )
@@ -2867,7 +2903,7 @@ def check_should_have_disambiguator(
         if other.id != location.id
         and (
             ParsedLocationName.parse(other.name).disambiguator is not None
-            or other.region != location.region
+            or not _locations_share_base_region(location, other)
         )
     ]
     if not similar:

@@ -137,6 +137,21 @@ def test_standardize_coordinate_pair_with_ranges() -> None:
     assert extent.center == coordinates.Point(40.5, -11.25)
 
 
+def test_standardize_coordinate_pair_with_prime_signs() -> None:
+    parsed = coordinate_lint.standardize_coordinate_pair(
+        "9°06'50.569″N–9°15'39.861″N", "92°42′49.618″E–92°50′10.881″E"
+    )
+
+    assert parsed is not None
+    latitude, longitude, extent = parsed
+    assert latitude == "9°6'50.569\"N-9°15'39.861\"N"
+    assert longitude == "92°42'49.618\"E-92°50'10.881\"E"
+    assert extent.latitude.minimum == pytest.approx(9.114046944444444)
+    assert extent.latitude.maximum == pytest.approx(9.2610725)
+    assert extent.longitude.minimum == pytest.approx(92.71378277777778)
+    assert extent.longitude.maximum == pytest.approx(92.83635583333333)
+
+
 def test_coordinate_extent_map_urls_mark_opposite_range_corners() -> None:
     extent = coordinate_lint.make_extent(
         "25.3329597°N-25.7789852°N", "79.3146515°W-79.1791883°W"

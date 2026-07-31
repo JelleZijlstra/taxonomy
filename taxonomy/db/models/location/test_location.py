@@ -2765,6 +2765,29 @@ def test_location_disambiguator_lint_accepts_comma_qualified_region_name() -> No
     assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
 
 
+def test_location_disambiguator_lint_accepts_nearby_region_for_modifier() -> None:
+    netherlands = _make_region("Netherlands", RegionKind.country)
+    belgium = _make_region("Belgium", RegionKind.country)
+    loc = _location_without_coordinates(
+        name="Maastricht (Netherlands): 20 km W", region=belgium
+    )
+    loc.tags = (LocationTag.NearbyRegion(netherlands),)  # type: ignore[assignment]
+
+    assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
+
+
+def test_location_disambiguator_lint_rejects_nearby_region_without_modifier() -> None:
+    netherlands = _make_region("Netherlands", RegionKind.country)
+    belgium = _make_region("Belgium", RegionKind.country)
+    loc = _location_without_coordinates(name="Maastricht (Netherlands)", region=belgium)
+    loc.tags = (LocationTag.NearbyRegion(netherlands),)  # type: ignore[assignment]
+
+    messages = list(location_lint.check_disambiguator(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "disambiguator 'Netherlands' is not an enclosing Region" in messages[0]
+
+
 def test_location_disambiguator_lint_accepts_containing_period(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3061,6 +3084,58 @@ def test_location_modifier_keeps_disambiguator_when_required(
 
     assert len(messages) == 1
     assert "Castle Brace (Dominica): 2 mi SW" in messages[0]
+
+
+def test_nearby_region_modifier_does_not_require_disambiguators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    netherlands = _make_region("Netherlands", RegionKind.country)
+    limburg = _make_region("Limburg", RegionKind.province, netherlands)
+    belgium = _make_region("Belgium", RegionKind.country)
+    base = _location_without_coordinates(id=1, name="Maastricht", region=limburg)
+    modified = _location_without_coordinates(
+        id=2, name="Maastricht: 20 km W", region=belgium
+    )
+    modified.tags = (LocationTag.NearbyRegion(netherlands),)  # type: ignore[assignment]
+    monkeypatch.setattr(
+        location_lint,
+        "_get_base_name_to_locations",
+        lambda: {"Maastricht": (base, modified)},
+    )
+
+    assert list(location_lint.check_should_have_disambiguator(base, LintConfig())) == []
+    assert (
+        list(location_lint.check_should_have_disambiguator(modified, LintConfig()))
+        == []
+    )
+
+
+def test_untagged_cross_region_modifier_still_requires_disambiguators(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    netherlands = _make_region("Netherlands", RegionKind.country)
+    belgium = _make_region("Belgium", RegionKind.country)
+    base = _location_without_coordinates(id=1, name="Maastricht", region=netherlands)
+    modified = _location_without_coordinates(
+        id=2, name="Maastricht: 20 km W", region=belgium
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_base_name_to_locations",
+        lambda: {"Maastricht": (base, modified)},
+    )
+
+    base_messages = list(
+        location_lint.check_should_have_disambiguator(base, LintConfig())
+    )
+    modified_messages = list(
+        location_lint.check_should_have_disambiguator(modified, LintConfig())
+    )
+
+    assert len(base_messages) == 1
+    assert "Maastricht (Netherlands)" in base_messages[0]
+    assert len(modified_messages) == 1
+    assert "Maastricht (Belgium): 20 km W" in modified_messages[0]
 
 
 @pytest.mark.parametrize(

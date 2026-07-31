@@ -5,13 +5,14 @@ import csv
 import datetime
 import functools
 import itertools
+import json
 import re
 import time
 from collections import defaultdict
 from collections.abc import Container, Generator, Iterable, Sequence
 from dataclasses import dataclass, field, fields
 from pathlib import Path
-from typing import Any, TypedDict, TypeVar, cast
+from typing import Any, NoReturn, TypedDict, TypeVar, cast
 
 import gspread
 import Levenshtein
@@ -76,6 +77,24 @@ ALLOWED_EMPTY_COLUMNS = {
     "typeVoucher",
     "typeKind",
 }
+
+FREE_FORM_TEXT_COLUMNS = (
+    "mainCommonName",
+    "otherCommonNames",
+    "originalNameCombination",
+    "authoritySpeciesCitation",
+    "typeVoucher",
+    "typeLocality",
+    "nominalNames",
+    "taxonomyNotes",
+    "taxonomyNotesCitation",
+    "distributionNotes",
+    "distributionNotesCitation",
+)
+
+MSW3_ARTICLE_NAME = "Mammalia-review (MSW3)"
+UNMATCHED_MSW3_VALUES = {"", "NA"}
+UNMATCHED_MSW3_MATCH_TYPES = {"NA", "unmatched"}
 
 # Columns that map directly to a column in the synonyms sheet
 SIMPLE_COLUMNS = [
@@ -150,6 +169,7 @@ COLUMN_TO_REGEX = {
     "flagged": r"[01]",
     "CMW_sciName": r"[A-Z][a-z]+_[a-z]+|NA",
     "diffSinceCMW": r"[01]",
+    "MSW3_matchtype": r"sciname match|oldname match|manual|manual match|unmatched|NA",
     "MSW3_sciName": r"[A-Z][a-z]+_[a-zü]+|NA",
     "diffSinceMSW3": r"[01]",
 }
@@ -924,6 +944,113 @@ class Issue:
 
 
 @dataclass(frozen=True)
+class ChangefileEntry:
+    line_number: int
+    mdd_id: str
+    column: str
+    old_text: str
+    new_text: str | None
+    comment: str | None = None
+
+
+def _raise_changefile_error(path: Path, line_number: int, message: str) -> NoReturn:
+    raise ValueError(f"{path}:{line_number}: {message}")
+
+
+def parse_changefile(path: Path) -> list[ChangefileEntry]:
+    """Parse a JSONL file of reviewed changes to the MDD species sheet."""
+    entries: list[ChangefileEntry] = []
+    seen_targets: set[tuple[str, str]] = set()
+    for line_number, raw_line in enumerate(
+        path.read_text(encoding="utf-8").splitlines(), start=1
+    ):
+        line = raw_line.strip()
+        if not line:
+            continue
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError as exc:
+            _raise_changefile_error(path, line_number, f"invalid JSON: {exc.msg}")
+        if not isinstance(data, dict):
+            _raise_changefile_error(
+                path, line_number, "each line must be a JSON object"
+            )
+        allowed_keys = {
+            "taxon_id",
+            "column",
+            "old_text",
+            "action",
+            "new_text",
+            "comment",
+        }
+        unknown_keys = set(data) - allowed_keys
+        if unknown_keys:
+            _raise_changefile_error(
+                path, line_number, f"unknown fields: {', '.join(sorted(unknown_keys))}"
+            )
+        missing_keys = {"taxon_id", "column", "old_text", "action"} - set(data)
+        if missing_keys:
+            _raise_changefile_error(
+                path,
+                line_number,
+                f"missing required fields: {', '.join(sorted(missing_keys))}",
+            )
+        taxon_id = data["taxon_id"]
+        if isinstance(taxon_id, bool) or not isinstance(taxon_id, (int, str)):
+            _raise_changefile_error(
+                path, line_number, "taxon_id must be an integer or digit string"
+            )
+        mdd_id = str(taxon_id)
+        if not mdd_id.isdigit():
+            _raise_changefile_error(
+                path, line_number, "taxon_id must be an integer or digit string"
+            )
+        column = data["column"]
+        if not isinstance(column, str):
+            _raise_changefile_error(path, line_number, "column must be a string")
+        old_text = data["old_text"]
+        if not isinstance(old_text, str):
+            _raise_changefile_error(path, line_number, "old_text must be a string")
+        action = data["action"]
+        if not isinstance(action, str):
+            _raise_changefile_error(path, line_number, "action must be a string")
+        comment = data.get("comment")
+        if comment is not None and not isinstance(comment, str):
+            _raise_changefile_error(path, line_number, "comment must be a string")
+        if action == "replace":
+            if "new_text" not in data:
+                _raise_changefile_error(
+                    path, line_number, "replace action requires new_text"
+                )
+            new_text = data["new_text"]
+            if not isinstance(new_text, str):
+                _raise_changefile_error(path, line_number, "new_text must be a string")
+        elif action == "manual_review":
+            if "new_text" in data:
+                _raise_changefile_error(
+                    path, line_number, "manual_review action must not include new_text"
+                )
+            new_text = None
+        else:
+            _raise_changefile_error(
+                path,
+                line_number,
+                f"action must be 'replace' or 'manual_review', not {action!r}",
+            )
+        target = (mdd_id, column)
+        if target in seen_targets:
+            raise ValueError(
+                f"{path}:{line_number}: duplicate change for taxon ID {mdd_id}, "
+                f"column {column}"
+            )
+        seen_targets.add(target)
+        entries.append(
+            ChangefileEntry(line_number, mdd_id, column, old_text, new_text, comment)
+        )
+    return entries
+
+
+@dataclass(frozen=True)
 class DistributionEvidence:
     country: str
     kind: str
@@ -1174,6 +1301,17 @@ def _sort_subregions(item: str) -> str:
     return f"{match['country']}({','.join(subregions)}){match['suffix']}"
 
 
+@functools.cache
+def get_msw3_species_names() -> frozenset[str]:
+    """Return scientific names recognized at species rank in MSW3."""
+    article = Article.select_valid().filter(Article.name == MSW3_ARTICLE_NAME).get()
+    return frozenset(
+        classification_entry.name.replace(" ", "_")
+        for classification_entry in article.get_classification_entries_with_children()
+        if classification_entry.rank is Rank.species
+    )
+
+
 @dataclass
 class MDDSpecies:
     row_idx: int
@@ -1227,7 +1365,44 @@ class MDDSpecies:
                         "contains mainCommonName; should not duplicate the primary name",
                         cleaned,
                     )
+        yield from self.lint_repeated_spaces()
+        yield from self.lint_msw3_taxonomy_notes()
         yield from self.lint_distribution_standalone()
+
+    def lint_repeated_spaces(self) -> Iterable[Issue]:
+        for column_name in FREE_FORM_TEXT_COLUMNS:
+            value = self.row.get(column_name)
+            if not isinstance(value, str) or "  " not in value:
+                continue
+            yield self.make_issue(
+                column_name, "contains repeated spaces", re.sub(r" {2,}", " ", value)
+            )
+
+    def lint_msw3_taxonomy_notes(self) -> Iterable[Issue]:
+        taxonomy_notes = (self.row.get("taxonomyNotes") or "").strip()
+        if taxonomy_notes and taxonomy_notes != "NA":
+            return
+
+        if self.row.get("diffSinceMSW3") == "1":
+            yield self.make_issue(
+                "taxonomyNotes",
+                "species is marked as new since MSW3, but the taxonomic change "
+                "from MSW3 is not documented",
+            )
+            return
+
+        msw3_sci_name = (self.row.get("MSW3_sciName") or "").strip()
+        current_sci_name = (self.row.get("sciName") or "").strip()
+        if (
+            msw3_sci_name not in {"", "NA"}
+            and current_sci_name
+            and msw3_sci_name != current_sci_name
+        ):
+            yield self.make_issue(
+                "taxonomyNotes",
+                f"scientific name differs from MSW3 ({msw3_sci_name}), but the "
+                "change is not documented",
+            )
 
     def get_countries(self) -> set[str]:
         if not self.row.get("countryDistribution"):
@@ -1785,6 +1960,64 @@ def check_id_field(species: list[MDDSpecies]) -> Iterable[Issue]:
             yield sp.make_issue("id", "missing MDD id", str(max_id))
 
 
+def lint_msw3_classification(
+    species: Iterable[MDDSpecies], msw3_species_names: Container[str] | None = None
+) -> Iterable[Issue]:
+    """Check the MDD MSW3 name columns against the source classification."""
+    if msw3_species_names is None:
+        msw3_species_names = get_msw3_species_names()
+
+    for sp in species:
+        current_name = (sp.row.get("sciName") or "").strip()
+        msw3_name = (sp.row.get("MSW3_sciName") or "").strip()
+        match_type = (sp.row.get("MSW3_matchtype") or "").strip()
+
+        if current_name in msw3_species_names:
+            if msw3_name != current_name:
+                yield sp.make_issue(
+                    "MSW3_sciName",
+                    "current scientific name is present as a species in the actual "
+                    "MSW3 classification",
+                    current_name,
+                )
+            if match_type != "sciname match":
+                yield sp.make_issue(
+                    "MSW3_matchtype",
+                    "current scientific name is an exact species-level match in the "
+                    "actual MSW3 classification",
+                    "sciname match",
+                )
+            continue
+
+        if (
+            msw3_name not in UNMATCHED_MSW3_VALUES
+            and msw3_name not in msw3_species_names
+        ):
+            yield sp.make_issue(
+                "MSW3_sciName",
+                "not found among species entries in the actual MSW3 classification",
+            )
+
+        if (
+            msw3_name not in UNMATCHED_MSW3_VALUES
+            and match_type in UNMATCHED_MSW3_MATCH_TYPES
+        ):
+            yield sp.make_issue(
+                "MSW3_matchtype",
+                "a scientific name is recorded for MSW3, but the match type says "
+                "that the row is unmatched",
+            )
+        elif (
+            msw3_name in UNMATCHED_MSW3_VALUES
+            and match_type not in UNMATCHED_MSW3_MATCH_TYPES
+        ):
+            yield sp.make_issue(
+                "MSW3_matchtype",
+                "no scientific name is recorded for MSW3, but the match type says "
+                "that the row is matched",
+            )
+
+
 def check_unique_col_mapping(
     species: list[MDDSpecies],
     from_col: str,
@@ -1835,6 +2068,7 @@ def lint_missing_fields(species: list[MDDSpecies]) -> Iterable[Issue]:
 def lint_species(species: list[MDDSpecies]) -> Iterable[Issue]:
     for sp in species:
         yield from sp.lint_standalone()
+    yield from lint_msw3_classification(species)
     yield from check_id_field(species)
     yield from lint_missing_fields(species)
 
@@ -2103,6 +2337,193 @@ def maybe_add_rows(
                 time.sleep(30)
 
 
+def apply_changefile(
+    entries: Sequence[ChangefileEntry],
+    species: Sequence[MDDSpecies],
+    headings: Sequence[str],
+    worksheet: Any | None,
+    *,
+    dry_run: bool,
+) -> list[gspread.cell.Cell]:
+    """Review changefile entries, writing each confirmed change immediately."""
+    if not dry_run and worksheet is None:
+        raise ValueError("applying a changefile requires the live MDD species sheet")
+
+    id_to_species: dict[str, MDDSpecies] = {}
+    duplicate_ids: set[str] = set()
+    for sp in species:
+        mdd_id = sp.row.get("id", "")
+        if mdd_id in id_to_species:
+            duplicate_ids.add(mdd_id)
+        id_to_species[mdd_id] = sp
+    column_to_idx = {heading: index for index, heading in enumerate(headings, start=1)}
+
+    validation_errors: list[str] = []
+    for entry in entries:
+        prefix = f"changefile line {entry.line_number}"
+        if entry.mdd_id in duplicate_ids:
+            validation_errors.append(
+                f"{prefix}: taxon ID {entry.mdd_id} occurs multiple times in the sheet"
+            )
+        elif entry.mdd_id not in id_to_species:
+            validation_errors.append(
+                f"{prefix}: taxon ID {entry.mdd_id} is not in the sheet"
+            )
+        if entry.column not in column_to_idx:
+            validation_errors.append(
+                f"{prefix}: column {entry.column!r} is not in the sheet"
+            )
+    if validation_errors:
+        raise ValueError("Invalid changefile:\n" + "\n".join(validation_errors))
+
+    def print_entry(entry: ChangefileEntry, sp: MDDSpecies, current_text: str) -> None:
+        getinput.print_header(f"MDD {entry.mdd_id} {sp.row['sciName']}: {entry.column}")
+        if entry.comment is not None:
+            print(f"Comment:\n{entry.comment}")
+        if current_text == entry.old_text:
+            print(f"Old text:\n{entry.old_text}")
+        else:
+            print(f"Expected old text:\n{entry.old_text}")
+            print(f"Current live text:\n{current_text}")
+        if entry.new_text is None:
+            print("New text:\n[manual review required; no suggested replacement]")
+        else:
+            print(f"New text:\n{entry.new_text}")
+            print("Character diff (^ replace, - delete, + insert):")
+            getinput.diff_strings(entry.old_text, entry.new_text)
+
+    def prompt_for_manual_text(current_text: str) -> tuple[str, str | None]:
+        choice = getinput.choose_one_by_name(
+            ["enter new text", "skip", "quit"],
+            allow_empty=False,
+            history_key="changefile_manual_review_choice",
+        )
+        if choice != "enter new text":
+            assert choice is not None
+            return choice, None
+        new_text = getinput.get_line(
+            "New text: ",
+            allow_none=False,
+            default=current_text,
+            history_key="changefile_manual_review_text",
+        )
+        assert new_text is not None
+        if new_text == current_text:
+            print("Text is unchanged; skipping.")
+            return "skip", None
+        return "apply", new_text
+
+    already_applied = 0
+    if dry_run:
+        suggested_changes = 0
+        manual_reviews = 0
+        stale_entries = 0
+        for entry in entries:
+            sp = id_to_species[entry.mdd_id]
+            current_text = cast(str, sp.row.get(entry.column, ""))
+            if entry.new_text is not None and current_text == entry.new_text:
+                already_applied += 1
+                continue
+            print_entry(entry, sp, current_text)
+            if current_text != entry.old_text:
+                print("Status: live text has changed; manual editing will be required.")
+                stale_entries += 1
+            elif entry.new_text is None:
+                manual_reviews += 1
+            else:
+                suggested_changes += 1
+        print(
+            f"Dry run: printed {suggested_changes} applicable suggested changes, "
+            f"{manual_reviews} manual reviews, and {stale_entries} stale entries; "
+            f"dropped {already_applied} already-applied entries; no changes applied."
+        )
+        return []
+
+    updates: list[gspread.cell.Cell] = []
+    manually_edited = 0
+    skipped = 0
+    stale_entries = 0
+
+    def apply_update(entry: ChangefileEntry, sp: MDDSpecies, new_text: str) -> None:
+        assert worksheet is not None
+        cell = gspread.cell.Cell(
+            row=sp.row_idx, col=column_to_idx[entry.column], value=new_text
+        )
+        worksheet.update_cells([cell])
+        updates.append(cell)
+        print("Applied.")
+
+    for entry in entries:
+        sp = id_to_species[entry.mdd_id]
+        current_text = cast(str, sp.row.get(entry.column, ""))
+        if entry.new_text is not None and current_text == entry.new_text:
+            already_applied += 1
+            continue
+        print_entry(entry, sp, current_text)
+        if current_text != entry.old_text:
+            print(
+                "The live text has changed since this changefile was created; "
+                "the stored suggestion cannot be applied directly."
+            )
+            stale_entries += 1
+            choice, new_text = prompt_for_manual_text(current_text)
+            if choice == "quit":
+                break
+            if choice == "skip":
+                skipped += 1
+                continue
+            assert new_text is not None
+            apply_update(entry, sp, new_text)
+            manually_edited += 1
+            continue
+        if entry.new_text is None:
+            choice, new_text = prompt_for_manual_text(current_text)
+            if choice == "quit":
+                break
+            if choice == "skip":
+                skipped += 1
+                continue
+            assert new_text is not None
+            apply_update(entry, sp, new_text)
+            manually_edited += 1
+            continue
+        suggestion_choice = getinput.choose_one_by_name(
+            ["apply", "edit", "skip", "quit"],
+            allow_empty=False,
+            history_key="changefile_change_choice",
+        )
+        assert suggestion_choice is not None
+        if suggestion_choice == "quit":
+            break
+        if suggestion_choice == "skip":
+            skipped += 1
+            continue
+        new_text = entry.new_text
+        if suggestion_choice == "edit":
+            new_text = getinput.get_line(
+                "New text: ",
+                allow_none=False,
+                default=entry.new_text,
+                history_key="changefile_suggested_edit_text",
+            )
+            assert new_text is not None
+            if new_text == current_text:
+                print("Text is unchanged; skipping.")
+                skipped += 1
+                continue
+            manually_edited += 1
+        apply_update(entry, sp, new_text)
+
+    if not updates:
+        print("No changefile changes to apply.")
+    print(
+        f"Changefile review: {len(updates)} changes applied "
+        f"({manually_edited} manually edited), {skipped} skipped, "
+        f"{already_applied} already applied, {stale_entries} stale."
+    )
+    return updates
+
+
 def maybe_fix_issues(
     issues: list[Issue],
     column_to_idx: dict[str, int],
@@ -2309,7 +2730,13 @@ def run(
     syn_sheet_csv: str | None = None,
     common_names_only: bool = False,
     distribution_problems_output: Path | None = None,
+    changefile: Path | None = None,
 ) -> None:
+    if changefile is not None and common_names_only:
+        raise ValueError("--changefile cannot be combined with --common-names-only")
+    changefile_entries = (
+        parse_changefile(changefile) if changefile is not None else None
+    )
     options = get_options()
     backup_path = (
         options.data_path / "mdd_taxa" / datetime.datetime.now(datetime.UTC).isoformat()
@@ -2317,6 +2744,7 @@ def run(
     backup_path.mkdir(parents=True, exist_ok=True)
 
     print("downloading MDD names... ")
+    worksheet = None
     if input_csv is None:
         sheet = get_sheet()
         worksheet = sheet.get_worksheet_by_id(options.mdd_species_worksheet_gid)
@@ -2341,6 +2769,12 @@ def run(
             for row in raw_rows:
                 writer.writerow(row)
         print(f"done, backup at {backup_path}")
+
+        if changefile_entries is not None:
+            apply_changefile(
+                changefile_entries, species, sheet_headings, worksheet, dry_run=dry_run
+            )
+            return
 
         issues = list(lint_species(species))
 
@@ -2394,6 +2828,12 @@ if __name__ == "__main__":
     parser.add_argument("--dry-run", action="store_true", default=False)
     parser.add_argument("--common-names-only", action="store_true", default=False)
     parser.add_argument("--distribution-problems-output", type=Path, default=None)
+    parser.add_argument(
+        "--changefile",
+        type=Path,
+        default=None,
+        help="interactively review and apply changes from a JSONL changefile",
+    )
     args = parser.parse_args()
     run(
         input_csv=args.input_csv,
@@ -2401,4 +2841,5 @@ if __name__ == "__main__":
         syn_sheet_csv=args.syn_sheet_csv,
         common_names_only=args.common_names_only,
         distribution_problems_output=args.distribution_problems_output,
+        changefile=args.changefile,
     )

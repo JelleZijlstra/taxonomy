@@ -86,6 +86,7 @@ class Region(BaseModel):
             "display_citation_groups": self.display_citation_groups,
             "display_periods": self.display_periods,
             "display_type_localities": self.display_type_localities,
+            "display_children": self.display_children,
         }
 
     def get_general_localities(self) -> list[models.Location]:
@@ -98,6 +99,9 @@ class Region(BaseModel):
             | (name_field == f"{my_name} fossil")
             | (name_field.endswith(f"({my_name})")),
         )
+
+    def edit(self) -> None:
+        self.fill_field("tags")
 
     def rename(self, new_name: str | None = None) -> None:
         old_name = self.name
@@ -157,6 +161,11 @@ class Region(BaseModel):
                     locations=locations,
                 )
 
+    def display_children(
+        self, *, full: bool = False, depth: int = 0, file: IO[str] = sys.stdout
+    ) -> None:
+        self.display(full=full, depth=depth, file=file, children=True, skip_empty=False)
+
     def display_type_localities(
         self, *, depth: int = 0, file: IO[str] = sys.stdout
     ) -> None:
@@ -185,10 +194,12 @@ class Region(BaseModel):
         ):
             if loc.type_localities.count() > 0:
                 return False
-        return all(child.is_empty() for child in self.children)
+        return all(
+            child.is_empty() for child in Region.add_validity_check(self.children)
+        )
 
     def has_children(self) -> bool:
-        for _ in self.children:
+        for _ in Region.add_validity_check(self.children):
             return True
         return False
 

@@ -361,7 +361,7 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> tuple[str, float
     text = text.replace("·", ".")
     text = re.sub(r"[\*◦]", "°", text)
     text = re.sub(r"[`ʹ’‘′ ́]", "'", text)
-    text = re.sub(r"(''|”)", '"', text)
+    text = re.sub(r"(''|[”″])", '"', text)
 
     match = COORDINATE_RGX.match(text)
     if not match:
