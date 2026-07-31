@@ -1389,6 +1389,21 @@ def biggest_general_type_localities() -> None:
 
 
 @command
+def countries_with_most_type_localities(*, recent_only: bool = True) -> None:
+    counts: Counter[models.Region] = Counter()
+    for loc in getinput.print_every_n(
+        models.Location.select_valid(), n=1000, label="localities"
+    ):
+        if recent_only and (loc.max_period is None or loc.max_period.name != "Recent"):
+            continue
+        region = loc.region.parent_of_kind(constants.RegionKind.country)
+        if region is not None:
+            counts[region] += loc.type_localities.count()
+    for region, count in counts.most_common(100):
+        print(count, region)
+
+
+@command
 def more_precise_type_localities(
     loc: models.Location, *, substring: str | None = None
 ) -> None:

@@ -3110,6 +3110,46 @@ def test_nearby_region_modifier_does_not_require_disambiguators(
     )
 
 
+def test_nearby_region_name_is_primary_despite_other_disambiguated_locations(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    united_states = _make_region("United States", RegionKind.country)
+    florida = _make_region("Florida", RegionKind.state, united_states)
+    atlantic_ocean = _make_region("Atlantic Ocean", RegionKind.sea)
+    coastal_waters = _location_without_coordinates(
+        id=1,
+        name="Florida: eastern coastal waters",
+        region=atlantic_ocean,
+        general=True,
+    )
+    coastal_waters.tags = (  # type: ignore[assignment]
+        LocationTag.General,
+        LocationTag.NearbyRegion(florida),
+    )
+    solomon_islands = _location_without_coordinates(
+        id=2,
+        name="Florida (Solomon Islands)",
+        region=_make_region("Solomon Islands", RegionKind.country),
+    )
+    colorado = _location_without_coordinates(
+        id=3,
+        name="Florida (La Plata County, Colorado)",
+        region=_make_region("La Plata County, Colorado", RegionKind.county),
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_base_name_to_locations",
+        lambda: {"Florida": (coastal_waters, solomon_islands, colorado)},
+    )
+
+    assert (
+        list(
+            location_lint.check_should_have_disambiguator(coastal_waters, LintConfig())
+        )
+        == []
+    )
+
+
 def test_untagged_cross_region_modifier_still_requires_disambiguators(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

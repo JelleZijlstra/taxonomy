@@ -169,7 +169,7 @@ COLUMN_TO_REGEX = {
     "flagged": r"[01]",
     "CMW_sciName": r"[A-Z][a-z]+_[a-z]+|NA",
     "diffSinceCMW": r"[01]",
-    "MSW3_matchtype": r"sciname match|oldname match|manual|manual match|unmatched|NA",
+    "MSW3_matchtype": r"sciname match|oldname match|manual|unmatched|NA",
     "MSW3_sciName": r"[A-Z][a-z]+_[a-zü]+|NA",
     "diffSinceMSW3": r"[01]",
 }
@@ -1963,7 +1963,7 @@ def check_id_field(species: list[MDDSpecies]) -> Iterable[Issue]:
 def lint_msw3_classification(
     species: Iterable[MDDSpecies], msw3_species_names: Container[str] | None = None
 ) -> Iterable[Issue]:
-    """Check the MDD MSW3 name columns against the source classification."""
+    """Check MSW3 mappings while preserving how each mapping was established."""
     if msw3_species_names is None:
         msw3_species_names = get_msw3_species_names()
 
@@ -1971,50 +1971,63 @@ def lint_msw3_classification(
         current_name = (sp.row.get("sciName") or "").strip()
         msw3_name = (sp.row.get("MSW3_sciName") or "").strip()
         match_type = (sp.row.get("MSW3_matchtype") or "").strip()
+        current_name_is_in_msw3 = current_name in msw3_species_names
+        msw3_name_is_missing = msw3_name in UNMATCHED_MSW3_VALUES
+        msw3_name_is_valid = (
+            not msw3_name_is_missing and msw3_name in msw3_species_names
+        )
 
-        if current_name in msw3_species_names:
-            if msw3_name != current_name:
+        if current_name_is_in_msw3 and msw3_name != current_name:
+            if msw3_name_is_missing or not msw3_name_is_valid:
                 yield sp.make_issue(
                     "MSW3_sciName",
                     "current scientific name is present as a species in the actual "
                     "MSW3 classification",
                     current_name,
                 )
-            if match_type != "sciname match":
+            else:
                 yield sp.make_issue(
-                    "MSW3_matchtype",
-                    "current scientific name is an exact species-level match in the "
-                    "actual MSW3 classification",
-                    "sciname match",
+                    "MSW3_sciName",
+                    "both the current scientific name and the recorded mapping are "
+                    "species in the actual MSW3 classification; review which MSW3 "
+                    "species represents the current MDD concept",
                 )
-            continue
-
-        if (
-            msw3_name not in UNMATCHED_MSW3_VALUES
-            and msw3_name not in msw3_species_names
-        ):
+        elif not msw3_name_is_missing and not msw3_name_is_valid:
             yield sp.make_issue(
                 "MSW3_sciName",
                 "not found among species entries in the actual MSW3 classification",
             )
 
-        if (
-            msw3_name not in UNMATCHED_MSW3_VALUES
-            and match_type in UNMATCHED_MSW3_MATCH_TYPES
-        ):
-            yield sp.make_issue(
-                "MSW3_matchtype",
-                "a scientific name is recorded for MSW3, but the match type says "
-                "that the row is unmatched",
+        if match_type in UNMATCHED_MSW3_MATCH_TYPES:
+            can_make_exact_match = current_name_is_in_msw3 and (
+                msw3_name_is_missing
+                or not msw3_name_is_valid
+                or msw3_name == current_name
             )
-        elif (
-            msw3_name in UNMATCHED_MSW3_VALUES
-            and match_type not in UNMATCHED_MSW3_MATCH_TYPES
-        ):
+            if can_make_exact_match:
+                yield sp.make_issue(
+                    "MSW3_matchtype",
+                    "the current scientific name provides a direct species-level "
+                    "match to the actual MSW3 classification",
+                    "sciname match",
+                )
+            elif not msw3_name_is_missing:
+                yield sp.make_issue(
+                    "MSW3_matchtype",
+                    "a scientific name is recorded for MSW3, but the match type says "
+                    "that the row is unmatched or has not been evaluated",
+                )
+            elif match_type == "NA":
+                yield sp.make_issue(
+                    "MSW3_matchtype",
+                    "MSW3 matching has not yet been evaluated; resolve this to a "
+                    "matched category or 'unmatched' before release",
+                )
+        elif msw3_name_is_missing:
             yield sp.make_issue(
                 "MSW3_matchtype",
-                "no scientific name is recorded for MSW3, but the match type says "
-                "that the row is matched",
+                "no scientific name is recorded for MSW3, but the match provenance "
+                "says that the row was matched",
             )
 
 

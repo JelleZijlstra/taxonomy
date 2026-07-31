@@ -464,7 +464,7 @@ _DIRECTIONAL_COORDINATE_LIKE = re.compile(
 _EDITORIAL_LOCATION_EQUIVALENCE = re.compile(
     r"\[(?P<bracketed>[^\[\]]+)\](?![\[(])|\(\s*=\s*(?P<parenthetical>[^()]+?)\s*\)"
 )
-_ALWAYS_ALLOWED_DISAMBIGUATORS = {"island", "region"}
+_ALWAYS_ALLOWED_DISAMBIGUATORS = {"island", "region", "historical region"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -1217,6 +1217,14 @@ def _get_nearby_regions(location: Location) -> tuple[Region, ...]:
         return ()
     return tuple(
         tag.region for tag in location.get_tags(location.tags, LocationTag.NearbyRegion)
+    )
+
+
+def _has_primary_region_base_name(
+    location: Location, parsed_name: ParsedLocationName
+) -> bool:
+    return parsed_name.base_name == location.region.name or any(
+        parsed_name.base_name == region.name for region in _get_nearby_regions(location)
     )
 
 
@@ -2894,7 +2902,9 @@ def check_should_have_disambiguator(
     location: Location, cfg: LintConfig
 ) -> Iterable[str]:
     parsed_name = ParsedLocationName.parse(location.name)
-    if parsed_name.disambiguator is not None or location.name == location.region.name:
+    if parsed_name.disambiguator is not None or _has_primary_region_base_name(
+        location, parsed_name
+    ):
         return
 
     similar = [
