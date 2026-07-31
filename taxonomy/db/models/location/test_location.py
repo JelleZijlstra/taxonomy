@@ -318,6 +318,142 @@ def test_alias_requires_target_without_running_regular_lints() -> None:
     assert list(Location.lint_invalid(alias, LintConfig())) == []
 
 
+def _mergeable_location(**kwargs: object) -> Location:
+    defaults: dict[str, object] = {
+        "id": 1,
+        "name": "Source",
+        "region": "Example Region",
+        "min_period": None,
+        "max_period": None,
+        "stratigraphic_unit": None,
+        "min_age": None,
+        "max_age": None,
+        "source": None,
+        "latitude": None,
+        "longitude": None,
+        "comment": None,
+        "location_detail": "",
+        "age_detail": "",
+        "tags": (),
+        "deleted": LocationStatus.valid,
+        "parent": None,
+        "reassign_references": Mock(),
+    }
+    defaults.update(kwargs)
+    return cast(Location, SimpleNamespace(**defaults))
+
+
+def test_merge_preserves_compatible_metadata() -> None:
+    article = cast(Article, object())
+    source = _mergeable_location(
+        id=1,
+        name="Old spelling",
+        min_age=100,
+        max_age=200,
+        min_period="source minimum period",
+        max_period="source maximum period",
+        stratigraphic_unit="source stratigraphic unit",
+        source=article,
+        latitude="10°N",
+        longitude="20°E",
+        comment="Source comment.",
+        location_detail="Source locality evidence.",
+        age_detail="Source age evidence.",
+        tags=(LocationTag.General,),
+    )
+    target = _mergeable_location(id=2, name="Canonical spelling")
+
+    Location.merge(source, target)
+
+    assert target.min_age == 100
+    assert target.max_age == 200
+    assert target.min_period == "source minimum period"
+    assert target.max_period == "source maximum period"
+    assert target.stratigraphic_unit == "source stratigraphic unit"
+    assert target.source is article
+    assert (target.latitude, target.longitude) == ("10°N", "20°E")
+    assert target.comment == "Source comment."
+    assert target.location_detail == "Source locality evidence."
+    assert target.age_detail == "Source age evidence."
+    assert target.tags == (LocationTag.General,)
+    source.reassign_references.assert_called_once_with(target)  # type: ignore[attr-defined]
+    assert source.deleted is LocationStatus.alias
+    assert source.parent is target
+
+
+def test_merge_combines_text_tags_and_compatible_partial_coordinates() -> None:
+    source = _mergeable_location(
+        id=1,
+        name="Old spelling",
+        latitude="10°N",
+        longitude="20°E",
+        comment="Source comment.",
+        location_detail="Source evidence.",
+        tags=(LocationTag.General, LocationTag.Unplaced()),
+    )
+    target = _mergeable_location(
+        id=2,
+        name="Canonical spelling",
+        latitude="10°N",
+        comment="Target comment.",
+        location_detail="Target evidence.",
+        tags=(LocationTag.General,),
+    )
+
+    Location.merge(source, target)
+
+    assert (target.latitude, target.longitude) == ("10°N", "20°E")
+    assert (
+        target.comment
+        == "Target comment.\n\nMerged from Old spelling (L#1):\nSource comment."
+    )
+    assert (
+        target.location_detail
+        == "Target evidence.\n\nMerged from Old spelling (L#1):\nSource evidence."
+    )
+    assert target.tags == (LocationTag.General, LocationTag.Unplaced())
+
+
+def test_merge_keeps_conflicting_scalar_and_coordinate_metadata(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    source_article = cast(Article, object())
+    target_article = cast(Article, object())
+    source = _mergeable_location(
+        id=1,
+        name="Old spelling",
+        min_age=100,
+        source=source_article,
+        latitude="10°N",
+        longitude="20°E",
+    )
+    target = _mergeable_location(
+        id=2,
+        name="Canonical spelling",
+        min_age=110,
+        source=target_article,
+        latitude="11°N",
+        longitude="21°E",
+    )
+
+    Location.merge(source, target)
+
+    assert target.min_age == 110
+    assert target.source is target_article
+    assert (target.latitude, target.longitude) == ("11°N", "21°E")
+    output = capsys.readouterr().out
+    assert "warning: keeping min_age" in output
+    assert "warning: keeping source" in output
+    assert "warning: keeping coordinates" in output
+
+
+def test_merge_rejects_self_merge() -> None:
+    location = _mergeable_location()
+
+    with pytest.raises(ValueError, match="cannot merge a Location into itself"):
+        Location.merge(location, location)
+
+
 def test_fully_divided_region_lint_reports_direct_location() -> None:
     region = SimpleNamespace(
         name="Example Region",

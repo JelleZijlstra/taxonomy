@@ -58,6 +58,98 @@ class _CoordinateChoice:
         return f"{self.latitude}, {self.longitude} — {'; '.join(self.sources)}"
 
 
+def _is_empty_text(value: str | None) -> bool:
+    return value is None or not value.strip() or value == "None"
+
+
+def _merge_text_field(source: Location, target: Location, field: str) -> None:
+    source_text = getattr(source, field)
+    if _is_empty_text(source_text):
+        return
+    target_text = getattr(target, field)
+    if _is_empty_text(target_text):
+        print(f"setting {field} from {source}")
+        setattr(target, field, source_text)
+        return
+    if source_text == target_text:
+        return
+    merged_section = f"Merged from {source.name} (L#{source.id}):\n{source_text}"
+    if merged_section in target_text:
+        return
+    print(f"appending {field} from {source}")
+    setattr(target, field, f"{target_text.rstrip()}\n\n{merged_section}")
+
+
+def _merge_coordinates(source: Location, target: Location) -> None:
+    source_pair = (source.latitude, source.longitude)
+    target_pair = (target.latitude, target.longitude)
+    if source_pair in ((None, None), target_pair):
+        return
+    if target_pair == (None, None):
+        print(f"setting coordinates from {source}: {source_pair}")
+        target.latitude, target.longitude = source_pair
+        return
+
+    compatible = all(
+        source_value is None or target_value is None or source_value == target_value
+        for source_value, target_value in zip(source_pair, target_pair, strict=True)
+    )
+    if compatible:
+        merged_pair = tuple(
+            target_value if target_value is not None else source_value
+            for source_value, target_value in zip(source_pair, target_pair, strict=True)
+        )
+        if merged_pair != target_pair:
+            print(f"completing coordinates from {source}: {merged_pair}")
+            target.latitude, target.longitude = merged_pair
+        return
+    print(
+        f"warning: keeping coordinates on {target}: {target_pair}; "
+        f"source {source} has {source_pair}"
+    )
+
+
+def _merge_location_data(source: Location, target: Location) -> None:
+    if source.region != target.region:
+        print(
+            f"warning: keeping region on {target}: {target.region}; "
+            f"source {source} has {source.region}"
+        )
+    for field in (
+        "min_period",
+        "max_period",
+        "stratigraphic_unit",
+        "min_age",
+        "max_age",
+        "source",
+    ):
+        source_value = getattr(source, field)
+        if source_value is None:
+            continue
+        target_value = getattr(target, field)
+        if target_value is None:
+            print(f"setting {field} from {source}: {source_value}")
+            setattr(target, field, source_value)
+        elif source_value != target_value:
+            print(
+                f"warning: keeping {field} on {target}: {target_value}; "
+                f"source {source} has {source_value}"
+            )
+
+    _merge_coordinates(source, target)
+    for field in ("comment", "location_detail", "age_detail"):
+        _merge_text_field(source, target, field)
+
+    target_tags = tuple(target.tags or ())
+    merged_tags = (
+        *target_tags,
+        *(tag for tag in source.tags or () if tag not in target_tags),
+    )
+    if merged_tags != target_tags:
+        print(f"adding {len(merged_tags) - len(target_tags)} tag(s) from {source}")
+        target.tags = merged_tags  # type: ignore[assignment]
+
+
 class Location(BaseModel):
     creation_event = events.Event["Location"]()
     save_event = events.Event["Location"]()
@@ -281,6 +373,9 @@ class Location(BaseModel):
             other = self.getter(None).get_one()
             if other is None:
                 return
+        if other == self:
+            raise ValueError("cannot merge a Location into itself")
+        _merge_location_data(self, other)
         self.reassign_references(other)
         self.deleted = LocationStatus.alias
         self.parent = other

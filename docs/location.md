@@ -50,6 +50,13 @@ historical extent without falsely equating it with one present-day unit, retain 
 name only with an explicit `(historical region)` disambiguator; for example,
 `Prussia (historical region)`, not bare `Prussia`.
 
+Prefer the full form of generic geographic abbreviations in canonical names: for
+example, use `Mount Moriah`, `Fort Thomas`, and `Malheur National Wildlife Refuge`
+rather than `Mt. Moriah`, `Ft. Thomas`, and `Malheur NWR`. Retain an abbreviation when
+it is genuinely part of the official proper name. Preserve diacritics and the preferred
+modern spelling; source spellings belong in `location_detail` or, when independently
+useful for lookup, in an alias.
+
 For example:
 
 - `Castries (Hérault): 1 km N`
@@ -72,12 +79,28 @@ name (for example, the nearby coast, or an "X km N" locality that crosses a bord
 region of the base name is acceptable as a disambiguator; this can be indicated with a
 "NearbyRegion" tag on the location.
 
+The assigned Region is structured data and should not normally be repeated at the end of
+the Location name merely because the source printed a full political hierarchy. Thus, a
+locality assigned to the Sint Eustatius Region should normally be `English Quarter`, not
+`English Quarter, Sint Eustatius`. Use a parenthetical disambiguator when the shorter
+base name is not globally unique. A longer hierarchical phrase may be retained when all
+of its components are needed to identify the feature or distinguish a source locality,
+but the verbatim hierarchy should otherwise be preserved in `location_detail`.
+
 The modifier distinguishes a more specific place associated with the base feature. It
 may be free-form text such as `mouth`, `upper`, or `near the bridge`. A completely
 specified distance and direction is standardized using abbreviated units and compass
 directions, without _of_; north/south components precede east/west components. Thus, use
 `Monterey: 2 km S 1 mi W`, not `1 mi W, 2 kilometers south of Monterey` or
 `Monterey (2 km S 1 mi W)`.
+
+Distinguish a locality _defined by_ an offset from a named feature that is merely
+_located by_ an offset. If the source gives only "2 km south of Monterey", use
+`Monterey: 2 km S`. If the source gives a separately named feature such as "Bats Cave,
+1.5 km east of English Harbour", use `Bats Cave` as the canonical name and retain the
+offset in `location_detail`, unless the offset is needed to distinguish this Bats Cave
+from another locality. Do not copy elevations, coordinates, political hierarchies, or
+other locating evidence into the base name.
 
 A locality defined by a coordinate pair may use standardized latitude and longitude as
 its modifier, as in `Vilacota, Tacna, Peru: 17.145759°S 70.054278°W`. Use latitude
@@ -95,6 +118,15 @@ Castle Brace (Dominica)
 Castle Brace (Dominica): 1 mi N
 Castle Brace (Dominica): 2 mi SW
 ```
+
+For a name containing several nested geographic components, choose one primary anchor
+and use the same component order throughout that family of Locations. Put the primary
+anchor first, followed by increasingly specific components; for example, use
+`Steens Mountain, Little Blitzen Gorge, T33S, R33E, Sec. 10` consistently rather than
+also creating `Steens Mountain, T33S, R33E, Sec. 10, Little Blitzen Gorge`. Two names
+that contain the same components in a different order are duplicate candidates, not
+automatically distinct localities. Preserve the source's original component order in
+`location_detail`.
 
 When a Location combines two or more parallel geographic components with _and_, put the
 components in alphabetical order. This gives equivalent source phrasings one canonical
@@ -131,11 +163,42 @@ animal is terrestrial for this purpose. If the evidence still does not resolve t
 distinction, use a _General_ Location under the lowest Region that contains both
 possibilities rather than silently choosing land or water.
 
+## Aliases and merges
+
+Use one valid Location for one geographic locality. Alternate spellings, historical
+names, punctuation variants, translated names, abbreviations, and reordered locality
+components should not remain as separate valid Locations when the evidence shows that
+they denote the same place.
+
+When consolidating duplicate Locations, reassign all type-locality and occurrence
+references to the selected canonical Location and retain the other record as an alias.
+An alias points to the canonical Location and should not retain independent references.
+The alias is useful when its name is an established source spelling, a likely search
+term, or the target of an existing link. A trivial typographical error need not be
+created as a new alias if it has never had an independent record or link.
+
+Merging copies metadata that can be preserved without choosing between conflicting
+claims. Missing periods, stratigraphic units, coordinates, numerical ages, and source
+citations are copied to the canonical Location; compatible partial coordinate pairs are
+completed; tags are combined; and distinct comments, `location_detail`, and `age_detail`
+text are appended with the source alias identified. Conflicting scalar values or
+coordinate pairs remain on the alias and produce a warning instead of overwriting the
+canonical value. Review those warnings after applying a merge. Keep source wording and
+provenance in the relevant `LocationDetail` or occurrence record even after the
+canonical Location has been selected.
+
+Punctuation-insensitive or accent-insensitive name matches, reordered components, and
+shared coordinates are review leads only. Same-name places, nested features, and
+separately named sites can legitimately be close together or share rounded published
+coordinates.
+
 ## Fields
 
 Locations have the following fields:
 
 - _name_: The name of the location.
+- _status_ and _parent_: A Location may be valid, deleted, or an alias. An alias has a
+  parent pointing to its canonical Location.
 - _region_: The [region](region) the location is physically in.
 - _latitude_ and _longitude_: The point or coordinate extent that defines an exact
   Location. Use source coordinates or a securely identified geographic feature. Do not
@@ -149,9 +212,20 @@ Locations have the following fields:
 - _tags_: Various extra information about the location. Current tags include:
   - _General_, which indicates that the Location intentionally represents a broad or
     imprecise area rather than a single locality
+  - _Unplaced_, which indicates that a source identifies a particular locality but its
+    placement in the Region hierarchy remains uncertain
+  - _NearbyRegion_, which records a nearby Region used as the anchor or disambiguator
+    for an offset locality outside that Region
+  - _IgnoreLintLocation_, which records a reviewed exception to a named Location lint;
+    it should include a useful explanation whenever the reason is not self-evident
   - Three tags indicating that the location corresponds to a location in another
     database: _PBDB_ for the [Paleobiology Database](https://paleobiodb.org/#/), _NOW_
     for the [New and Old Worlds](https://nowdatabase.org/) database, and _ETMNA_ for
     [Appendix I to Janis et al. (2008)](/a/North_America_Tertiary-localities.pdf).
+
+When a Region's children exhaustively cover it, a specific Location should be assigned
+to the appropriate child Region. A Location may remain directly under the parent only
+when it is _General_, _Unplaced_, or the Region is explicitly marked as incompletely
+divided; see [Region](region).
 
 There are a few other fields, but these are currently not widely used.
