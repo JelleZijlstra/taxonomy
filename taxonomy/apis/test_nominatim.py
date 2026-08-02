@@ -24,6 +24,7 @@ def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> No
                     "category": "place",
                     "type": "hamlet",
                     "osm_type": "relation",
+                    "osm_id": 1234,
                     "boundingbox": [
                         "38.0415885",
                         "38.0815885",
@@ -53,6 +54,7 @@ def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> No
             category="place",
             feature_type="hamlet",
             osm_type="relation",
+            osm_id=1234,
             bounding_box=("38.0415885", "38.0815885", "-122.7185975", "-122.6785975"),
             address={
                 "hamlet": "Nicasio",
@@ -71,6 +73,37 @@ def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> No
         "limit": ["3"],
         "accept-language": ["en"],
     }
+
+
+def test_lookup_uses_stable_osm_object_identifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    get_data = Mock(
+        return_value=json.dumps(
+            [
+                {
+                    "lat": "38.0615885",
+                    "lon": "-122.6985975",
+                    "name": "Nicasio",
+                    "display_name": "Nicasio, California, United States",
+                    "category": "place",
+                    "type": "hamlet",
+                    "osm_type": "relation",
+                    "osm_id": 1234,
+                    "address": {"country": "United States"},
+                }
+            ]
+        )
+    )
+    monkeypatch.setattr(nominatim, "get_nominatim_data", get_data)
+
+    result = nominatim.lookup("relation", 1234)
+
+    assert result is not None
+    assert (result.osm_type, result.osm_id) == ("relation", 1234)
+    url = get_data.call_args.args[0]
+    assert urlparse(url).path == "/lookup"
+    assert parse_qs(urlparse(url).query)["osm_ids"] == ["R1234"]
 
 
 def test_reverse_requests_administrative_address(

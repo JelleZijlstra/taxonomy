@@ -40,7 +40,7 @@ __all__ = [
 from .base import BaseModel as BaseModel
 from .article import Article as Article, ArticleComment as ArticleComment
 from .collection import Collection as Collection
-from .location import Location as Location
+from .location import Location as Location, LocationTag as _LocationTag
 from .citation_group import (
     CitationGroup as CitationGroup,
     CitationGroupPattern as CitationGroupPattern,
@@ -57,6 +57,7 @@ from .name.name import (
     NameTag as NameTag,
     has_data_from_original as has_data_from_original,
 )
+
 from .name_complex import (
     NameComplex as NameComplex,
     SpeciesNameComplex as SpeciesNameComplex,
@@ -82,3 +83,9 @@ from . import (
     occurrence_record as occurrence_record,
     tags as tags,
 )
+
+# Location is imported before Name, so its ADT declaration uses a temporary
+# scalar type to avoid an import cycle. Resolve the field before any model data
+# can be read or edited. Its serialized representation remains the Name ID.
+_LocationTag.CoordinatesFromName._attributes["name"] = Name
+_LocationTag.CoordinatesFromName.__init__.__annotations__["name"] = Name

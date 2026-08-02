@@ -1,5 +1,8 @@
 from datetime import date
 
+import pytest
+
+from taxonomy.db import helpers
 from taxonomy.db.constants import Group, Rank
 
 from .helpers import (
@@ -14,6 +17,57 @@ from .helpers import (
 
 def assert_romanizes(cyrillic: str, latin: str) -> None:
     assert romanize_russian(cyrillic) == latin
+
+
+def test_extract_coordinates_normalizes_typographic_symbols() -> None:
+    assert helpers.extract_coordinates("at 31º28′12″ S, 64˚44’24” W") == (
+        "31°28'12\"S",
+        "64°44'24\"W",
+    )
+
+
+def test_extract_coordinate_pairs() -> None:
+    assert helpers.extract_coordinate_pairs(
+        "first 31°28'12\"S, 64°44'24\"W; then 31.5°S, 64.5°W"
+    ) == [("31°28'12\"S", "64°44'24\"W"), ("31.5°S", "64.5°W")]
+
+
+def test_extract_coordinates_normalizes_decimal_comma_and_western_o() -> None:
+    assert helpers.extract_coordinates("8° 9' 4,49\" N, 61° 46' 45,79\" O") == (
+        "8°9'4.49\"N",
+        "61°46'45.79\"W",
+    )
+
+
+def test_extract_coordinates_ignores_stray_period_before_seconds_mark() -> None:
+    assert helpers.extract_coordinates("27°14'59.93\"S, 57°50'37.16.″W") == (
+        "27°14'59.93\"S",
+        "57°50'37.16\"W",
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("S1.70190°, E25.13970°", ("1.7019°S", "25.1397°E")),
+        ("near S 1.02237*, E 24.42368*", ("1.02237°S", "24.42368°E")),
+        ("S 41°57'13.5\", W 66°19'20.3\"", ("41°57'13.5\"S", "66°19'20.3\"W")),
+        ("14o48'16.1\" S, 68o44'58.6\"W", ("14°48'16.1\"S", "68°44'58.6\"W")),
+        ("52* 00' N – 02* 48' E", ("52°0'N", "2°48'E")),
+        ("27°58' N and 89°31' E", ("27°58'N", "89°31'E")),
+        ("27°14'59.93″S | 57°50'37.16.″W", ("27°14'59.93\"S", "57°50'37.16\"W")),
+        ("c.1°30'N 30°30'E", ("1°30'N", "30°30'E")),
+        ("about 0°35' N., 27°50' E", ("0°35'N", "27°50'E")),
+        (
+            "16*5'5\" östl. Länge, 48°27'13\" nördl. Breite",
+            ("48°27'13\"N", "16°5'5\"E"),
+        ),
+    ],
+)
+def test_extract_coordinates_source_variants(
+    text: str, expected: tuple[str, str]
+) -> None:
+    assert helpers.extract_coordinates(text) == expected
 
 
 def test_romanize_russian() -> None:

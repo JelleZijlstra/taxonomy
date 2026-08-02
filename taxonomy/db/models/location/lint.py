@@ -9,17 +9,19 @@ from dataclasses import dataclass
 from functools import cache
 from typing import Any
 
-from taxonomy import coordinates
-from taxonomy.apis import geonames, nominatim
+import httpx
+
+from taxonomy import adt, coordinates
+from taxonomy.apis import geonames, nominatim, plss
 from taxonomy.db import coordinate_lint, helpers
-from taxonomy.db.constants import RegionKind
+from taxonomy.db.constants import RegionKind, SpeciesGroupType
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region, RegionTag
 
-from .age import is_non_recent_location, is_recent_location
-from .model import Location, LocationTag
+from .age import is_recent_location
+from .model import Location, LocationTag, is_coordinate_provenance_tag
 from .name import ParsedLocationName, split_trailing_parenthetical
 
 _GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "water", "waterway"}
@@ -545,6 +547,460 @@ def add_ignore(location: Location, label: str, comment: str) -> None:
 LINT = Lint(Location, get_ignores, remove_unused_ignores, add_ignore)
 
 
+@dataclass(frozen=True, slots=True)
+class _LinkedPLSSEvidence:
+    description: plss.PLSSDescription
+    source: str
+    has_alternative_section: bool = False
+
+
+def _get_applicable_location_detail_tags(name: Any) -> tuple[Any, ...]:
+    """Return LocationDetails that describe the Name's current type locality.
+
+    For a neotypified Name, unstructured locality accounts predating the neotype may
+    describe only the original type locality.  Restrict inference to LocationDetails
+    from a source that actually designates the neotype.  A source-less structured
+    Coordinates tag remains usable because it represents the Name's current type
+    locality directly.
+    """
+    from taxonomy.db.models.name import TypeTag
+
+    details = tuple(name.get_tags(name.type_tags, TypeTag.LocationDetail))
+    if getattr(name, "species_type_kind", None) is not SpeciesGroupType.neotype:
+        return details
+    designation_source_ids = {
+        tag.optional_source.id
+        for tag in name.get_tags(name.type_tags, TypeTag.NeotypeDesignation)
+        if tag.valid and tag.optional_source is not None
+    }
+    return tuple(tag for tag in details if tag.source.id in designation_source_ids)
+
+
+def _region_of_kind(region: Region, kind: RegionKind) -> Region | None:
+    if region.kind is kind:
+        return region
+    return next(
+        (parent for parent in region.all_parents() if parent.kind is kind), None
+    )
+
+
+def _get_us_plss_context(location: Location) -> tuple[str, str, str | None] | None:
+    state = _region_of_kind(location.region, RegionKind.state)
+    country = _region_of_kind(location.region, RegionKind.country)
+    if state is None or state.name not in plss.US_STATE_CODES:
+        return None
+    if country is not None and country.name != "United States":
+        return None
+    state_code, state_fips = plss.US_STATE_CODES[state.name]
+    county = _region_of_kind(location.region, RegionKind.county)
+    county_name = county.name if county is not None else None
+    return state_code, state_fips, county_name
+
+
+def _get_linked_plss_evidence(location: Location) -> list[_LinkedPLSSEvidence]:
+    from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
+
+    evidence: list[_LinkedPLSSEvidence] = []
+    own_texts = (
+        (location.name, "Location name"),
+        (getattr(location, "location_detail", None), "Location location_detail"),
+    )
+    for text, source in own_texts:
+        if text:
+            evidence.extend(
+                _LinkedPLSSEvidence(
+                    extracted.description,
+                    f"{source} {text!r}",
+                    extracted.has_alternative_section,
+                )
+                for extracted in plss.extract_plss(text)
+            )
+    for name in location.type_localities:
+        for tag in _get_applicable_location_detail_tags(name):
+            evidence.extend(
+                _LinkedPLSSEvidence(
+                    extracted.description,
+                    f"Name {name.id} LocationDetail {tag.text!r}",
+                    extracted.has_alternative_section,
+                )
+                for extracted in plss.extract_plss(tag.text)
+            )
+    occurrence_text_tags = (
+        OccurrenceRecordTag.LocationHint,
+        OccurrenceRecordTag.SpecimenDetail,
+        OccurrenceRecordTag.CommentFromSource,
+    )
+    for record in location.occurrence_records:
+        for tag_type in occurrence_text_tags:
+            for tag in record.get_tags(record.tags, tag_type):
+                text = getattr(tag, "text", None) or getattr(tag, "name", None)
+                if text:
+                    evidence.extend(
+                        _LinkedPLSSEvidence(
+                            extracted.description,
+                            f"OccurrenceRecord {record.id} {type(tag).__name__} {text!r}",
+                            extracted.has_alternative_section,
+                        )
+                        for extracted in plss.extract_plss(text)
+                    )
+    return evidence
+
+
+def _get_location_extent(location: Location) -> coordinate_lint.CoordinateExtent | None:
+    if location.latitude is None or location.longitude is None:
+        return None
+    return coordinate_lint.make_extent(location.latitude, location.longitude)
+
+
+def _replace_plss_tag(
+    location: Location, old_tag: LocationTag.PLSS, new_tag: LocationTag.PLSS  # type: ignore[name-defined]
+) -> None:
+    """Replace a PLSS tag and keep PLSS coordinate provenance attached to it."""
+    new_tags = []
+    for tag in location.tags or ():
+        if tag == old_tag:
+            tag = new_tag
+        elif (
+            isinstance(tag, LocationTag.CoordinatesFromPLSS)
+            and tag.plss_id == old_tag.plss_id
+            and old_tag.plss_id != new_tag.plss_id
+        ):
+            tag = LocationTag.CoordinatesFromPLSS(new_tag.plss_id)
+        if tag not in new_tags:
+            new_tags.append(tag)
+    location.tags = tuple(new_tags)  # type: ignore[assignment]
+
+
+@LINT.add("plss_tag")
+def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[str]:
+    tags = list(location.get_tags(location.tags, LocationTag.PLSS))
+    if len(tags) > 1:
+        yield f"has multiple PLSS tags: {tags}"
+    for tag in tags:
+        if not plss.is_valid_plss_id(tag.plss_id):
+            yield f"PLSS identifier {tag.plss_id!r} is not a valid CadNSDI PLSSID"
+        extracted = plss.extract_plss(tag.text)
+        description = plss.parse_canonical(tag.text)
+        if description is None:
+            if len(extracted) == 1:
+                description = extracted[0].description
+                canonical_text = description.canonical_text
+                message = (
+                    f"PLSS text {tag.text!r} is not canonical; use "
+                    f"{canonical_text!r}"
+                )
+                if cfg.autofix and not LINT.is_ignoring_lint(location, "plss_tag"):
+                    print(f"{location}: {message}")
+                    new_tag = adt.replace(tag, text=canonical_text)
+                    _replace_plss_tag(location, tag, new_tag)
+                    tag = new_tag
+                else:
+                    yield message
+            else:
+                yield f"PLSS text {tag.text!r} does not contain one complete description"
+                continue
+        if description.meridian is None:
+            yield f"PLSS text {tag.text!r} must include the resolved principal meridian"
+    if tags and _get_us_plss_context(location) is None:
+        yield "has a PLSS tag but is not assigned within a recognized U.S. state"
+
+
+@LINT.add("general_plss")
+def check_general_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
+    if location.is_general() and location.has_tag(LocationTag.PLSS):
+        yield (
+            "general location should not have a precise PLSS tag; move the tag to "
+            "an exact Location or remove the General status"
+        )
+
+
+def _format_plss_bounds(geometries: Iterable[dict[str, Any]]) -> str | None:
+    bounds = plss.geometry_bounds(geometries)
+    if bounds is None:
+        return None
+    south, north, west, east = bounds
+    south_text, _ = coordinate_lint.standardize_coordinate(
+        f"{south:.6f}", is_latitude=True
+    )
+    north_text, _ = coordinate_lint.standardize_coordinate(
+        f"{north:.6f}", is_latitude=True
+    )
+    west_text, _ = coordinate_lint.standardize_coordinate(
+        f"{west:.6f}", is_latitude=False
+    )
+    east_text, _ = coordinate_lint.standardize_coordinate(
+        f"{east:.6f}", is_latitude=False
+    )
+    latitude = south_text if south_text == north_text else f"{south_text}-{north_text}"
+    longitude = west_text if west_text == east_text else f"{west_text}-{east_text}"
+    return f"{latitude}, {longitude}"
+
+
+def _resolve_plss_evidence(
+    description: plss.PLSSDescription,
+    *,
+    state_code: str,
+    state_fips: str,
+    county_name: str | None,
+    extent: coordinate_lint.CoordinateExtent | None,
+) -> plss.TownshipResolution:
+    return plss.resolve_township(
+        description,
+        state_code=state_code,
+        state_fips=state_fips,
+        county_name=county_name,
+        point=extent.point if extent is not None else None,
+        extent=extent,
+    )
+
+
+@LINT.add("plss", requires_network=True)
+def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
+    tags = list(location.get_tags(location.tags, LocationTag.PLSS))
+    evidence = [] if tags else _get_linked_plss_evidence(location)
+    if not tags and not evidence:
+        return
+    context = _get_us_plss_context(location)
+    if context is None:
+        return
+    if tags and location.is_general():
+        # The local general_plss lint reports the modeling problem. Avoid deriving
+        # further exact metadata for a Location that is intentionally broad.
+        return
+    state_code, state_fips, county_name = context
+    extent = _get_location_extent(location)
+
+    if len(tags) == 1:
+        tag = tags[0]
+        parsed_tag = plss.parse_canonical(tag.text)
+        if parsed_tag is not None:
+            try:
+                resolution = _resolve_plss_evidence(
+                    parsed_tag,
+                    state_code=state_code,
+                    state_fips=state_fips,
+                    county_name=county_name,
+                    extent=extent,
+                )
+            except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
+                yield f"could not check PLSS tag against external data: {exc}"
+                return
+            if not resolution.is_resolved:
+                yield f"PLSS tag {tag.text!r} could not be resolved: {resolution.problem}"
+            else:
+                assert resolution.township is not None
+                tag_township = resolution.township
+                resolved_text = parsed_tag.with_meridian(
+                    tag_township.meridian
+                ).canonical_text
+                replacement = adt.replace(
+                    tag, text=resolved_text, plss_id=tag_township.plss_id
+                )
+                if tag.text != resolved_text:
+                    message = (
+                        f"PLSS tag uses meridian text {parsed_tag.meridian!r}; use the "
+                        f"BLM name in {resolved_text!r}"
+                    )
+                    if not cfg.autofix or LINT.is_ignoring_lint(location, "plss"):
+                        yield message
+                    else:
+                        print(f"{location}: {message}")
+                if tag.plss_id != tag_township.plss_id:
+                    message = (
+                        f"PLSS tag identifier is {tag.plss_id!r}, but {tag.text!r} "
+                        f"resolves to {tag_township.plss_id!r}"
+                    )
+                    if not cfg.autofix or LINT.is_ignoring_lint(location, "plss"):
+                        yield message
+                    else:
+                        print(f"{location}: {message}")
+                if (
+                    replacement != tag
+                    and cfg.autofix
+                    and not LINT.is_ignoring_lint(location, "plss")
+                ):
+                    _replace_plss_tag(location, tag, replacement)
+                    tag = replacement
+                try:
+                    resolved_geometry = plss.get_description_geometry(
+                        tag_township, parsed_tag
+                    )
+                except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
+                    yield f"could not retrieve PLSS polygon: {exc}"
+                else:
+                    if not resolved_geometry.geometries:
+                        if cfg.verbose:
+                            yield (
+                                f"BLM has no {resolved_geometry.level} polygon for "
+                                f"{tag.text!r}"
+                            )
+                    elif extent is not None:
+                        distance = plss.geometry_extent_distance_km(
+                            extent, resolved_geometry.geometries
+                        )
+                        if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
+                            yield (
+                                f"coordinates are {distance:.1f} km from the "
+                                f"{resolved_geometry.level} polygon for {tag.text!r}"
+                            )
+                    elif (
+                        bounds_text := _format_plss_bounds(resolved_geometry.geometries)
+                    ) is not None:
+                        message = (
+                            f"coordinate bounds could be {bounds_text}, inferred from "
+                            f"the {resolved_geometry.level} polygon for {tag.text!r}"
+                        )
+                        if (
+                            cfg.autofix
+                            and location.latitude is None
+                            and location.longitude is None
+                            and not LINT.is_ignoring_lint(location, "plss")
+                        ):
+                            print(f"{location}: {message}")
+                            latitude, longitude = bounds_text.split(", ", maxsplit=1)
+                            location.latitude = latitude
+                            location.longitude = longitude
+                            _add_coordinate_provenance(
+                                location,
+                                [LocationTag.CoordinatesFromPLSS(tag_township.plss_id)],
+                            )
+                        else:
+                            yield message
+
+    if tags:
+        # A stored PLSS tag is the reviewed Location-level interpretation. Validate
+        # that tag and its coordinates above, but leave conflicts in linked Name
+        # evidence to the Name lint so a source error does not make the Location itself
+        # perpetually unclean.
+        return
+
+    resolved_evidence: list[
+        tuple[_LinkedPLSSEvidence, plss.Township, plss.PLSSDescription]
+    ] = []
+    for item in evidence:
+        if item.has_alternative_section:
+            yield (
+                f"PLSS data from {item.source} gives alternative sections and cannot "
+                "be inferred as a single PLSS description"
+            )
+            continue
+        try:
+            resolution = _resolve_plss_evidence(
+                item.description,
+                state_code=state_code,
+                state_fips=state_fips,
+                county_name=county_name,
+                extent=extent,
+            )
+        except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
+            yield f"could not resolve PLSS data from {item.source}: {exc}"
+            continue
+        if not resolution.is_resolved:
+            yield f"PLSS data from {item.source} could not be resolved: {resolution.problem}"
+            continue
+        assert resolution.township is not None
+        description = item.description.with_meridian(resolution.township.meridian)
+        if extent is not None:
+            try:
+                resolved_geometry = plss.get_description_geometry(
+                    resolution.township, description
+                )
+            except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
+                yield f"could not retrieve PLSS polygon for {item.source}: {exc}"
+                continue
+            if not resolved_geometry.geometries:
+                if cfg.verbose:
+                    yield (
+                        f"BLM has no {resolved_geometry.level} polygon for PLSS data "
+                        f"from {item.source}"
+                    )
+                continue
+            distance = plss.geometry_extent_distance_km(
+                extent, resolved_geometry.geometries
+            )
+            if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
+                yield (
+                    f"coordinates are {distance:.1f} km from the "
+                    f"{resolved_geometry.level} polygon for PLSS data from {item.source}"
+                )
+                continue
+        resolved_evidence.append((item, resolution.township, description))
+
+    if not resolved_evidence:
+        return
+
+    first_item, first_township, first_description = resolved_evidence[0]
+    conflict = next(
+        (
+            (item, township, description)
+            for item, township, description in resolved_evidence[1:]
+            if township.plss_id != first_township.plss_id
+            or not description.is_compatible_with(first_description)
+        ),
+        None,
+    )
+    if conflict is not None:
+        item, township, description = conflict
+        yield (
+            "Location evidence resolves to incompatible PLSS descriptions: "
+            f"{first_description.canonical_text!r} ({first_township.plss_id}, from "
+            f"{first_item.source}) and {description.canonical_text!r} "
+            f"({township.plss_id}, from {item.source})"
+        )
+        return
+
+    _, most_specific_township, most_specific = max(
+        resolved_evidence, key=lambda resolved: resolved[2].specificity
+    )
+    expected = LocationTag.PLSS(
+        most_specific.canonical_text, most_specific_township.plss_id
+    )
+    if location.is_general():
+        yield (
+            f"general location has precise PLSS evidence {expected!r}, inferred "
+            f"from {first_item.source}; make a separate exact Location if the "
+            "evidence is accepted"
+        )
+        return
+    message = f"add {expected!r}, inferred from {first_item.source}"
+    if cfg.autofix and not LINT.is_ignoring_lint(location, "plss"):
+        print(f"{location}: {message}")
+        location.add_tag(expected)
+        if location.latitude is None and location.longitude is None:
+            try:
+                resolved_geometry = plss.get_description_geometry(
+                    most_specific_township, most_specific
+                )
+            except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
+                yield f"could not retrieve PLSS polygon: {exc}"
+            else:
+                bounds_text = _format_plss_bounds(resolved_geometry.geometries)
+                if bounds_text is not None:
+                    coordinate_message = (
+                        f"coordinate bounds could be {bounds_text}, inferred from "
+                        f"the {resolved_geometry.level} polygon for {expected.text!r}"
+                    )
+                    print(f"{location}: {coordinate_message}")
+                    latitude, longitude = bounds_text.split(", ", maxsplit=1)
+                    location.latitude = latitude
+                    location.longitude = longitude
+                    _add_coordinate_provenance(
+                        location,
+                        [
+                            LocationTag.CoordinatesFromPLSS(
+                                most_specific_township.plss_id
+                            )
+                        ],
+                    )
+                elif cfg.verbose:
+                    yield (
+                        f"BLM has no {resolved_geometry.level} polygon for "
+                        f"{expected.text!r}"
+                    )
+    else:
+        yield message
+
+
 @LINT.add("fully_divided_region")
 def check_fully_divided_region(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.is_general() or location.has_tag(LocationTag.Unplaced):
@@ -942,6 +1398,25 @@ def _get_coordinate_collision_map() -> dict[int, tuple[Location, ...]]:
     return _build_coordinate_collision_map(Location.select_valid())
 
 
+def _coordinate_collision_plss_key(location: Location) -> plss.PLSSDescription | None:
+    """Return the one PLSS description that deliberately supplied the extent."""
+    tags = tuple(getattr(location, "tags", ()) or ())
+    provenance = tuple(
+        tag for tag in tags if isinstance(tag, LocationTag.CoordinatesFromPLSS)
+    )
+    if len(provenance) != 1:
+        return None
+    matching = tuple(
+        tag
+        for tag in tags
+        if isinstance(tag, LocationTag.PLSS)
+        if tag.plss_id == provenance[0].plss_id
+    )
+    if len(matching) != 1:
+        return None
+    return plss.parse_canonical(matching[0].text)
+
+
 @LINT.add(
     "coordinate_collision", clear_caches=_get_coordinate_collision_map.cache_clear
 )
@@ -958,12 +1433,17 @@ def check_coordinate_collision(location: Location, cfg: LintConfig) -> Iterable[
     coordinate_key = _coordinate_collision_key(location)
     if coordinate_key is None:
         return
+    plss_key = _coordinate_collision_plss_key(location)
     others = [
         refreshed
         for item in group
         if item.id != location.id
         if not (refreshed := item.reload()).is_invalid()
         if _coordinate_collision_key(refreshed) == coordinate_key
+        # Multiple source localities in the same PLSS section or aliquot are
+        # expected to share the polygon used as their coordinate extent.  That is
+        # not an independently coincident point and therefore is not a collision.
+        if plss_key is None or _coordinate_collision_plss_key(refreshed) != plss_key
     ]
     if not others:
         return
@@ -1363,13 +1843,22 @@ def _should_infer_coordinates(location: Location) -> bool:
     )
 
 
-def _get_linked_coordinate_candidates(
+@dataclass(frozen=True, slots=True)
+class _LinkedCoordinateEvidence:
+    latitude: str
+    longitude: str
+    extent: coordinate_lint.CoordinateExtent
+    source: str
+    provenance: Any
+
+
+def _get_linked_coordinate_evidence(
     location: Location,
-) -> list[tuple[str, str, Any, str]]:
+) -> list[_LinkedCoordinateEvidence]:
     from taxonomy.db.models.name import TypeTag
     from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 
-    candidates: list[tuple[str, str, Any, str]] = []
+    evidence: list[_LinkedCoordinateEvidence] = []
     for name in location.type_localities:
         for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
             parsed = coordinate_lint.standardize_coordinate_pair(
@@ -1377,7 +1866,15 @@ def _get_linked_coordinate_candidates(
             )
             if parsed is not None:
                 latitude, longitude, extent = parsed
-                candidates.append((latitude, longitude, extent, f"Name {name}"))
+                evidence.append(
+                    _LinkedCoordinateEvidence(
+                        latitude,
+                        longitude,
+                        extent,
+                        f"Name {name}",
+                        LocationTag.CoordinatesFromName(name),
+                    )
+                )
     for record in location.occurrence_records:
         for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
             parsed = coordinate_lint.standardize_coordinate_pair(
@@ -1385,10 +1882,43 @@ def _get_linked_coordinate_candidates(
             )
             if parsed is not None:
                 latitude, longitude, extent = parsed
-                candidates.append(
-                    (latitude, longitude, extent, f"OccurrenceRecord {record}")
+                evidence.append(
+                    _LinkedCoordinateEvidence(
+                        latitude,
+                        longitude,
+                        extent,
+                        f"OccurrenceRecord {record}",
+                        LocationTag.CoordinatesFromOccurrenceRecord(record.id),
+                    )
                 )
-    return candidates
+    return evidence
+
+
+def _get_linked_coordinate_candidates(
+    location: Location,
+) -> list[tuple[str, str, Any, str]]:
+    return [
+        (item.latitude, item.longitude, item.extent, item.source)
+        for item in _get_linked_coordinate_evidence(location)
+    ]
+
+
+def _add_coordinate_provenance(location: Location, tags: Iterable[Any]) -> None:
+    existing = tuple(location.tags or ())
+    for tag in dict.fromkeys(tags):
+        if tag not in existing:
+            location.add_tag(tag)
+            existing = (*existing, tag)
+
+
+def _nominatim_provenance_tag(
+    result: nominatim.SearchResult, *, use_bounding_box: bool
+) -> Any | None:
+    if result.osm_type is None or result.osm_id is None:
+        return None
+    return LocationTag.CoordinatesFromNominatim(
+        result.osm_type, result.osm_id, result.category, use_bounding_box
+    )
 
 
 @LINT.add("linked_coordinates")
@@ -1397,13 +1927,20 @@ def check_linked_coordinates(location: Location, cfg: LintConfig) -> Iterable[st
         return
     if not _should_infer_coordinates(location):
         return
-    candidates = _get_linked_coordinate_candidates(location)
-    if not candidates:
+    evidence = _get_linked_coordinate_evidence(location)
+    if not evidence:
         return
 
-    latitude, longitude, extent, source = candidates[0]
+    first = evidence[0]
+    latitude, longitude, extent, source = (
+        first.latitude,
+        first.longitude,
+        first.extent,
+        first.source,
+    )
     combined_extent = extent
-    for _, _, other_extent, other_source in candidates[1:]:
+    for item in evidence[1:]:
+        other_extent, other_source = item.extent, item.source
         distance = coordinate_lint.extent_distance_km(extent, other_extent)
         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
             yield (
@@ -1421,6 +1958,7 @@ def check_linked_coordinates(location: Location, cfg: LintConfig) -> Iterable[st
         print(f"{location}: {message}")
         location.latitude = latitude
         location.longitude = longitude
+        _add_coordinate_provenance(location, (item.provenance for item in evidence))
     else:
         yield message
 
@@ -1698,9 +2236,11 @@ def _describe_geonames_match(match: geonames.GeoNamesMatch) -> str:
 def check_geonames_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.latitude is not None or location.longitude is not None:
         return
-    if not _should_infer_coordinates(location):
+    if location.has_tag(LocationTag.PLSS):
+        # PLSS describes the collecting site; wait for its polygon instead of
+        # falling back to the centroid of a similarly named gazetteer feature.
         return
-    if is_non_recent_location(location):
+    if not _should_infer_coordinates(location):
         return
     if _get_linked_coordinate_candidates(location):
         return
@@ -1775,6 +2315,16 @@ def check_geonames_coordinates(location: Location, cfg: LintConfig) -> Iterable[
             f"{len(geonames_candidates)} compatible GeoNames exact "
             f"match{'es' if len(geonames_candidates) != 1 else ''}"
         )
+        nominatim_tag = _nominatim_provenance_tag(result, use_bounding_box=False)
+        provenance_tags = (
+            [nominatim_tag]
+            if nominatim_tag is not None
+            else [
+                LocationTag.CoordinatesFromGeoNames(
+                    geonames_candidates[0].match.record.geoname_id
+                )
+            ]
+        )
     else:
         reference = geonames_candidates[0]
         latitude = reference.latitude
@@ -1784,10 +2334,14 @@ def check_geonames_coordinates(location: Location, cfg: LintConfig) -> Iterable[
             f"{_describe_geonames_match(reference.match)}; Nominatim returned "
             "no usable exact match"
         )
+        provenance_tags = [
+            LocationTag.CoordinatesFromGeoNames(reference.match.record.geoname_id)
+        ]
     if cfg.autofix and not LINT.is_ignoring_lint(location, "geonames_coordinates"):
         print(f"{location}: {message}")
         location.latitude = latitude
         location.longitude = longitude
+        _add_coordinate_provenance(location, provenance_tags)
     else:
         yield message
 
@@ -1799,8 +2353,6 @@ def check_geonames_coordinate_consistency(
     if location.latitude is None or location.longitude is None:
         return
     if not _should_infer_coordinates(location):
-        return
-    if is_non_recent_location(location):
         return
     parsed = coordinate_lint.standardize_coordinate_pair(
         location.latitude, location.longitude
@@ -1861,6 +2413,8 @@ def check_geonames_coordinate_consistency(
 def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.latitude is not None or location.longitude is not None:
         return
+    if location.has_tag(LocationTag.PLSS):
+        return
     if not _should_infer_coordinates(location):
         return
     if _get_linked_coordinate_candidates(location):
@@ -1914,10 +2468,18 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
             f"{search_plan.offset_description} to OpenStreetMap Nominatim "
             f"{result.category}/{result.feature_type} result {result.display_name!r}"
         )
+    provenance = _nominatim_provenance_tag(result, use_bounding_box=False)
+    if provenance is None:
+        yield (
+            f"{message}; cannot infer automatically because the Nominatim result "
+            "has no stable OpenStreetMap identifier"
+        )
+        return
     if cfg.autofix and not LINT.is_ignoring_lint(location, "nominatim_coordinates"):
         print(f"{location}: {message}")
         location.latitude = latitude
         location.longitude = longitude
+        _add_coordinate_provenance(location, [provenance])
     else:
         yield message
 
@@ -2020,6 +2582,13 @@ def check_nominatim_general_coordinates(
         message += " (preferred over boundary/administrative matches)"
     elif preferred_over_contained_matches:
         message += " (preferred because it contains all other exact-match bounds)"
+    provenance = _nominatim_provenance_tag(result, use_bounding_box=True)
+    if provenance is None:
+        yield (
+            f"{message}; cannot infer automatically because the Nominatim result "
+            "has no stable OpenStreetMap identifier"
+        )
+        return
     if has_existing_point:
         yield (
             f"{message}; replace point coordinates {location.latitude}, "
@@ -2032,6 +2601,7 @@ def check_nominatim_general_coordinates(
         print(f"{location}: {message}")
         location.latitude = latitude
         location.longitude = longitude
+        _add_coordinate_provenance(location, [provenance])
     else:
         yield message
 
@@ -2862,6 +3432,382 @@ def _get_region_name_aliases(region: Region) -> set[str]:
     if region.kind is RegionKind.country:
         names.add(nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(region.name, region.name))
     return names
+
+
+def _get_plss_provenance_extent(
+    location: Location, provenance: Any
+) -> tuple[coordinate_lint.CoordinateExtent | None, str | None]:
+    tags = [
+        tag
+        for tag in location.get_tags(location.tags, LocationTag.PLSS)
+        if tag.plss_id == provenance.plss_id
+    ]
+    if not tags:
+        return None, f"no PLSS tag has identifier {provenance.plss_id!r}"
+    if len(tags) > 1:
+        return None, f"multiple PLSS tags have identifier {provenance.plss_id!r}"
+    description = plss.parse_canonical(tags[0].text)
+    context = _get_us_plss_context(location)
+    if description is None or context is None:
+        return None, f"PLSS tag {tags[0]!r} cannot be resolved"
+    state_code, state_fips, county_name = context
+    try:
+        resolution = _resolve_plss_evidence(
+            description,
+            state_code=state_code,
+            state_fips=state_fips,
+            county_name=county_name,
+            extent=None,
+        )
+        if not resolution.is_resolved:
+            return (
+                None,
+                f"PLSS tag {tags[0]!r} cannot be resolved: {resolution.problem}",
+            )
+        assert resolution.township is not None
+        geometry = plss.get_description_geometry(resolution.township, description)
+    except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
+        return None, f"could not retrieve PLSS provenance: {exc}"
+    bounds = _format_plss_bounds(geometry.geometries)
+    if bounds is None:
+        return None, f"BLM has no {geometry.level} polygon for {tags[0].text!r}"
+    latitude, longitude = bounds.split(", ", maxsplit=1)
+    return coordinate_lint.make_extent(latitude, longitude), None
+
+
+def _get_coordinate_provenance_extents(
+    location: Location, provenance: Any
+) -> tuple[list[coordinate_lint.CoordinateExtent], str | None]:
+    from taxonomy.db.models.name import TypeTag
+    from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
+    from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
+
+    if isinstance(provenance, LocationTag.CoordinatesManual):
+        return [], None
+    if provenance is LocationTag.CoordinatesFromLocationName:
+        plan = _get_coordinate_modifier_plan(location.name)
+        if plan is None or plan.parsed_coordinates is None:
+            return [], "Location name no longer contains valid coordinates"
+        return [plan.parsed_coordinates[2]], None
+    if isinstance(provenance, LocationTag.CoordinatesFromName):
+        name = next(
+            (
+                name
+                for name in location.type_localities
+                if name.id == provenance.name.id
+            ),
+            None,
+        )
+        if name is None:
+            return (
+                [],
+                f"Name {provenance.name.id} is no longer linked to the Location",
+            )
+        extents = []
+        for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
+            parsed = coordinate_lint.standardize_coordinate_pair(
+                tag.latitude, tag.longitude
+            )
+            if parsed is not None:
+                extents.append(parsed[2])
+        if extents:
+            return extents, None
+        for tag in _get_applicable_location_detail_tags(name):
+            for extracted in helpers.extract_coordinate_pairs(tag.text):
+                parsed = coordinate_lint.standardize_coordinate_pair(*extracted)
+                if parsed is not None:
+                    extents.append(parsed[2])
+        if not extents:
+            return ([], f"Name {provenance.name.id} has no valid coordinate evidence")
+        return extents, None
+    if isinstance(provenance, LocationTag.CoordinatesFromOccurrenceRecord):
+        record = next(
+            (
+                record
+                for record in location.occurrence_records
+                if record.id == provenance.occurrence_record_id
+            ),
+            None,
+        )
+        if record is None:
+            return (
+                [],
+                f"OccurrenceRecord {provenance.occurrence_record_id} is no longer "
+                "linked to the Location",
+            )
+        extents = []
+        for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
+            parsed = coordinate_lint.standardize_coordinate_pair(
+                tag.latitude, tag.longitude
+            )
+            if parsed is not None:
+                extents.append(parsed[2])
+        if extents:
+            return extents, None
+        for tag in record.get_tags(
+            record.tags, OccurrenceRecordTag.VerbatimCoordinates
+        ):
+            verbatim = parse_verbatim_coordinates(tag.text)
+            if verbatim is not None:
+                standardized = coordinate_lint.standardize_coordinate_pair(*verbatim)
+                if standardized is not None:
+                    extents.append(standardized[2])
+        if not extents:
+            return (
+                [],
+                f"OccurrenceRecord {provenance.occurrence_record_id} has no valid "
+                "coordinate evidence",
+            )
+        return extents, None
+    if isinstance(provenance, LocationTag.CoordinatesFromGeoNames):
+        try:
+            record = geonames.get_by_id(provenance.geoname_id)
+        except RuntimeError as exc:
+            return [], f"could not read GeoNames provenance: {exc}"
+        if record is None:
+            return [], f"GeoNames has no record {provenance.geoname_id}"
+        search_plan = get_nominatim_search_plan(location)
+        parsed = _get_coordinates_with_offsets(
+            str(record.latitude), str(record.longitude), offsets=search_plan.offsets
+        )
+        if parsed is None:
+            return (
+                [],
+                f"GeoNames record {provenance.geoname_id} has invalid coordinates",
+            )
+        return [parsed[2]], None
+    if isinstance(provenance, LocationTag.CoordinatesFromNominatim):
+        try:
+            result = nominatim.lookup(provenance.osm_type, provenance.osm_id)
+        except (httpx.HTTPError, ValueError, TypeError) as exc:
+            return [], f"could not retrieve Nominatim provenance: {exc}"
+        if result is None:
+            return (
+                [],
+                f"Nominatim cannot find {provenance.osm_type} {provenance.osm_id}",
+            )
+        if result.category != provenance.category:
+            return (
+                [],
+                f"Nominatim object category changed from {provenance.category!r} "
+                f"to {result.category!r}",
+            )
+        if provenance.use_bounding_box:
+            parsed = get_nominatim_result_bounding_box(result)
+        else:
+            parsed = get_nominatim_result_coordinates(
+                result, offsets=get_nominatim_search_plan(location).offsets
+            )
+        if parsed is None:
+            kind = "bounding box" if provenance.use_bounding_box else "coordinates"
+            return [], f"Nominatim object has no usable {kind}"
+        return [parsed[2]], None
+    if isinstance(provenance, LocationTag.CoordinatesFromPLSS):
+        extent, issue = _get_plss_provenance_extent(location, provenance)
+        return ([] if extent is None else [extent]), issue
+    return [], f"unrecognized coordinate provenance tag {provenance!r}"
+
+
+def _extent_exactly_matches_location(
+    location_extent: coordinate_lint.CoordinateExtent,
+    evidence_extent: coordinate_lint.CoordinateExtent,
+) -> bool:
+    return _coordinate_extents_are_equal(location_extent, evidence_extent)
+
+
+def _union_coordinate_extents(
+    extents: Iterable[coordinate_lint.CoordinateExtent],
+) -> coordinate_lint.CoordinateExtent | None:
+    iterator = iter(extents)
+    try:
+        combined = next(iterator)
+    except StopIteration:
+        return None
+    for extent in iterator:
+        combined = combined.union(extent)
+    return combined
+
+
+def _provenance_extents_match(
+    location_extent: coordinate_lint.CoordinateExtent,
+    evidence_extent_groups: Iterable[list[coordinate_lint.CoordinateExtent]],
+) -> bool:
+    """Whether provenance supports the stored extent exactly.
+
+    Multiple extents exposed by one provenance tag may be alternative statements in
+    the same Name or occurrence record.  An exact match to any one of those
+    alternatives is sufficient.  The union remains accepted because several cited
+    provenance tags may jointly define a stored range.
+    """
+    groups = [group for group in evidence_extent_groups if group]
+    if not groups:
+        return True
+    if len(groups) == 1 and any(
+        _extent_exactly_matches_location(location_extent, extent)
+        for extent in groups[0]
+    ):
+        return True
+    combined_extent = _union_coordinate_extents(
+        extent for group in groups for extent in group
+    )
+    return combined_extent is not None and _extent_exactly_matches_location(
+        location_extent, combined_extent
+    )
+
+
+def _get_backfill_coordinate_provenance(
+    location: Location, location_extent: coordinate_lint.CoordinateExtent
+) -> list[Any]:
+    coordinate_plan = _get_coordinate_modifier_plan(location.name)
+    if (
+        coordinate_plan is not None
+        and coordinate_plan.parsed_coordinates is not None
+        and _coordinate_extents_are_equal(
+            location_extent, coordinate_plan.parsed_coordinates[2]
+        )
+    ):
+        return [LocationTag.CoordinatesFromLocationName]
+
+    linked_evidence = _get_linked_coordinate_evidence(location)
+    matching_linked_provenance = list(
+        dict.fromkeys(
+            evidence.provenance
+            for evidence in linked_evidence
+            if _extent_exactly_matches_location(location_extent, evidence.extent)
+        )
+    )
+    if matching_linked_provenance:
+        return matching_linked_provenance
+    linked_extent = _union_coordinate_extents(
+        evidence.extent for evidence in linked_evidence
+    )
+    linked_is_compatible = not linked_evidence or all(
+        coordinate_lint.extent_distance_km(linked_evidence[0].extent, evidence.extent)
+        <= coordinate_lint.COORDINATE_TOLERANCE_KM
+        for evidence in linked_evidence[1:]
+    )
+    if (
+        linked_is_compatible
+        and linked_extent is not None
+        and _extent_exactly_matches_location(location_extent, linked_extent)
+    ):
+        return list(dict.fromkeys(evidence.provenance for evidence in linked_evidence))
+
+    for tag in location.get_tags(location.tags, LocationTag.PLSS):
+        provenance = LocationTag.CoordinatesFromPLSS(tag.plss_id)
+        plss_extent, _ = _get_plss_provenance_extent(location, provenance)
+        if plss_extent is not None and _coordinate_extents_are_equal(
+            location_extent, plss_extent
+        ):
+            return [provenance]
+
+    if location.is_general():
+        matching_bounds = [
+            result
+            for result, (_, _, extent) in _get_nominatim_bounding_box_candidates(
+                location
+            )
+            if _coordinate_extents_are_equal(location_extent, extent)
+            and _nominatim_provenance_tag(result, use_bounding_box=True) is not None
+        ]
+        if matching_bounds:
+            provenance = _nominatim_provenance_tag(
+                matching_bounds[0], use_bounding_box=True
+            )
+            assert provenance is not None
+            return [provenance]
+        return []
+
+    if not _should_infer_coordinates(location):
+        return []
+    geonames_candidates = _get_usable_geonames_coordinate_candidates(location)
+    nominatim_candidates = _get_nominatim_coordinate_candidates(location)
+    matching_nominatim = [
+        result
+        for result, (_, _, extent) in nominatim_candidates
+        if _extent_exactly_matches_location(location_extent, extent)
+        and _nominatim_provenance_tag(result, use_bounding_box=False) is not None
+    ]
+    if geonames_candidates and matching_nominatim:
+        provenance = _nominatim_provenance_tag(
+            matching_nominatim[0], use_bounding_box=False
+        )
+        assert provenance is not None
+        return [provenance]
+    matching_geonames = [
+        candidate
+        for candidate in geonames_candidates
+        if _extent_exactly_matches_location(location_extent, candidate.extent)
+    ]
+    if matching_geonames:
+        return [
+            LocationTag.CoordinatesFromGeoNames(
+                matching_geonames[0].match.record.geoname_id
+            )
+        ]
+    if matching_nominatim:
+        provenance = _nominatim_provenance_tag(
+            matching_nominatim[0], use_bounding_box=False
+        )
+        assert provenance is not None
+        return [provenance]
+
+    return []
+
+
+@LINT.add("coordinate_provenance", requires_network=True)
+def check_coordinate_provenance(location: Location, cfg: LintConfig) -> Iterable[str]:
+    provenance_tags = [
+        tag for tag in location.tags or () if is_coordinate_provenance_tag(tag)
+    ]
+    if location.latitude is None or location.longitude is None:
+        if provenance_tags:
+            yield f"has coordinate provenance tags but incomplete coordinates: {provenance_tags}"
+        return
+    location_extent = coordinate_lint.make_extent(location.latitude, location.longitude)
+    if location_extent is None:
+        return
+
+    if not provenance_tags:
+        inferred = _get_backfill_coordinate_provenance(location, location_extent)
+        if inferred:
+            message = f"add coordinate provenance tags {inferred!r}"
+            if cfg.autofix and not LINT.is_ignoring_lint(
+                location, "coordinate_provenance"
+            ):
+                print(f"{location}: {message}")
+                _add_coordinate_provenance(location, inferred)
+            else:
+                yield message
+        else:
+            yield (
+                "coordinates are not supported by a coordinate provenance tag; "
+                "add reviewed CoordinatesManual provenance or correct the coordinates"
+            )
+        return
+
+    evidence_extent_groups: list[list[coordinate_lint.CoordinateExtent]] = []
+    for provenance in provenance_tags:
+        extents, issue = _get_coordinate_provenance_extents(location, provenance)
+        if issue is not None:
+            yield f"{provenance!r}: {issue}"
+            continue
+        if isinstance(provenance, LocationTag.CoordinatesManual):
+            continue
+        if extents:
+            evidence_extent_groups.append(extents)
+
+    if not _provenance_extents_match(location_extent, evidence_extent_groups):
+        combined_extent = _union_coordinate_extents(
+            extent for group in evidence_extent_groups for extent in group
+        )
+        assert combined_extent is not None
+        yield (
+            f"coordinates {location.latitude}, {location.longitude} do not exactly "
+            "match the numeric extent derived from coordinate provenance tags "
+            f"(expected {combined_extent.latitude.standardized_text}, "
+            f"{combined_extent.longitude.standardized_text})"
+        )
 
 
 @cache

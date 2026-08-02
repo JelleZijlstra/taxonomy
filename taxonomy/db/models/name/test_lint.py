@@ -20,6 +20,7 @@ from .lint import (
     check_collector_lifespan,
     check_coordinates,
     check_location_detail_coordinates,
+    check_location_detail_plss,
     check_type_locality_age,
     check_type_locality_distribution_rules,
     check_type_locality_validity,
@@ -200,6 +201,7 @@ def _name_with_location_details(
     texts: tuple[str, ...],
     *,
     location_coordinates: tuple[str | None, str | None] | None,
+    location_tags: tuple[object, ...] = (),
 ) -> Name:
     source = cast(models.Article, object())
     tags = tuple(TypeTag.LocationDetail(text, source) for text in texts)
@@ -207,7 +209,13 @@ def _name_with_location_details(
         location = None
     else:
         location = SimpleNamespace(
-            latitude=location_coordinates[0], longitude=location_coordinates[1]
+            name="Example locality",
+            latitude=location_coordinates[0],
+            longitude=location_coordinates[1],
+            tags=location_tags,
+            get_tags=lambda values, tag_type: (
+                tag for tag in values if isinstance(tag, tag_type)
+            ),
         )
     return cast(
         Name,
@@ -274,6 +282,57 @@ def test_distinct_nearby_location_detail_coordinates_are_not_combined() -> None:
     assert len(messages) == 1
     assert "multiple coordinate pairs within 5 km" in messages[0]
     assert not any(isinstance(tag, TypeTag.Coordinates) for tag in name.type_tags)
+
+
+def test_location_detail_plss_reports_name_local_conflict() -> None:
+    name = _name_with_location_details(
+        ("T27S R31E Sec. 3", "T27S R31W Sec. 3"), location_coordinates=(None, None)
+    )
+
+    messages = list(check_location_detail_plss(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "incompatible PLSS descriptions" in messages[0]
+
+
+def test_location_detail_plss_allows_compatible_precision() -> None:
+    name = _name_with_location_details(
+        ("T27S R31E", "T27S R31E Sec. 3"), location_coordinates=(None, None)
+    )
+
+    assert list(check_location_detail_plss(name, LintConfig())) == []
+
+
+def test_location_detail_plss_reports_conflict_with_reviewed_location() -> None:
+    from taxonomy.db.models.location import LocationTag
+
+    name = _name_with_location_details(
+        ("T33S R25W Sec. 21 NW1/4 NE1/4",),
+        location_coordinates=(None, None),
+        location_tags=(
+            LocationTag.PLSS("T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"),
+        ),
+    )
+
+    messages = list(check_location_detail_plss(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "conflicts with type locality" in messages[0]
+    assert "T33S R25W Sec. 21 NW¼NE¼" in messages[0]
+
+
+def test_location_detail_plss_allows_narrower_reviewed_location_evidence() -> None:
+    from taxonomy.db.models.location import LocationTag
+
+    name = _name_with_location_details(
+        ("T33S R28W Sec. 21 NW1/4 NE1/4",),
+        location_coordinates=(None, None),
+        location_tags=(
+            LocationTag.PLSS("T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"),
+        ),
+    )
+
+    assert list(check_location_detail_plss(name, LintConfig())) == []
 
 
 def test_location_detail_coordinates_must_match_existing_tag() -> None:

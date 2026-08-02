@@ -8,7 +8,8 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
-from typing import IO, Any, ClassVar, NotRequired, Self
+from dataclasses import field as dataclass_field
+from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, Self
 
 from clirm import Field
 
@@ -21,6 +22,16 @@ from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextField
 from taxonomy.db.models.period import Period, period_sort_key
 from taxonomy.db.models.region import Region
 from taxonomy.db.models.stratigraphic_unit import StratigraphicUnit
+
+if TYPE_CHECKING:
+    from taxonomy.db.models.name import Name
+
+    _CoordinatesFromNameTarget = Name
+else:
+    # Replaced with Name after all models have loaded; see models.__init__. This
+    # breaks the Location <-> Name import cycle while retaining the normal
+    # model-valued ADT behavior at runtime.
+    _CoordinatesFromNameTarget = Managed
 
 
 class LocationStatus(enum.IntEnum):
@@ -53,6 +64,7 @@ class _CoordinateChoice:
     longitude: str
     extent: coordinate_lint.CoordinateExtent
     sources: list[str]
+    provenance_tags: list[adt.ADT] = dataclass_field(default_factory=list)
 
     def describe(self) -> str:
         return f"{self.latitude}, {self.longitude} — {'; '.join(self.sources)}"
@@ -80,15 +92,15 @@ def _merge_text_field(source: Location, target: Location, field: str) -> None:
     setattr(target, field, f"{target_text.rstrip()}\n\n{merged_section}")
 
 
-def _merge_coordinates(source: Location, target: Location) -> None:
+def _merge_coordinates(source: Location, target: Location) -> bool:
     source_pair = (source.latitude, source.longitude)
     target_pair = (target.latitude, target.longitude)
     if source_pair in ((None, None), target_pair):
-        return
+        return source_pair == target_pair and source_pair != (None, None)
     if target_pair == (None, None):
         print(f"setting coordinates from {source}: {source_pair}")
         target.latitude, target.longitude = source_pair
-        return
+        return True
 
     compatible = all(
         source_value is None or target_value is None or source_value == target_value
@@ -102,11 +114,12 @@ def _merge_coordinates(source: Location, target: Location) -> None:
         if merged_pair != target_pair:
             print(f"completing coordinates from {source}: {merged_pair}")
             target.latitude, target.longitude = merged_pair
-        return
+        return True
     print(
         f"warning: keeping coordinates on {target}: {target_pair}; "
         f"source {source} has {source_pair}"
     )
+    return False
 
 
 def _merge_location_data(source: Location, target: Location) -> None:
@@ -136,14 +149,19 @@ def _merge_location_data(source: Location, target: Location) -> None:
                 f"source {source} has {source_value}"
             )
 
-    _merge_coordinates(source, target)
+    coordinates_merged = _merge_coordinates(source, target)
     for field in ("comment", "location_detail", "age_detail"):
         _merge_text_field(source, target, field)
 
     target_tags = tuple(target.tags or ())
     merged_tags = (
         *target_tags,
-        *(tag for tag in source.tags or () if tag not in target_tags),
+        *(
+            tag
+            for tag in source.tags or ()
+            if tag not in target_tags
+            and (coordinates_merged or not is_coordinate_provenance_tag(tag))
+        ),
     )
     if merged_tags != target_tags:
         print(f"adding {len(merged_tags) - len(target_tags)} tag(s) from {source}")
@@ -419,7 +437,7 @@ class Location(BaseModel):
             subprocess.check_call(["open", *extent.openstreetmap_urls])
 
     def coordinate_evidence(self) -> None:
-        from taxonomy.apis import geonames, nominatim
+        from taxonomy.apis import geonames, nominatim, plss
         from taxonomy.db.models.name import TypeTag
         from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
         from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
@@ -443,6 +461,45 @@ class Location(BaseModel):
                 + _format_coordinate_evidence(self.latitude, self.longitude)
             )
         reference_extent = location_parsed[2] if location_parsed is not None else None
+
+        print("\n  PLSS evidence:")
+        plss_tags = list(self.get_tags(self.tags, LocationTag.PLSS))
+        accepted_plss = None
+        for tag in plss_tags:
+            print(f"    Location tag: {tag!r}")
+            plss_description = plss.parse_canonical(tag.text)
+            if len(plss_tags) == 1 and plss_description is not None:
+                accepted_plss = plss_description
+            extent, issue = location_lint._get_plss_provenance_extent(
+                self, LocationTag.CoordinatesFromPLSS(tag.plss_id)
+            )
+            if extent is not None:
+                print(
+                    "      Resolved coordinates: "
+                    + _format_coordinate_evidence(
+                        extent.latitude.standardized_text,
+                        extent.longitude.standardized_text,
+                        reference_extent=reference_extent,
+                    )
+                )
+            elif issue is not None:
+                print(f"      Resolution issue: {issue}")
+        linked_plss = location_lint._get_linked_plss_evidence(self)
+        for item in linked_plss:
+            if item.has_alternative_section:
+                status = "alternative sections"
+            elif accepted_plss is None:
+                status = "unreviewed"
+            elif accepted_plss.is_compatible_with(item.description):
+                status = "compatible with Location PLSS"
+            else:
+                status = "conflicts with Location PLSS"
+            print(
+                f"    [{status}] {item.description.canonical_text} "
+                f"(from {item.source})"
+            )
+        if not plss_tags and not linked_plss:
+            print("    none")
 
         print("\n  Nominatim candidates:")
         search_plan = location_lint.get_nominatim_search_plan(self)
@@ -589,7 +646,7 @@ class Location(BaseModel):
         for name in self.type_localities:
             coordinates = list(name.get_tags(name.type_tags, TypeTag.Coordinates))
             location_details = []
-            for tag in name.get_tags(name.type_tags, TypeTag.LocationDetail):
+            for tag in location_lint._get_applicable_location_detail_tags(name):
                 extracted = helpers.extract_coordinates(tag.text)
                 if extracted is not None:
                     location_details.append(tag)
@@ -638,14 +695,14 @@ class Location(BaseModel):
                     )
                 )
             for tag in verbatim:
-                parsed = parse_verbatim_coordinates(tag.text)
-                if parsed is None:
+                verbatim_parsed = parse_verbatim_coordinates(tag.text)
+                if verbatim_parsed is None:
                     print(f"      Verbatim coordinates: {tag.text!r} (unparsed)")
                 else:
                     print(
                         f"      Verbatim coordinates: {tag.text!r} -> "
                         + _format_coordinate_evidence(
-                            *parsed, reference_extent=reference_extent
+                            *verbatim_parsed, reference_extent=reference_extent
                         )
                     )
             for tag in uncertainties:
@@ -654,7 +711,6 @@ class Location(BaseModel):
             print("    none")
 
     def _get_coordinate_choices(self) -> list[_CoordinateChoice]:
-        from taxonomy.db.models.name import TypeTag
         from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
         from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
 
@@ -662,7 +718,12 @@ class Location(BaseModel):
 
         choices: dict[tuple[str, str], _CoordinateChoice] = {}
 
-        def add_choice(latitude: str, longitude: str, source: str) -> None:
+        def add_choice(
+            latitude: str,
+            longitude: str,
+            source: str,
+            provenance: adt.ADT | None = None,
+        ) -> None:
             parsed = coordinate_lint.standardize_coordinate_pair(latitude, longitude)
             if parsed is None:
                 return
@@ -670,25 +731,36 @@ class Location(BaseModel):
             key = (standardized_latitude, standardized_longitude)
             if key in choices:
                 choices[key].sources.append(source)
+                if (
+                    provenance is not None
+                    and provenance not in choices[key].provenance_tags
+                ):
+                    choices[key].provenance_tags.append(provenance)
             else:
                 choices[key] = _CoordinateChoice(
-                    standardized_latitude, standardized_longitude, extent, [source]
+                    standardized_latitude,
+                    standardized_longitude,
+                    extent,
+                    [source],
+                    [] if provenance is None else [provenance],
                 )
 
-        for (
-            latitude,
-            longitude,
-            _,
-            source,
-        ) in location_lint._get_linked_coordinate_candidates(self):
-            add_choice(latitude, longitude, source)
+        for evidence in location_lint._get_linked_coordinate_evidence(self):
+            add_choice(
+                evidence.latitude,
+                evidence.longitude,
+                evidence.source,
+                evidence.provenance,
+            )
 
         for name in self.type_localities:
-            for tag in name.get_tags(name.type_tags, TypeTag.LocationDetail):
+            for tag in location_lint._get_applicable_location_detail_tags(name):
                 extracted = helpers.extract_coordinates(tag.text)
                 if extracted is not None:
                     add_choice(
-                        *extracted, f"Name {name.id} LocationDetail from {tag.source}"
+                        *extracted,
+                        f"Name {name.id} LocationDetail from {tag.source}",
+                        LocationTag.CoordinatesFromName(name),
                     )
 
         for record in self.occurrence_records:
@@ -698,7 +770,9 @@ class Location(BaseModel):
                 parsed = parse_verbatim_coordinates(tag.text)
                 if parsed is not None:
                     add_choice(
-                        *parsed, f"OccurrenceRecord {record.id} verbatim coordinates"
+                        *parsed,
+                        f"OccurrenceRecord {record.id} verbatim coordinates",
+                        LocationTag.CoordinatesFromOccurrenceRecord(record.id),
                     )
 
         for candidate in location_lint._get_accepted_geonames_coordinate_candidates(
@@ -708,6 +782,7 @@ class Location(BaseModel):
                 candidate.latitude,
                 candidate.longitude,
                 location_lint._describe_geonames_match(candidate.match),
+                LocationTag.CoordinatesFromGeoNames(candidate.match.record.geoname_id),
             )
 
         try:
@@ -725,11 +800,15 @@ class Location(BaseModel):
             print(f"Nominatim lookup failed: {exc}")
         else:
             for result, (latitude, longitude, _) in nominatim_candidates:
+                provenance = location_lint._nominatim_provenance_tag(
+                    result, use_bounding_box=self.is_general()
+                )
                 add_choice(
                     latitude,
                     longitude,
                     f"Nominatim {result.category}/{result.feature_type} "
                     f"{nominatim_source_type} for {result.display_name!r}",
+                    provenance,
                 )
 
         return list(choices.values())
@@ -755,6 +834,10 @@ class Location(BaseModel):
                 combined_extent = combined_extent.union(choice.extent)
             self.latitude = combined_extent.latitude.standardized_text
             self.longitude = combined_extent.longitude.standardized_text
+            for provenance in dict.fromkeys(
+                tag for choice in choices for tag in choice.provenance_tags
+            ):
+                self.add_tag(provenance)
             print(f"Combined coordinates: {self.latitude}, {self.longitude}")
             raise CoordinatesCombined
 
@@ -773,6 +856,8 @@ class Location(BaseModel):
             return
         self.latitude = choice.latitude
         self.longitude = choice.longitude
+        for provenance in choice.provenance_tags:
+            self.add_tag(provenance)
         print(f"Selected coordinates: {self.latitude}, {self.longitude}")
 
     def infer_coordinates(self) -> None:
@@ -808,6 +893,11 @@ class Location(BaseModel):
                 )
                 self.latitude = None
                 self.longitude = None
+                self.tags = tuple(  # type: ignore[assignment]
+                    tag
+                    for tag in getattr(self, "tags", ()) or ()
+                    if not is_coordinate_provenance_tag(tag)
+                )
         self.format()
 
     def edit_imprecise_localities(self) -> None:
@@ -1038,7 +1128,7 @@ class Location(BaseModel):
     ]
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
-        data = {
+        data: dict[str, Any] = {
             "name": self.name,
             "comment": self.comment,
             "location_detail": self.location_detail,
@@ -1052,6 +1142,28 @@ class Location(BaseModel):
                 tags.append(f"ETMNA {tag.id}")
             elif isinstance(tag, LocationTag.NOW):
                 tags.append(f"NOW {tag.id}")
+            elif isinstance(tag, LocationTag.PLSS):
+                tags.append(f"PLSS {tag.plss_id} {tag.text}")
+            elif isinstance(tag, LocationTag.CoordinatesFromPLSS):
+                tags.append(f"coordinate provenance PLSS {tag.plss_id}")
+            elif isinstance(tag, LocationTag.CoordinatesFromGeoNames):
+                tags.append(f"coordinate provenance GeoNames {tag.geoname_id}")
+            elif isinstance(tag, LocationTag.CoordinatesFromNominatim):
+                tags.append(
+                    "coordinate provenance OpenStreetMap "
+                    f"{tag.osm_type} {tag.osm_id} {tag.category}"
+                )
+            elif isinstance(tag, LocationTag.CoordinatesFromName):
+                tags.append(f"coordinate provenance Name {tag.name.id}")
+            elif isinstance(tag, LocationTag.CoordinatesFromOccurrenceRecord):
+                tags.append(
+                    "coordinate provenance OccurrenceRecord "
+                    f"{tag.occurrence_record_id}"
+                )
+            elif tag is LocationTag.CoordinatesFromLocationName:
+                tags.append("coordinate provenance Location name")
+            elif isinstance(tag, LocationTag.CoordinatesManual):
+                tags.append(f"coordinate provenance manual {tag.comment}")
         if tags:
             data["tags"] = tags
         return [data]
@@ -1082,6 +1194,47 @@ class LocationTag(adt.ADT):
 
     # Region that is nearby and used as a base for a disambiguator
     NearbyRegion(region=Region, tag=7)  # type: ignore[name-defined]
+
+    # Reviewed Public Land Survey System description. The text is a canonical,
+    # human-readable land description; plss_id is the township-level CadNSDI
+    # PLSSID and therefore also records the resolved principal meridian.
+    PLSS(  # type: ignore[name-defined]
+        text=Managed, plss_id=Managed, comment=NotRequired[Markdown], tag=8
+    )
+
+    # Evidence supporting the Location's latitude and longitude fields. External
+    # identifiers are snapshots of the object used, not cached coordinate values.
+    CoordinatesFromPLSS(plss_id=Managed, tag=9)  # type: ignore[name-defined]
+    CoordinatesFromGeoNames(geoname_id=Managed, tag=10)  # type: ignore[name-defined]
+    CoordinatesFromNominatim(  # type: ignore[name-defined]
+        osm_type=Managed,
+        osm_id=Managed,
+        category=Managed,
+        use_bounding_box=Managed,
+        tag=11,
+    )
+    CoordinatesFromName(name=_CoordinatesFromNameTarget, tag=12)  # type: ignore[name-defined]
+    CoordinatesFromOccurrenceRecord(  # type: ignore[name-defined]
+        occurrence_record_id=Managed, tag=13
+    )
+    CoordinatesFromLocationName(tag=14)  # type: ignore[name-defined]
+    CoordinatesManual(comment=Markdown, tag=15)  # type: ignore[name-defined]
+
+
+COORDINATE_PROVENANCE_TAG_TYPES = (
+    LocationTag.CoordinatesFromPLSS,
+    LocationTag.CoordinatesFromGeoNames,
+    LocationTag.CoordinatesFromNominatim,
+    LocationTag.CoordinatesFromName,
+    LocationTag.CoordinatesFromOccurrenceRecord,
+    LocationTag.CoordinatesManual,
+)
+
+
+def is_coordinate_provenance_tag(tag: adt.ADT) -> bool:
+    return tag is LocationTag.CoordinatesFromLocationName or isinstance(
+        tag, COORDINATE_PROVENANCE_TAG_TYPES
+    )
 
 
 def get_expected_general_name(region: Region, period: Period) -> str:

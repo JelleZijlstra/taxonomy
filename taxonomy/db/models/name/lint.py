@@ -27,14 +27,14 @@ from collections.abc import (
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from functools import cache
-from typing import Generic, Protocol, Self, TypeVar, assert_never
+from typing import Any, Generic, Protocol, Self, TypeVar, assert_never
 
 import clirm
 import Levenshtein
 import requests
 
 from taxonomy import adt, getinput, urlparse
-from taxonomy.apis import bhl
+from taxonomy.apis import bhl, plss
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
 from taxonomy.config import is_network_available
 from taxonomy.db import coordinate_lint, helpers, models
@@ -1731,6 +1731,56 @@ def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[st
         nam.type_tags = [*nam.type_tags, expected]  # type: ignore[assignment]
     else:
         yield message
+
+
+@LINT.add("location_detail_plss")
+def check_location_detail_plss(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """Report conflicts within one Name or with its reviewed Location PLSS tag."""
+    descriptions: list[tuple[Any, plss.PLSSDescription]] = []
+    for tag in nam.get_tags(nam.type_tags, TypeTag.LocationDetail):
+        descriptions.extend(
+            (tag, extracted.description) for extracted in plss.extract_plss(tag.text)
+        )
+    if not descriptions:
+        return
+    if len(descriptions) >= 2:
+        first_tag, first = descriptions[0]
+        for tag, description in descriptions[1:]:
+            if not first.is_compatible_with(description):
+                yield (
+                    "LocationDetail tags contain incompatible PLSS descriptions:\n"
+                    f"- {first.canonical_text!r} from {first_tag.text!r}\n"
+                    f"- {description.canonical_text!r} from {tag.text!r}"
+                )
+                return
+
+    if nam.type_locality is None:
+        return
+    from taxonomy.db.models.location import LocationTag
+
+    location_tags = list(
+        nam.type_locality.get_tags(nam.type_locality.tags, LocationTag.PLSS)
+    )
+    if len(location_tags) != 1:
+        return
+    accepted = plss.parse_canonical(location_tags[0].text)
+    if accepted is None:
+        return
+    conflict = next(
+        (
+            (tag, description)
+            for tag, description in descriptions
+            if not accepted.is_compatible_with(description)
+        ),
+        None,
+    )
+    if conflict is not None:
+        tag, description = conflict
+        yield (
+            f"LocationDetail PLSS description conflicts with type locality:\n"
+            f"- {description.canonical_text!r} from {tag.text!r}\n"
+            f"- {accepted.canonical_text!r} PLSS tag from type locality {nam.type_locality.name!r}"
+        )
 
 
 def _smallest_high_group_ancestors(taxon: Taxon) -> Iterable[Taxon]:

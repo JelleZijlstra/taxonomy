@@ -48,6 +48,7 @@ class CacheDomain(enum.Enum):
     is_hdl_valid = 17
     gpt_item_file_verdict = 18  # mapping from filename -> GPT verdict JSON
     pubmed_nlmcatalog_abbrev = 19  # NLM Catalog: MedlineTA by journal title
+    plss = 20  # BLM CadNSDI PLSS and Census county geometry queries
 
 
 KeyT = TypeVar("KeyT")

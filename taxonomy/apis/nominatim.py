@@ -31,6 +31,7 @@ class SearchResult:
     address: dict[str, str]
     osm_type: str | None = None
     bounding_box: tuple[str, str, str, str] | None = None
+    osm_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,6 +59,37 @@ def search(query: str, *, limit: int = 5) -> list[SearchResult]:
     if not isinstance(data, list):
         raise TypeError(data)
     return [_parse_search_result(row) for row in data]
+
+
+def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
+    """Look up a stable OpenStreetMap object reference through Nominatim."""
+    type_code = {"node": "N", "way": "W", "relation": "R"}.get(osm_type)
+    if type_code is None:
+        return None
+    url = str(
+        httpx.URL(f"{BASE_URL}/lookup").copy_with(
+            params=httpx.QueryParams(
+                {
+                    "osm_ids": f"{type_code}{osm_id}",
+                    "format": "jsonv2",
+                    "addressdetails": "1",
+                    "accept-language": "en",
+                }
+            )
+        )
+    )
+    data = json.loads(get_nominatim_data(url))
+    if not isinstance(data, list):
+        raise TypeError(data)
+    results = [_parse_search_result(row) for row in data]
+    return next(
+        (
+            result
+            for result in results
+            if result.osm_type == osm_type and result.osm_id == osm_id
+        ),
+        None,
+    )
 
 
 def reverse(point: coordinates.Point, *, zoom: int = 5) -> ReverseResult | None:
@@ -127,6 +159,15 @@ def _parse_search_result(row: Any) -> SearchResult:
         raw_osm_type = row.get("osm_type")
         if raw_osm_type is not None and not isinstance(raw_osm_type, str):
             raise TypeError
+        raw_osm_id = row.get("osm_id")
+        if raw_osm_id is None:
+            osm_id = None
+        elif isinstance(raw_osm_id, int) and not isinstance(raw_osm_id, bool):
+            osm_id = raw_osm_id
+        elif isinstance(raw_osm_id, str) and raw_osm_id.isdigit():
+            osm_id = int(raw_osm_id)
+        else:
+            raise TypeError
         return SearchResult(
             latitude=str(row["lat"]),
             longitude=str(row["lon"]),
@@ -137,6 +178,7 @@ def _parse_search_result(row: Any) -> SearchResult:
             address=address,
             osm_type=raw_osm_type,
             bounding_box=bounding_box,
+            osm_id=osm_id,
         )
     except (KeyError, TypeError) as exc:
         raise ValueError(row) from exc

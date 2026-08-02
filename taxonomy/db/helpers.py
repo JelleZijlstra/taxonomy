@@ -346,7 +346,7 @@ COORDINATE_RGX = re.compile(
     ((?P<minutes>\d+(\.\d+)?)'
     ((?P<seconds>\d+(\.\d+)?)")?)?
     \s*
-    (?P<direction>[NSWE])$
+    (?P<direction>[NSWEO])$
     """,
     re.VERBOSE,
 )
@@ -371,6 +371,8 @@ def standardize_coordinates(text: str, *, is_latitude: bool) -> tuple[str, float
     minutes = match.group("minutes")
     seconds = match.group("seconds")
     direction = match.group("direction")
+    if not is_latitude and direction == "O":
+        direction = "W"
 
     if "." in degrees and minutes:
         raise InvalidCoordinates("fractional degrees when minutes are given")
@@ -423,26 +425,73 @@ def _display(value: float) -> str:
 
 LATLONG = re.compile(
     r"""
-    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?(\d+(\.\d+)?\s*")?\s*[NS])[,\s\[\]]+
-    (long\.\s)?(?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?(\d+(\.\d+)?\s*")?\s*[EW])
+    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[NS])(?:[.,\s\[\]|;–—]+|\band\b)+
+    (long\.\s)?(?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[EWO])
     """,
     re.VERBOSE,
 )
 LATLONG_NO_SIGN = re.compile(
     r"""
-    (?P<latitude>\d+\.\d+\s*[NS])[,\s]+
-    (?P<longitude>\d+\.\d+\s*[EW])
+    (?P<latitude>\d+\.\d+\s*[NS])(?:[,\s|;–—]+|\band\b)+
+    (?P<longitude>\d+\.\d+\s*[EWO])
+    """,
+    re.VERBOSE,
+)
+LONG_LAT = re.compile(
+    r"""
+    (?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[EWO])(?:[.,\s\[\]|;–—]+|\band\b)+
+    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[NS])
     """,
     re.VERBOSE,
 )
 
 
-def extract_coordinates(text: str) -> tuple[str, str] | None:
-    """Attempts to extract latitude and longitude from a location description."""
-    for rgx in (LATLONG, LATLONG_NO_SIGN):
-        match = rgx.search(text)
-        if not match:
-            continue
+def _normalize_coordinate_symbols(text: str) -> str:
+    """Normalize typographic coordinate symbols before applying extraction regexes."""
+    text = re.sub(r"(?<=\d),(?=\d)", ".", text)
+    text = (
+        text.replace("º", "°")
+        .replace("˚", "°")
+        .replace("◦", "°")
+        .replace("′", "'")
+        .replace("ʹ", "'")
+        .replace("’", "'")
+        .replace("‘", "'")
+        .replace("″", '"')
+        .replace("”", '"')
+        .replace("“", '"')
+    )
+    # A few source conventions put the cardinal direction before the complete DMS
+    # value, and OCR commonly renders the degree sign as a lower-case ``o`` in DMS
+    # pairs. Move the direction after the complete value, not merely after the
+    # degrees (which would turn ``S 41°57'`` into the invalid ``41°S57'``).
+    text = re.sub(
+        # Avoid treating the trailing direction of one coordinate as the prefix
+        # of the next one in pairs such as ``1°30'N 30°30'E``.
+        r"(?<![\d°*.'\"])\b([NSEWO])\s*"
+        r"(\d+(?:\.\d+)?\s*[°*]\s*"
+        r"(?:\d+(?:\.\d+)?\s*')?\s*"
+        r'(?:\d+(?:\.\d+)?\s*")?)',
+        r"\2\1",
+        text,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(r"(?<=\d)[oO](?=\d)", "°", text)
+    text = re.sub(r"östl\.?\s+Länge", "E", text, flags=re.IGNORECASE)
+    text = re.sub(r"nördl\.?\s+Breite", "N", text, flags=re.IGNORECASE)
+    return re.sub(r'(?<=\d)\.(?=")', "", text)
+
+
+def extract_coordinate_pairs(text: str) -> list[tuple[str, str]]:
+    """Extract all recognizable latitude/longitude pairs from a description."""
+    text = _normalize_coordinate_symbols(text)
+    matches = sorted(
+        (match.start(), match)
+        for rgx in (LATLONG, LATLONG_NO_SIGN, LONG_LAT)
+        for match in rgx.finditer(text)
+    )
+    output: list[tuple[str, str]] = []
+    for _, match in matches:
         try:
             latitude, _ = standardize_coordinates(
                 match.group("latitude"), is_latitude=True
@@ -455,8 +504,16 @@ def extract_coordinates(text: str) -> tuple[str, str] | None:
             )
         except InvalidCoordinates:
             continue
-        return latitude, longitude
-    return None
+        pair = (latitude, longitude)
+        if pair not in output:
+            output.append(pair)
+    return output
+
+
+def extract_coordinates(text: str) -> tuple[str, str] | None:
+    """Attempts to extract latitude and longitude from a location description."""
+    pairs = extract_coordinate_pairs(text)
+    return pairs[0] if pairs else None
 
 
 def clean_text(text: str) -> str:
