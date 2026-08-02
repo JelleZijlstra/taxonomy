@@ -1862,17 +1862,10 @@ def check_disambiguator(location: Location, cfg: LintConfig) -> Iterable[str]:
         # The coordinate_modifier lint owns this legacy parenthetical form.
         return
 
-    message = (
+    yield (
         f"disambiguator {disambiguator!r} is not an enclosing Region, "
         "an assigned Period, or an assigned StratigraphicUnit"
     )
-    if parsed_name.modifier is not None:
-        yield message
-        return
-    proposed_name = ParsedLocationName(
-        parsed_name.base_name, modifier=disambiguator
-    ).render()
-    yield message + f"; location name should be {proposed_name!r}"
 
 
 @LINT.add("period")

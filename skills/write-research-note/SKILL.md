@@ -4,7 +4,8 @@ description:
   Write or update brief source-faithful research notes in the taxonomy repository. Use
   when asked to write a research note in docs/research-notes/ about taxonomic,
   nomenclatural, bibliographic, specimen-provenance, locality, or literature questions
-  that required deeper investigation.
+  that required deeper investigation. Use only when explicitly asked to write a research
+  note using this skill.
 ---
 
 # Write Research Note

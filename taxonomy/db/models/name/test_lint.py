@@ -11,6 +11,7 @@ from taxonomy.db.constants import (
     Group,
     OccurrenceValidity,
     Rank,
+    SpeciesGroupType,
     SpecimenOrgan,
 )
 from taxonomy.db.models.base import LintConfig
@@ -247,6 +248,33 @@ def test_location_detail_coordinates_must_match_location() -> None:
 
     assert len(messages) == 1
     assert "55.6 km from Location" in messages[0]
+
+
+def test_neotype_location_detail_coordinates_ignore_original_locality() -> None:
+    original_source = cast(models.Article, SimpleNamespace(id=98))
+    neotype_source = cast(models.Article, SimpleNamespace(id=99))
+    tags = (
+        TypeTag.NeotypeDesignation(
+            optional_source=neotype_source, neotype="USNM 1", valid=True
+        ),
+        TypeTag.LocationDetail("original locality at 10°N, 20°E", original_source),
+        TypeTag.LocationDetail("neotype locality at 11°N, 21°E", neotype_source),
+    )
+    name = cast(
+        Name,
+        SimpleNamespace(
+            species_type_kind=SpeciesGroupType.neotype,
+            type_locality=SimpleNamespace(
+                name="Neotype locality", latitude="11°N", longitude="21°E"
+            ),
+            type_tags=tags,
+            get_tags=lambda values, tag_type: (
+                tag for tag in values if isinstance(tag, tag_type)
+            ),
+        ),
+    )
+
+    assert list(check_location_detail_coordinates(name, LintConfig())) == []
 
 
 def test_location_detail_infers_coordinates_when_location_has_none() -> None:
