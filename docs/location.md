@@ -2,31 +2,24 @@
 
 Locations are used to indicate the occurrence of taxa, mainly their type localities.
 They are meant to represent named places with as much precision as the source material
-allows, both in space and (for fossils) in time.
+allows, both in space and (for fossils) in time. We use named Locations rather than just
+listing geographic coordinates because many sources do not give precise coordinates and
+when they do the coordinates are prone to typographical errors. Named Locations allow us
+to associate records from the same place and cross-check the name of the Location
+against other forms of geographical data.
 
-For example, a type locality given only as French Guiana belongs in the
-[French Guiana](/l/French_Guiana) Location, while a source that identifies a particular
-town or collecting site should use a Location for that place. Broad island groups,
-mountain ranges, river basins, and similar geographic areas should also remain broad
-when the source does not identify a particular point within them.
+Ideally Locations represent a single, small area (< 5 km). For fossils, all records in
+the same Location should be of the same age, to the extent the source material allows.
 
-Localities that are not precisely indicated or that need more investigation may use a
-more general Location representing a region and stratigraphic unit (for example,
-[Morrison Formation (Wyoming)](</l/Morrison_Formation_(Wyoming)>)) or all fossils from a
-region (for example, [Wyoming fossil](/l/Wyoming_fossil)). For extant taxa, historically
-the database placed all localities in the same [region](region) in a single locality,
-but more recently we have started using more specific locations.
-
-Mark a Location with the _General_ tag when it intentionally represents a broad or
-imprecise area rather than a single locality. A general Location should be replaced or
-split only when source evidence supports a more precise assignment. Locations should be
-considered general if they represent an area with a larger radius than about 10 km.
-
-Use the _Unplaced_ tag instead when the source identifies a particular locality, but
-that locality has not yet been securely placed in the Region hierarchy. _General_ and
-_Unplaced_ should normally be mutually exclusive: _General_ describes the precision of
-the source evidence, whereas _Unplaced_ records incomplete geographic interpretation of
-a specific place.
+Sometimes we don't know the precise origin of a record, or for convenience records in
+the database are for now lumped together. In those cases we use _general_ localities.
+For extant taxa, we historically used general localities corresponding to entire
+[Regions](region), such as [French Guiana](/l/French_Guiana). Now we are in the process
+of moving such occurrences to more precise Locations; the general Location is kept for
+records where no more precise evidence is available. For fossils we similarly use
+general locations representing all fossils from a particular region (for example,
+[Wyoming fossil](/l/Wyoming_fossil)) or from a region and stratigraphic unit (for
+example, [Morrison Formation (Wyoming)](</l/Morrison_Formation_(Wyoming)>)).
 
 ## Naming convention
 
@@ -36,78 +29,69 @@ Location names have up to three parts:
 Name (disambiguator): modifier
 ```
 
-The _name_ is preferably a geographic feature such as a town, river, mountain, cave, or
-collecting site. The _disambiguator_ and _modifier_ are optional. Parentheses are
-reserved for disambiguators, and modifiers follow a colon and a space.
+The _name_ is the main identifier for the location. It should be simple and concise. The
+_disambiguator_ and _modifier_ are optional. Parentheses are reserved for
+disambiguators, and modifiers follow a colon and a space.
 
-Use a modern, neutral geographic name when an obsolete source-era name has a clear
-modern equivalent. Preserve the historical wording in `location_detail`, not in the
-canonical Location name. In particular, do not perpetuate historical names now widely
-regarded as slurs. If the old term had variable boundaries and no exact modern
-equivalent, choose a conservative modern description, mark it _General_, and explain the
-correspondence in the evidence or comment. If no modern description can preserve the
-historical extent without falsely equating it with one present-day unit, retain the old
-name only with an explicit `(historical region)` disambiguator; for example,
-`Prussia (historical region)`, not bare `Prussia`.
+### name
 
-Prefer the full form of generic geographic abbreviations in canonical names: for
-example, use `Mount Moriah`, `Fort Thomas`, and `Malheur National Wildlife Refuge`
-rather than `Mt. Moriah`, `Ft. Thomas`, and `Malheur NWR`. Retain an abbreviation when
-it is genuinely part of the official proper name. Preserve diacritics and the preferred
-modern spelling; source spellings belong in `location_detail` or, when independently
-useful for lookup, in an alias.
+The name should preferably a geographic feature such as a town, river, mountain, cave,
+or collecting site. Use modern names, even when the source material uses obsolete names.
+In particular, avoid names now considered offensive. Expand abbreviations such as "Mt.",
+"Ft.", or "St.", unless the abbreviated form is actually part of the official name. Use
+concise names, ideally the name of a single geographical feature, even if the source may
+use a more elaborate description.
 
-For example:
+Locations should preferably denote precise locations (at the scale of a few kilometers
+at most), but if necessary a general location can be used encompassing a larger area if
+the sources are not precise. In this case, the name can be the name of a region, or a
+stratigraphic unit to cover all fossils found in a particular stratigraphic unit in an
+area.
+
+When a Location combines two or more parallel geographic components with _and_, put the
+components in alphabetical order. This gives equivalent source phrasings one canonical
+name: use `Bengal and Sri Lanka`, not `Sri Lanka and Bengal`, and
+`Carinthia, Carniola, Styria, and Tyrol`, not an order copied from one particular
+source. Alphabetize by the geographic component itself, ignoring relational words such
+as `near`.
+
+### disambiguator
+
+A disambiguator within parentheses should be used when the name is not globally unique.
+It should normally name an enclosing [Region](region), an assigned [Period](period), or
+an assigned stratigraphic unit. Qualified Region and stratigraphic-unit names may be
+written in parenthetical, comma-separated, or unqualified form when the relationship is
+unambiguous; for example, the Region `Limburg (Netherlands)` supports the disambiguator
+`Limburg, Netherlands`. A stable geographic qualifier may exceptionally disambiguate
+places with the same base name in the same Region; document such an exception with an
+`IgnoreLintLocation` tag if the disambiguator lint cannot verify it. The generic
+disambiguators `island`, `region`, and `historical region` are always allowed for
+geographic features whose scope would otherwise be unclear, as in
+`Saint Martin (island)` and `Guinea (region)`. If there is a modifier and the location
+is outside the region designated by the base name (for example, the nearby coast, or an
+"X km N" locality that crosses a border), the region of the base name is acceptable as a
+disambiguator; this can be indicated with a "NearbyRegion" tag on the location.
+
+### modifier
+
+The modifier indicates a modification or subpart of the overall location. Common
+categories include:
+
+- Geographic offsets such as "1 km N", when the source gives a location like "1 km north
+  of some town". This should be standardized to use "km", "m", or "mi", in a format like
+  "2 km S 1 km W" or "3.1 mi W".
+- Coordinates or PLSS data, when there are multiple collecting locations denoted by the
+  same geographic name but with slightly different coordinates
+- Subdivisions, such as the upper part or mouth of a river.
+
+Modifiers should be concise and use a small, standardized vocabulary.
+
+### Examples
 
 - `Castries (Hérault): 1 km N`
 - `Foo River (California): mouth`
 - `Eastgate (Barstovian)`
 - `Maastricht Formation (Limburg, Netherlands)`
-
-Use a disambiguator only when the base name is not globally unique. It should normally
-name an enclosing [Region](region), an assigned [Period](period), or an assigned
-stratigraphic unit. Qualified Region and stratigraphic-unit names may be written in
-parenthetical, comma-separated, or unqualified form when the relationship is
-unambiguous; for example, the Region `Limburg (Netherlands)` supports the disambiguator
-`Limburg, Netherlands`. A stable geographic qualifier may exceptionally disambiguate
-places with the same base name in the same Region; document such an exception with an
-`IgnoreLintLocation` tag if the disambiguator lint cannot verify it. The generic
-disambiguators `island` and `region` are always allowed for geographic features whose
-scope would otherwise be unclear, as in `Saint Martin (island)` and `Guinea (region)`.
-If there is a modifier and the location is outside the region designated by the base
-name (for example, the nearby coast, or an "X km N" locality that crosses a border), the
-region of the base name is acceptable as a disambiguator; this can be indicated with a
-"NearbyRegion" tag on the location.
-
-The assigned Region is structured data and should not normally be repeated at the end of
-the Location name merely because the source printed a full political hierarchy. Thus, a
-locality assigned to the Sint Eustatius Region should normally be `English Quarter`, not
-`English Quarter, Sint Eustatius`. Use a parenthetical disambiguator when the shorter
-base name is not globally unique. A longer hierarchical phrase may be retained when all
-of its components are needed to identify the feature or distinguish a source locality,
-but the verbatim hierarchy should otherwise be preserved in `location_detail`.
-
-The modifier distinguishes a more specific place associated with the base feature. It
-may be free-form text such as `mouth`, `upper`, or `near the bridge`. A completely
-specified distance and direction is standardized using abbreviated units and compass
-directions, without _of_; north/south components precede east/west components. Thus, use
-`Monterey: 2 km S 1 mi W`, not `1 mi W, 2 kilometers south of Monterey` or
-`Monterey (2 km S 1 mi W)`.
-
-Distinguish a locality _defined by_ an offset from a named feature that is merely
-_located by_ an offset. If the source gives only "2 km south of Monterey", use
-`Monterey: 2 km S`. If the source gives a separately named feature such as "Bats Cave,
-1.5 km east of English Harbour", use `Bats Cave` as the canonical name and retain the
-offset in `location_detail`, unless the offset is needed to distinguish this Bats Cave
-from another locality. Do not copy elevations, coordinates, political hierarchies, or
-other locating evidence into the base name.
-
-A locality defined by a coordinate pair may use standardized latitude and longitude as
-its modifier, as in `Vilacota, Tacna, Peru: 17.145759°S 70.054278°W`. Use latitude
-followed by longitude, separated by one space. The same coordinates must also be stored
-in the Location's `latitude` and `longitude` fields. This form is appropriate when the
-coordinates distinguish a source locality; it should not be added merely because
-coordinates happen to be available for an otherwise adequately named feature.
 
 All Locations based on the same feature should use the same base name and, when one is
 needed, the same disambiguator. This keeps the base Location and its modified Locations
@@ -118,28 +102,6 @@ Castle Brace (Dominica)
 Castle Brace (Dominica): 1 mi N
 Castle Brace (Dominica): 2 mi SW
 ```
-
-For a name containing several nested geographic components, choose one primary anchor
-and use the same component order throughout that family of Locations. Put the primary
-anchor first, followed by increasingly specific components; for example, use
-`Steens Mountain, Little Blitzen Gorge, T33S, R33E, Sec. 10` consistently rather than
-also creating `Steens Mountain, T33S, R33E, Sec. 10, Little Blitzen Gorge`. Two names
-that contain the same components in a different order are duplicate candidates, not
-automatically distinct localities. Preserve the source's original component order in
-`location_detail`.
-
-When a Location combines two or more parallel geographic components with _and_, put the
-components in alphabetical order. This gives equivalent source phrasings one canonical
-name: use `Bengal and Sri Lanka`, not `Sri Lanka and Bengal`, and
-`Carinthia, Carniola, Styria, and Tyrol`, not an order copied from one particular
-source. Alphabetize by the geographic component itself, ignoring relational words such
-as `near`.
-
-Except for coordinate-defined localities described above, coordinates, elevations,
-source wording, and other evidence do not belong in the modifier merely to make a name
-unique. Store them in their structured fields or in `location_detail`. Some numbered
-sites, quarries, camps, and similar localities have no useful geographic anchor; they
-may use their established site name as the base name.
 
 ### Coasts and offshore localities
 
@@ -163,35 +125,6 @@ animal is terrestrial for this purpose. If the evidence still does not resolve t
 distinction, use a _General_ Location under the lowest Region that contains both
 possibilities rather than silently choosing land or water.
 
-## Aliases and merges
-
-Use one valid Location for one geographic locality. Alternate spellings, historical
-names, punctuation variants, translated names, abbreviations, and reordered locality
-components should not remain as separate valid Locations when the evidence shows that
-they denote the same place.
-
-When consolidating duplicate Locations, reassign all type-locality and occurrence
-references to the selected canonical Location and retain the other record as an alias.
-An alias points to the canonical Location and should not retain independent references.
-The alias is useful when its name is an established source spelling, a likely search
-term, or the target of an existing link. A trivial typographical error need not be
-created as a new alias if it has never had an independent record or link.
-
-Merging copies metadata that can be preserved without choosing between conflicting
-claims. Missing periods, stratigraphic units, coordinates, numerical ages, and source
-citations are copied to the canonical Location; compatible partial coordinate pairs are
-completed; tags are combined; and distinct comments, `location_detail`, and `age_detail`
-text are appended with the source alias identified. Conflicting scalar values or
-coordinate pairs remain on the alias and produce a warning instead of overwriting the
-canonical value. Review those warnings after applying a merge. Keep source wording and
-provenance in the relevant `LocationDetail` or occurrence record even after the
-canonical Location has been selected.
-
-Punctuation-insensitive or accent-insensitive name matches, reordered components, and
-shared coordinates are review leads only. Same-name places, nested features, and
-separately named sites can legitimately be close together or share rounded published
-coordinates.
-
 ## Fields
 
 Locations have the following fields:
@@ -211,11 +144,18 @@ Locations have the following fields:
   derives from. This is also a [period](period).
 - _tags_: Various extra information about the location. Current tags include:
   - _General_, which indicates that the Location intentionally represents a broad or
-    imprecise area rather than a single locality
+    imprecise area rather than a single locality. Locations should be considered general
+    if they represent an area with a larger radius than about 10 km.
   - _Unplaced_, which indicates that a source identifies a particular locality but its
-    placement in the Region hierarchy remains uncertain
+    physical location remains unknown. This is mutually exclusive with General.
   - _NearbyRegion_, which records a nearby Region used as the anchor or disambiguator
     for an offset locality outside that Region
+  - _PLSS_, which records a standardized Public Land Survey System description and its
+    resolved BLM CadNSDI township identifier
+  - _CoordinatesFromName_, _CoordinatesFromOccurrenceRecord_, _CoordinatesFromPLSS_,
+    _CoordinatesFromGeoNames_, _CoordinatesFromNominatim_,
+    _CoordinatesFromLocationName_, and _CoordinatesManual_, which document the evidence
+    supporting the coordinate fields
   - _IgnoreLintLocation_, which records a reviewed exception to a named Location lint;
     it should include a useful explanation whenever the reason is not self-evident
   - Three tags indicating that the location corresponds to a location in another
@@ -228,4 +168,79 @@ to the appropriate child Region. A Location may remain directly under the parent
 when it is _General_, _Unplaced_, or the Region is explicitly marked as incompletely
 divided; see [Region](region).
 
-There are a few other fields, but these are currently not widely used.
+## Aliases and merges
+
+Use one valid Location for one geographic locality. Alternate spellings, historical
+names, punctuation variants, translated names, abbreviations, and reordered locality
+components should not remain as separate valid Locations when the evidence shows that
+they denote the same place.
+
+Merging copies metadata that can be preserved without choosing between conflicting
+claims. Missing periods, stratigraphic units, coordinates, numerical ages, and source
+citations are copied to the canonical Location; compatible partial coordinate pairs are
+completed; tags are combined; and distinct comments, `location_detail`, and `age_detail`
+text are appended with the source alias identified. Conflicting scalar values or
+coordinate pairs remain on the alias and produce a warning instead of overwriting the
+canonical value. Review those warnings after applying a merge. Keep source wording and
+provenance in the relevant `LocationDetail` or occurrence record even after the
+canonical Location has been selected.
+
+## Public Land Survey System descriptions
+
+The database uses the U.S. Public Land Survey System (PLSS) description for locating and
+cross-validating locations. This uses a _PLSS_ Location tag, which is usually derived
+from evidence on Name or OccurrenceRecord objects.
+
+The tag has one primary `text` field, a township-level CadNSDI `plss_id`, and an
+optional `comment`. Use the comment to document source errors, historical-county issues,
+or other reviewed discrepancies. The `plss_id` is the BLM `PLSSID`; it records the
+state, principal meridian, township, range, fractions, and duplicate code. Section,
+aliquot, and government-lot information remains in `text` and is resolved within that
+township.
+
+Use this canonical form:
+
+```text
+T27S R31E, Willamette Meridian
+T27S R31E Sec. 3, Willamette Meridian
+T27S R31E Sec. 3 SW¼NE¼, Willamette Meridian
+T27S R31E Sec. 3 Lot 4, Willamette Meridian
+```
+
+- Attach `T` and `R` directly to the number and direction, with one space between the
+  township and range.
+- Use no commas between township, range, section, and subdivision. Use exactly `Sec.`
+  for a section and `Lot` for a government lot.
+- Use `¼`, `½`, and `¾`. Write aliquot parts without spaces, in legal-description order;
+  for example, `SW¼NE¼` is the southwest quarter of the northeast quarter.
+- Use the full BLM principal-meridian name after a comma. Do not use variable
+  abbreviations such as `W.M.`. The state is already represented by the Region hierarchy
+  and is not repeated in the tag text.
+- Do not pad numbers with zeroes.
+
+The parser accepts common source variants such as `Township 27 South, Range 31 East`,
+`T. 27 S., R. 31 E.`, `Section`, `1/4`, and an omitted principal meridian. Serialization
+into a reviewed tag uses only the canonical form above.
+
+## Coordinate provenance
+
+Every populated `latitude` and `longitude` pair should be supported by at least one
+coordinate-provenance tag. The tag records the evidence used:
+
+- _CoordinatesFromName_ references a linked Name with coordinate evidence in a
+  `Coordinates` or `LocationDetail` tag.
+- _CoordinatesFromOccurrenceRecord_ records the identifier of a linked occurrence record
+  with `Coordinates` or parseable `VerbatimCoordinates` evidence.
+- _CoordinatesFromPLSS_ records the BLM township `plss_id` of the reviewed _PLSS_ tag
+  whose polygon bounds supplied the coordinates.
+- _CoordinatesFromGeoNames_ records a GeoNames identifier.
+- _CoordinatesFromNominatim_ records the OpenStreetMap object type, object identifier,
+  category, and whether the point or bounding box was used. Do not store Nominatim's
+  installation-specific `place_id`.
+- _CoordinatesFromLocationName_ indicates that the canonical Location name itself has a
+  coordinate modifier.
+- _CoordinatesManual_ records a reviewed manual choice and requires a comment explaining
+  its basis. Use it when the paper trail cannot be represented by one of the structured
+  provenance tags—for example, a reviewed correction of a bad published coordinate or a
+  coordinate recovered from an unparsed comment. The comment should name the evidence
+  and preserve uncertainty or competing placements.
