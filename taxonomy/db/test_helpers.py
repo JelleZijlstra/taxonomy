@@ -32,6 +32,104 @@ def test_extract_coordinate_pairs() -> None:
     ) == [("31°28'12\"S", "64°44'24\"W"), ("31.5°S", "64.5°W")]
 
 
+def test_extract_coordinate_pairs_accepts_colon_separator() -> None:
+    assert helpers.extract_coordinate_pairs("Bukwa (01°17'04.5\"N: 34°47'07.7\"E)") == [
+        ("1°17'4.5\"N", "34°47'7.7\"E")
+    ]
+
+
+def test_extract_coordinate_pairs_accepts_prime_as_seconds_marker() -> None:
+    assert helpers.extract_coordinate_pairs("lat. 23*29'00'N, long. 68*54'45\" E") == [
+        ("23°29'0\"N", "68°54'45\"E")
+    ]
+
+
+def test_extract_coordinate_pairs_preserves_source_order_across_formats() -> None:
+    assert helpers.extract_coordinate_pairs(
+        "first (−3.44785, −79.61015), then 4°S, 80°W"
+    ) == [("3.44785°S", "79.61015°W"), ("4°S", "80°W")]
+
+
+@pytest.mark.parametrize("text", ["Figures 4.1-4.4, 5.4", "Figs. 3.1–3.3; 5.1"])
+def test_extract_coordinate_pairs_ignores_figure_number_ranges(text: str) -> None:
+    assert helpers.extract_coordinate_pairs(text) == []
+
+
+def test_extract_coordinate_pairs_accepts_labeled_spaced_decimals() -> None:
+    assert helpers.extract_coordinate_pairs(
+        "Latitude 1.2667 S., Longitude 132.2000 E."
+    ) == [("1.2667°S", "132.2°E")]
+
+
+def test_extract_coordinate_pairs_accepts_dotted_degrees_minutes() -> None:
+    assert helpers.extract_coordinate_pairs("Medje, 2.25 N – 27.18 E") == [
+        ("2°25'N", "27°18'E")
+    ]
+
+
+def test_extract_coordinate_pairs_respects_negative_sign_with_direction() -> None:
+    assert helpers.extract_coordinate_pairs("São Bento (38.7115 N, −9.1547 E)") == [
+        ("38.7115°N", "9.1547°W")
+    ]
+
+
+def test_extract_coordinate_pairs_accepts_two_prefixed_directions() -> None:
+    assert helpers.extract_coordinate_pairs("N46°11' E 95°03'") == [
+        ("46°11'N", "95°3'E")
+    ]
+
+
+def test_extract_coordinate_pairs_normalizes_greek_east_direction() -> None:
+    assert helpers.extract_coordinate_pairs("N50°52' Ε 20°38'") == [
+        ("50°52'N", "20°38'E")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("site (12.14573, -61.613847)", [("12.14573°N", "61.613847°W")]),
+        ("site (–31.1588°, –65.4509°)", [("31.1588°S", "65.4509°W")]),
+        ("38°39'40±02\" S, 145°40'52±03\" E", [("38°39'40\"S", "145°40'52\"E")]),
+        (
+            "43°27'34\" north latitude and 141°35'35\" east longitude",
+            [("43°27'34\"N", "141°35'35\"E")],
+        ),
+        ("N48°5¢, W122°0¢", [("48°5'N", "122°0'W")]),
+        ("69°24'28″[N], 145°09'50″[W]", [("69°24'28\"N", "145°9'50\"W")]),
+        ("longitude 49°4'E, latitude 12°56'S", [("12°56'S", "49°4'E")]),
+        ("10*16'N/61*23'W", [("10°16'N", "61°23'W")]),
+        ("near Bamboo Tekri (13.373*N & 92.999*E)", [("13.373°N", "92.999°E")]),
+        (
+            "22.5 km S San Quintin (30°22'17\"N, −115°51'52\"W)",
+            [("30°22'17\"N", "115°51'52\"W")],
+        ),
+    ],
+)
+def test_extract_coordinate_pairs_additional_provenance_formats(
+    text: str, expected: list[tuple[str, str]]
+) -> None:
+    assert helpers.extract_coordinate_pairs(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("82°47·6'N, 42°13·3'W", ("82°47.6'N", "42°13.3'W")),
+        ("latitude 82°47·6'N, longitude 42°13·3'W", ("82°47.6'N", "42°13.3'W")),
+        ("24°21' S 133°43' E", ("24°21'S", "133°43'E")),
+        ("3° 01' N 12° 22' E", ("3°1'N", "12°22'E")),
+        ("(−3.44785*, −79.61015*)", ("3.44785°S", "79.61015°W")),
+        ("MIRADOR ca. 0126S/7815W", ("1°26'S", "78°15'W")),
+        ("28o 36' LN, 112o 51' LW", ("28°36'N", "112°51'W")),
+    ],
+)
+def test_extract_coordinates_additional_source_variants(
+    text: str, expected: tuple[str, str]
+) -> None:
+    assert helpers.extract_coordinates(text) == expected
+
+
 def test_extract_coordinates_normalizes_decimal_comma_and_western_o() -> None:
     assert helpers.extract_coordinates("8° 9' 4,49\" N, 61° 46' 45,79\" O") == (
         "8°9'4.49\"N",

@@ -1630,10 +1630,12 @@ def check_collector_lifespan(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("location_detail_coordinates")
 def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    from taxonomy.db.models.location import lint as location_lint
+
     extracted: list[  # type: ignore[name-defined]
         tuple[TypeTag.LocationDetail, str, str, coordinate_lint.CoordinateExtent]
     ] = []
-    for tag in nam.get_tags(nam.type_tags, TypeTag.LocationDetail):
+    for tag in location_lint._get_applicable_location_detail_tags(nam):
         coordinates = helpers.extract_coordinates(tag.text)
         if coordinates is None:
             continue
@@ -1736,11 +1738,27 @@ def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[st
 @LINT.add("location_detail_plss")
 def check_location_detail_plss(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Report conflicts within one Name or with its reviewed Location PLSS tag."""
+    from taxonomy.db.models.location import LocationTag
+    from taxonomy.db.models.location import lint as location_lint
+
     descriptions: list[tuple[Any, plss.PLSSDescription]] = []
-    for tag in nam.get_tags(nam.type_tags, TypeTag.LocationDetail):
-        descriptions.extend(
-            (tag, extracted.description) for extracted in plss.extract_plss(tag.text)
-        )
+    for tag in location_lint._get_applicable_location_detail_tags(nam):
+        for extracted in plss.extract_plss(tag.text):
+            description = extracted.description
+            if extracted.has_alternative_section:
+                # "Sections 30-31" supports the shared township/range but neither
+                # individual section.  This mirrors the Location lint's handling
+                # and allows a reviewed Location in either cited section.
+                description = plss.PLSSDescription(
+                    description.township,
+                    description.township_fraction,
+                    description.township_direction,
+                    description.range,
+                    description.range_fraction,
+                    description.range_direction,
+                    meridian=description.meridian,
+                )
+            descriptions.append((tag, description))
     if not descriptions:
         return
     if len(descriptions) >= 2:
@@ -1756,7 +1774,6 @@ def check_location_detail_plss(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
     if nam.type_locality is None:
         return
-    from taxonomy.db.models.location import LocationTag
 
     location_tags = list(
         nam.type_locality.get_tags(nam.type_locality.tags, LocationTag.PLSS)

@@ -20,6 +20,15 @@ from taxonomy.db import coordinate_lint
         ("T29S R33E Sec. 36 SW 1/4 of NE 1/4", "T29S R33E Sec. 36 SW¼NE¼"),
         ("T29S R33E SW 1/4 NE 1/4 Sec. 36", "T29S R33E Sec. 36 SW¼NE¼"),
         ("NE 1/4 of the W 1/2, Sec. 24, T. 1 S, R. 1 W", "T1S R1W Sec. 24 NE¼W½"),
+        (
+            "N.W.1/4. Sec. 36. T. 20N. R. 62W. Goshen County, Wyoming.",
+            "T20N R62W Sec. 36 NW¼",
+        ),
+        (
+            "N.E.1/4. Sec. 19. T. 23N. R. 61W. Goshen County, Wyoming.",
+            "T23N R61W Sec. 19 NE¼",
+        ),
+        ("Southwest corner Sec..12, T. 11 N., R. 54 W.", "T11N R54W Sec. 12"),
         ("T32 1/2S R32.75E", "T32½S R32¾E"),
         (
             "T27S R31E Sec. 3, Willamette Meridian",
@@ -38,6 +47,33 @@ def test_parser_does_not_treat_bare_s_number_as_section() -> None:
     description = plss.extract_plss("High Rock Ranch, T34N R25E, S26")[0].description
 
     assert description.section is None
+
+
+def test_parser_does_not_cross_prose_before_township() -> None:
+    description = plss.extract_plss(
+        "Sec. 36. Another locality was reported. T20N R62W"
+    )[0].description
+
+    assert description.section is None
+
+
+def test_parser_rejects_non_plss_section_number() -> None:
+    extracted = plss.extract_plss(
+        "SE 1/4, sec. 29, T32N, R30W (stratigraphic section 63 on fig. 23)"
+    )
+
+    assert [item.description.canonical_text for item in extracted] == [
+        "T32N R30W Sec. 29 SE¼"
+    ]
+
+
+def test_parser_prefers_each_prefix_section_in_township_list() -> None:
+    extracted = plss.extract_plss("Sec. 36, T33N R56W; Sec. 2, T32N R56W")
+
+    assert [item.description.canonical_text for item in extracted] == [
+        "T33N R56W Sec. 36",
+        "T32N R56W Sec. 2",
+    ]
 
 
 def test_parser_does_not_combine_aliquots_from_two_sections() -> None:
@@ -94,10 +130,20 @@ def test_invalid_plss_id(plss_id: str) -> None:
     assert not plss.is_valid_plss_id(plss_id)
 
 
-def test_meridian_comparison_ignores_baseline_wording() -> None:
-    assert plss._normalize_meridian(
-        "Mount Diablo Base Line and Meridian"
-    ) == plss._normalize_meridian("Mount Diablo Meridian")
+@pytest.mark.parametrize(
+    ("variant", "canonical"),
+    [
+        ("Mount Diablo Base Line and Meridian", "Mount Diablo Meridian"),
+        ("Mt. Diablo Base and Meridian", "Mount Diablo Meridian"),
+        ("Mt.D Meridian", "Mount Diablo Meridian"),
+        ("Ute Principle Meridian", "Ute Meridian"),
+        ("of Wind River meridian", "Wind River Meridian"),
+    ],
+)
+def test_meridian_comparison_ignores_wording_variants(
+    variant: str, canonical: str
+) -> None:
+    assert plss._normalize_meridian(variant) == plss._normalize_meridian(canonical)
 
 
 def test_aliquot_compatibility_compares_outer_subdivision() -> None:

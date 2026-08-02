@@ -217,6 +217,7 @@ def get_nominatim_data(url: str) -> str:
 HESP_COUNTRY_TO_OSM_COUNTRY = {
     "Cote d'Ivoire": "Côte d'Ivoire",
     "Curaçao": "Curacao",
+    "Guadeloupe": "France",
     "Martinique": "France",
     "Republic of the Congo": "Congo-Brazzaville",
     "Réunion": "France",

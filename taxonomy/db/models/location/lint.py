@@ -7,7 +7,7 @@ from collections import defaultdict
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from functools import cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
@@ -23,6 +23,9 @@ from taxonomy.db.models.region import Region, RegionTag
 from .age import is_recent_location
 from .model import Location, LocationTag, is_coordinate_provenance_tag
 from .name import ParsedLocationName, split_trailing_parenthetical
+
+if TYPE_CHECKING:
+    from taxonomy.db.models.name import Name
 
 _GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "water", "waterway"}
 _OSM_CATEGORY_PRIORITY = {
@@ -576,6 +579,58 @@ def _get_applicable_location_detail_tags(name: Any) -> tuple[Any, ...]:
     return tuple(tag for tag in details if tag.source.id in designation_source_ids)
 
 
+def _get_applicable_coordinate_text_tags(name: Any) -> tuple[Any, ...]:
+    """Return Name text tags that may document its current type locality."""
+    from taxonomy.db.models.name import TypeTag
+
+    details = (
+        *_get_applicable_location_detail_tags(name),
+        *name.get_tags(name.type_tags, TypeTag.SpecimenDetail),
+    )
+    if getattr(name, "species_type_kind", None) is not SpeciesGroupType.neotype:
+        return details
+    designation_source_ids = {
+        tag.optional_source.id
+        for tag in name.get_tags(name.type_tags, TypeTag.NeotypeDesignation)
+        if tag.valid and tag.optional_source is not None
+    }
+    return tuple(
+        tag
+        for tag in details
+        if getattr(tag, "source", None) is not None
+        and tag.source.id in designation_source_ids
+    )
+
+
+def _extract_name_text_tag_coordinate_pairs(
+    name: Name, tag: Any
+) -> tuple[tuple[str, str], ...]:
+    """Extract usable type-locality coordinates from a Name text tag.
+
+    SpecimenDetail tags often contain a catalog dump for the holotype followed by
+    paratypes or other referred specimens from different localities.  A lone pair
+    can document the type locality, but multiple distinct pairs cannot safely be
+    assigned to the Name's Location without parsing the specimen roles as well.
+    LocationDetail tags are locality evidence throughout, so retain all pairs from
+    them and let the compatibility lint report genuine conflicts.
+    """
+    from taxonomy.db.models.name import TypeTag
+
+    if (
+        isinstance(tag, TypeTag.SpecimenDetail)
+        and getattr(name, "species_type_kind", None) is not SpeciesGroupType.neotype
+        and re.search(r"\bpropos\w*\s+to\s+designat", tag.text, re.IGNORECASE)
+    ):
+        # A proposed neotype does not replace the name-bearing type until the
+        # designation is accepted and represented on the Name.  In particular,
+        # its specimen locality must not overwrite the current holotype locality.
+        return ()
+    pairs = tuple(dict.fromkeys(helpers.extract_coordinate_pairs(tag.text)))
+    if isinstance(tag, TypeTag.SpecimenDetail) and len(pairs) != 1:
+        return ()
+    return pairs
+
+
 def _region_of_kind(region: Region, kind: RegionKind) -> Region | None:
     if region.kind is kind:
         return region
@@ -754,6 +809,58 @@ def _resolve_plss_evidence(
     )
 
 
+def _common_plss_description(
+    descriptions: Collection[plss.PLSSDescription],
+) -> plss.PLSSDescription | None:
+    """Return the most specific PLSS description supported by every item.
+
+    Distinct sections or nonoverlapping aliquots are not distinct township/range
+    assignments.  A Location that genuinely covers both can still retain the
+    common section or township.  Different township/range pairs remain
+    incompatible and return ``None``.
+    """
+    if not descriptions:
+        return None
+    first = next(iter(descriptions))
+    if any(
+        description.township_key != first.township_key for description in descriptions
+    ):
+        return None
+    meridians = {description.meridian for description in descriptions}
+    if len(meridians) != 1:
+        return None
+
+    sections = {description.section for description in descriptions}
+    if len(sections) != 1 or None in sections:
+        return plss.PLSSDescription(
+            first.township,
+            first.township_fraction,
+            first.township_direction,
+            first.range,
+            first.range_fraction,
+            first.range_direction,
+            meridian=first.meridian,
+        )
+
+    section = next(iter(sections))
+    assert section is not None
+    most_specific = max(descriptions, key=lambda description: description.specificity)
+    if all(
+        description.is_compatible_with(most_specific) for description in descriptions
+    ):
+        return most_specific
+    return plss.PLSSDescription(
+        first.township,
+        first.township_fraction,
+        first.township_direction,
+        first.range,
+        first.range_fraction,
+        first.range_direction,
+        section=section,
+        meridian=first.meridian,
+    )
+
+
 @LINT.add("plss", requires_network=True)
 def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
     tags = list(location.get_tags(location.tags, LocationTag.PLSS))
@@ -878,15 +985,25 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
         tuple[_LinkedPLSSEvidence, plss.Township, plss.PLSSDescription]
     ] = []
     for item in evidence:
+        description = item.description
         if item.has_alternative_section:
-            yield (
-                f"PLSS data from {item.source} gives alternative sections and cannot "
-                "be inferred as a single PLSS description"
+            # A source such as "sections 22 and 27, T23N R9W" does not support
+            # either individual section, but it still unambiguously supports the
+            # enclosing township.  Retaining that common structured marker is both
+            # more informative and less noisy than treating the section list as an
+            # irresolvable conflict.
+            description = plss.PLSSDescription(
+                description.township,
+                description.township_fraction,
+                description.township_direction,
+                description.range,
+                description.range_fraction,
+                description.range_direction,
+                meridian=description.meridian,
             )
-            continue
         try:
             resolution = _resolve_plss_evidence(
-                item.description,
+                description,
                 state_code=state_code,
                 state_fips=state_fips,
                 county_name=county_name,
@@ -899,7 +1016,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
             yield f"PLSS data from {item.source} could not be resolved: {resolution.problem}"
             continue
         assert resolution.township is not None
-        description = item.description.with_meridian(resolution.township.meridian)
+        description = description.with_meridian(resolution.township.meridian)
         if extent is not None:
             try:
                 resolved_geometry = plss.get_description_geometry(
@@ -930,28 +1047,30 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
         return
 
     first_item, first_township, first_description = resolved_evidence[0]
-    conflict = next(
+    township_conflict = next(
         (
             (item, township, description)
             for item, township, description in resolved_evidence[1:]
             if township.plss_id != first_township.plss_id
-            or not description.is_compatible_with(first_description)
         ),
         None,
     )
-    if conflict is not None:
-        item, township, description = conflict
+    if township_conflict is not None:
+        item, township, description = township_conflict
         yield (
-            "Location evidence resolves to incompatible PLSS descriptions: "
+            "Location evidence resolves to distinct township/range data: "
             f"{first_description.canonical_text!r} ({first_township.plss_id}, from "
             f"{first_item.source}) and {description.canonical_text!r} "
             f"({township.plss_id}, from {item.source})"
         )
         return
 
-    _, most_specific_township, most_specific = max(
-        resolved_evidence, key=lambda resolved: resolved[2].specificity
+    common_description = _common_plss_description(
+        [description for _, _, description in resolved_evidence]
     )
+    assert common_description is not None
+    most_specific_township = first_township
+    most_specific = common_description
     expected = LocationTag.PLSS(
         most_specific.canonical_text, most_specific_township.plss_id
     )
@@ -1859,6 +1978,7 @@ def _get_linked_coordinate_evidence(
     from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 
     evidence: list[_LinkedCoordinateEvidence] = []
+    seen_name_extents: set[tuple[int, str, str]] = set()
     for name in location.type_localities:
         for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
             parsed = coordinate_lint.standardize_coordinate_pair(
@@ -1866,12 +1986,32 @@ def _get_linked_coordinate_evidence(
             )
             if parsed is not None:
                 latitude, longitude, extent = parsed
+                seen_name_extents.add((name.id, latitude, longitude))
                 evidence.append(
                     _LinkedCoordinateEvidence(
                         latitude,
                         longitude,
                         extent,
                         f"Name {name}",
+                        LocationTag.CoordinatesFromName(name),
+                    )
+                )
+        for tag in _get_applicable_coordinate_text_tags(name):
+            for extracted in _extract_name_text_tag_coordinate_pairs(name, tag):
+                parsed = coordinate_lint.standardize_coordinate_pair(*extracted)
+                if parsed is None:
+                    continue
+                latitude, longitude, extent = parsed
+                key = (name.id, latitude, longitude)
+                if key in seen_name_extents:
+                    continue
+                seen_name_extents.add(key)
+                evidence.append(
+                    _LinkedCoordinateEvidence(
+                        latitude,
+                        longitude,
+                        extent,
+                        f"Name {name} {type(tag).__name__} {tag.text!r}",
                         LocationTag.CoordinatesFromName(name),
                     )
                 )
@@ -1909,6 +2049,12 @@ def _add_coordinate_provenance(location: Location, tags: Iterable[Any]) -> None:
         if tag not in existing:
             location.add_tag(tag)
             existing = (*existing, tag)
+
+
+def _replace_location_tag(location: Location, old_tag: Any, new_tag: Any) -> None:
+    location.tags = tuple(  # type: ignore[assignment]
+        dict.fromkeys(new_tag if tag == old_tag else tag for tag in location.tags or ())
+    )
 
 
 def _nominatim_provenance_tag(
@@ -3512,8 +3658,8 @@ def _get_coordinate_provenance_extents(
                 extents.append(parsed[2])
         if extents:
             return extents, None
-        for tag in _get_applicable_location_detail_tags(name):
-            for extracted in helpers.extract_coordinate_pairs(tag.text):
+        for tag in _get_applicable_coordinate_text_tags(name):
+            for extracted in _extract_name_text_tag_coordinate_pairs(name, tag):
                 parsed = coordinate_lint.standardize_coordinate_pair(*extracted)
                 if parsed is not None:
                     extents.append(parsed[2])
@@ -3577,35 +3723,46 @@ def _get_coordinate_provenance_extents(
             )
         return [parsed[2]], None
     if isinstance(provenance, LocationTag.CoordinatesFromNominatim):
-        try:
-            result = nominatim.lookup(provenance.osm_type, provenance.osm_id)
-        except (httpx.HTTPError, ValueError, TypeError) as exc:
-            return [], f"could not retrieve Nominatim provenance: {exc}"
-        if result is None:
-            return (
-                [],
-                f"Nominatim cannot find {provenance.osm_type} {provenance.osm_id}",
-            )
-        if result.category != provenance.category:
-            return (
-                [],
-                f"Nominatim object category changed from {provenance.category!r} "
-                f"to {result.category!r}",
-            )
-        if provenance.use_bounding_box:
-            parsed = get_nominatim_result_bounding_box(result)
-        else:
-            parsed = get_nominatim_result_coordinates(
-                result, offsets=get_nominatim_search_plan(location).offsets
-            )
-        if parsed is None:
-            kind = "bounding box" if provenance.use_bounding_box else "coordinates"
-            return [], f"Nominatim object has no usable {kind}"
-        return [parsed[2]], None
+        _, extents, issue = _get_nominatim_provenance_extents(location, provenance)
+        return extents, issue
     if isinstance(provenance, LocationTag.CoordinatesFromPLSS):
         extent, issue = _get_plss_provenance_extent(location, provenance)
         return ([] if extent is None else [extent]), issue
     return [], f"unrecognized coordinate provenance tag {provenance!r}"
+
+
+def _get_nominatim_provenance_extents(
+    location: Location, provenance: Any
+) -> tuple[
+    nominatim.SearchResult | None, list[coordinate_lint.CoordinateExtent], str | None
+]:
+    try:
+        result = nominatim.lookup(provenance.osm_type, provenance.osm_id)
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
+        return None, [], f"could not retrieve Nominatim provenance: {exc}"
+    if result is None:
+        return (
+            None,
+            [],
+            f"Nominatim cannot find {provenance.osm_type} {provenance.osm_id}",
+        )
+    if result.category != provenance.category:
+        return (
+            result,
+            [],
+            f"Nominatim object category changed from {provenance.category!r} "
+            f"to {result.category!r}",
+        )
+    if provenance.use_bounding_box:
+        parsed = get_nominatim_result_bounding_box(result)
+    else:
+        parsed = get_nominatim_result_coordinates(
+            result, offsets=get_nominatim_search_plan(location).offsets
+        )
+    if parsed is None:
+        kind = "bounding box" if provenance.use_bounding_box else "coordinates"
+        return result, [], f"Nominatim object has no usable {kind}"
+    return result, [parsed[2]], None
 
 
 def _extent_exactly_matches_location(
@@ -3635,16 +3792,19 @@ def _provenance_extents_match(
     """Whether provenance supports the stored extent exactly.
 
     Multiple extents exposed by one provenance tag may be alternative statements in
-    the same Name or occurrence record.  An exact match to any one of those
-    alternatives is sufficient.  The union remains accepted because several cited
-    provenance tags may jointly define a stored range.
+    the same Name or occurrence record. An exact match to any one alternative from
+    every cited provenance object is sufficient. The union remains accepted because
+    several cited provenance tags may jointly define a stored range.
     """
     groups = [group for group in evidence_extent_groups if group]
     if not groups:
         return True
-    if len(groups) == 1 and any(
-        _extent_exactly_matches_location(location_extent, extent)
-        for extent in groups[0]
+    if all(
+        any(
+            _extent_exactly_matches_location(location_extent, extent)
+            for extent in group
+        )
+        for group in groups
     ):
         return True
     combined_extent = _union_coordinate_extents(
@@ -3787,8 +3947,54 @@ def check_coordinate_provenance(location: Location, cfg: LintConfig) -> Iterable
         return
 
     evidence_extent_groups: list[list[coordinate_lint.CoordinateExtent]] = []
-    for provenance in provenance_tags:
-        extents, issue = _get_coordinate_provenance_extents(location, provenance)
+    for index, provenance in enumerate(provenance_tags):
+        if isinstance(provenance, LocationTag.CoordinatesFromNominatim):
+            current_result, extents, issue = _get_nominatim_provenance_extents(
+                location, provenance
+            )
+            if (
+                current_result is not None
+                and current_result.category != provenance.category
+            ):
+                replacement = LocationTag.CoordinatesFromNominatim(
+                    provenance.osm_type,
+                    provenance.osm_id,
+                    current_result.category,
+                    provenance.use_bounding_box,
+                )
+                if provenance.use_bounding_box:
+                    parsed = get_nominatim_result_bounding_box(current_result)
+                else:
+                    parsed = get_nominatim_result_coordinates(
+                        current_result,
+                        offsets=get_nominatim_search_plan(location).offsets,
+                    )
+                message = (
+                    f"replace stale Nominatim provenance {provenance!r} with "
+                    f"{replacement!r}; stable OSM object "
+                    f"{provenance.osm_type} {provenance.osm_id} now has category "
+                    f"{current_result.category!r}"
+                )
+                if cfg.autofix and not LINT.is_ignoring_lint(
+                    location, "coordinate_provenance"
+                ):
+                    print(f"{location}: {message}")
+                    _replace_location_tag(location, provenance, replacement)
+                else:
+                    yield message
+                provenance = replacement
+                provenance_tags[index] = replacement
+                if parsed is None:
+                    kind = (
+                        "bounding box" if provenance.use_bounding_box else "coordinates"
+                    )
+                    extents = []
+                    issue = f"Nominatim object has no usable {kind}"
+                else:
+                    extents = [parsed[2]]
+                    issue = None
+        else:
+            extents, issue = _get_coordinate_provenance_extents(location, provenance)
         if issue is not None:
             yield f"{provenance!r}: {issue}"
             continue

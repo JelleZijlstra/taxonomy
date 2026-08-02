@@ -335,6 +335,22 @@ def test_location_detail_plss_allows_narrower_reviewed_location_evidence() -> No
     assert list(check_location_detail_plss(name, LintConfig())) == []
 
 
+def test_location_detail_plss_allows_reviewed_section_from_explicit_alternative() -> (
+    None
+):
+    from taxonomy.db.models.location import LocationTag
+
+    name = _name_with_location_details(
+        ("Sections 30-31, T6N R3E",),
+        location_coordinates=(None, None),
+        location_tags=(
+            LocationTag.PLSS("T6N R3E Sec. 31, Wind River Meridian", "WY340060N0030E0"),
+        ),
+    )
+
+    assert list(check_location_detail_plss(name, LintConfig())) == []
+
+
 def test_location_detail_coordinates_must_match_existing_tag() -> None:
     name = _name_with_location_details(
         ("Collected at 40°30'N, 74°15'W.",), location_coordinates=(None, None)

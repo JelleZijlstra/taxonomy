@@ -1539,6 +1539,52 @@ def test_location_plss_lint_suggests_tag_from_linked_name(
     assert "OR330270S0310E0" in messages[0]
 
 
+def test_location_plss_lint_uses_common_township_for_distinct_sections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = cast(Article, object())
+    first = _tagged_object(
+        (TypeTag.LocationDetail("T27S R31E Sec. 3", source),), name_tags=True
+    )
+    first.id = 101
+    second = _tagged_object(
+        (TypeTag.LocationDetail("T27S R31E Sec. 8", source),), name_tags=True
+    )
+    second.id = 102
+    loc = _location_without_coordinates(region=_plss_county(), names=(first, second))
+    monkeypatch.setattr(
+        plss, "resolve_township", lambda description, **_: _resolved_plss(description)
+    )
+
+    messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "add PLSS('T27S R31E, Willamette Meridian'" in messages[0]
+
+
+def test_location_plss_lint_uses_common_section_for_distinct_quarters(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = cast(Article, object())
+    first = _tagged_object(
+        (TypeTag.LocationDetail("T27S R31E Sec. 3 NE1/4", source),), name_tags=True
+    )
+    first.id = 101
+    second = _tagged_object(
+        (TypeTag.LocationDetail("T27S R31E Sec. 3 SW1/4", source),), name_tags=True
+    )
+    second.id = 102
+    loc = _location_without_coordinates(region=_plss_county(), names=(first, second))
+    monkeypatch.setattr(
+        plss, "resolve_township", lambda description, **_: _resolved_plss(description)
+    )
+
+    messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "add PLSS('T27S R31E Sec. 3, Willamette Meridian'" in messages[0]
+
+
 def test_location_plss_lint_extracts_location_detail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1644,7 +1690,7 @@ def test_location_plss_lint_rejects_tag_on_general_location() -> None:
     assert "general location should not have a precise PLSS tag" in messages[0]
 
 
-def test_location_plss_lint_does_not_infer_alternative_section(
+def test_location_plss_lint_infers_township_from_alternative_sections(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = cast(Article, object())
@@ -1662,15 +1708,16 @@ def test_location_plss_lint_does_not_infer_alternative_section(
     loc = _location_without_coordinates(
         region=_plss_county(), names=(name,), general=True
     )
-    resolver = Mock()
+    resolver = Mock(side_effect=lambda description, **_: _resolved_plss(description))
     monkeypatch.setattr(plss, "resolve_township", resolver)
 
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "alternative sections" in messages[0]
+    assert "general location has precise PLSS evidence" in messages[0]
+    assert "T13S R36W, Willamette Meridian" in messages[0]
     assert loc.tags == ()
-    resolver.assert_not_called()
+    resolver.assert_called_once()
 
 
 def test_location_plss_ignore_suppresses_autofix_and_warning(
@@ -1958,6 +2005,101 @@ def test_location_infers_coordinates_from_name() -> None:
     assert loc.tags == (LocationTag.CoordinatesFromName(cast(models.Name, name)),)
 
 
+def test_location_infers_coordinates_from_name_location_detail() -> None:
+    source = cast(models.Article, object())
+    name = _tagged_object(
+        (TypeTag.LocationDetail("Collected at 37.9°N, 122.1°W", source),),
+        name_tags=True,
+    )
+    loc = _location_without_coordinates(names=(name,))
+
+    assert (
+        list(location_lint.check_linked_coordinates(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.latitude == "37.9°N"
+    assert loc.longitude == "122.1°W"
+    assert loc.tags == (LocationTag.CoordinatesFromName(cast(models.Name, name)),)
+
+
+def test_location_infers_coordinates_from_name_specimen_detail() -> None:
+    source = cast(models.Article, object())
+    name = _tagged_object(
+        (
+            TypeTag.LocationDetail("Mount Somoro, Papua New Guinea", source),
+            TypeTag.SpecimenDetail(
+                "Holotype from Mount Somoro (3°22'S, 142°9'E)", source
+            ),
+        ),
+        name_tags=True,
+    )
+    loc = _location_without_coordinates(names=(name,))
+
+    assert (
+        list(location_lint.check_linked_coordinates(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.latitude == "3°22'S"
+    assert loc.longitude == "142°9'E"
+    assert loc.tags == (LocationTag.CoordinatesFromName(cast(models.Name, name)),)
+
+
+def test_location_does_not_infer_multiple_specimen_detail_coordinates() -> None:
+    source = cast(models.Article, object())
+    name = _tagged_object(
+        (
+            TypeTag.SpecimenDetail(
+                "Holotype from Bogamanda (2.08°S, 28.49°E); "
+                "paratype from Tschamola (2.01°S, 28.53°E)",
+                source,
+            ),
+        ),
+        name_tags=True,
+    )
+    loc = _location_without_coordinates(names=(name,))
+
+    assert list(location_lint.check_linked_coordinates(loc, LintConfig())) == []
+    assert loc.latitude is None
+    assert loc.longitude is None
+
+
+def test_location_does_not_infer_coordinates_from_proposed_neotype() -> None:
+    source = cast(models.Article, object())
+    name = _tagged_object(
+        (
+            TypeTag.SpecimenDetail(
+                "We hereby propose to designate MVZ 232023, collected at "
+                "34.98466N, 118.30149W",
+                source,
+            ),
+        ),
+        name_tags=True,
+    )
+    name.species_type_kind = SpeciesGroupType.holotype
+    loc = _location_without_coordinates(names=(name,))
+
+    assert list(location_lint.check_linked_coordinates(loc, LintConfig())) == []
+    assert loc.latitude is None
+    assert loc.longitude is None
+
+
+def test_location_detail_coordinates_do_not_duplicate_structured_tag() -> None:
+    source = cast(models.Article, object())
+    name = _tagged_object(
+        (
+            TypeTag.Coordinates("37.9°N", "122.1°W"),
+            TypeTag.LocationDetail("Collected at 37.9°N, 122.1°W", source),
+        ),
+        name_tags=True,
+    )
+    loc = _location_without_coordinates(names=(name,))
+
+    evidence = location_lint._get_linked_coordinate_evidence(loc)
+
+    assert len(evidence) == 1
+    assert evidence[0].source == f"Name {name}"
+
+
 def test_location_infers_coordinates_from_occurrence_record() -> None:
     record = _tagged_object(
         (OccurrenceRecordTag.Coordinates("37.9", "-122.1"),), name_tags=False
@@ -2235,6 +2377,35 @@ def test_coordinate_provenance_lint_accepts_exact_multi_source_union(
     assert list(location_lint.check_coordinate_provenance(loc, LintConfig())) == []
 
 
+def test_coordinate_provenance_lint_accepts_alternative_when_each_source_is_exact(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = cast(models.Article, object())
+    first_name = _tagged_object(
+        (TypeTag.Coordinates("37.9°N", "122.1°W"),), name_tags=True
+    )
+    first_name.id = 101
+    second_name = _tagged_object(
+        (
+            TypeTag.LocationDetail(
+                "Most material at 37.9°N, 122.1°W; some from 38°N, 122°W", source
+            ),
+        ),
+        name_tags=True,
+    )
+    second_name.id = 102
+    loc = _location_without_coordinates(names=(first_name, second_name))
+    loc.latitude = "37.9°N"
+    loc.longitude = "122.1°W"
+    loc.tags = (  # type: ignore[assignment]
+        LocationTag.CoordinatesFromName(cast(models.Name, first_name)),
+        LocationTag.CoordinatesFromName(cast(models.Name, second_name)),
+    )
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert list(location_lint.check_coordinate_provenance(loc, LintConfig())) == []
+
+
 def test_coordinate_provenance_lint_rejects_stale_extra_provenance(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2409,6 +2580,122 @@ def test_coordinate_provenance_lint_rechecks_nominatim_identifier(
 
     assert list(location_lint.check_coordinate_provenance(loc, LintConfig())) == []
     lookup.assert_called_once_with("node", 1234)
+
+
+def test_coordinate_provenance_lint_updates_nominatim_category(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates()
+    loc.latitude = "37.9°N"
+    loc.longitude = "122.1°W"
+    old_tag = LocationTag.CoordinatesFromNominatim(
+        "node", 1234, "place", use_bounding_box=False
+    )
+    loc.tags = (old_tag,)  # type: ignore[assignment]
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    result = _nominatim_result(
+        latitude="37.9",
+        longitude="-122.1",
+        osm_type="node",
+        osm_id=1234,
+        category="natural",
+    )
+    monkeypatch.setattr(nominatim, "lookup", Mock(return_value=result))
+
+    assert (
+        list(location_lint.check_coordinate_provenance(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.tags == (
+        LocationTag.CoordinatesFromNominatim(
+            "node", 1234, "natural", use_bounding_box=False
+        ),
+    )
+
+
+def test_coordinate_provenance_lint_updates_categories_for_bbox_union(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates()
+    loc.latitude = "37°N-39°N"
+    loc.longitude = "123°W-121°W"
+    loc.tags = (  # type: ignore[assignment]
+        LocationTag.CoordinatesFromNominatim(
+            "way", 1, "natural", use_bounding_box=True
+        ),
+        LocationTag.CoordinatesFromNominatim(
+            "way", 2, "natural", use_bounding_box=True
+        ),
+    )
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    results = {
+        ("way", 1): _nominatim_result(
+            latitude="37.5",
+            longitude="-122.5",
+            osm_type="way",
+            osm_id=1,
+            category="leisure",
+            bounding_box=("37", "38", "-123", "-122"),
+        ),
+        ("way", 2): _nominatim_result(
+            latitude="38.5",
+            longitude="-121.5",
+            osm_type="way",
+            osm_id=2,
+            category="leisure",
+            bounding_box=("38", "39", "-122", "-121"),
+        ),
+    }
+    monkeypatch.setattr(
+        nominatim,
+        "lookup",
+        Mock(side_effect=lambda osm_type, osm_id: results[osm_type, osm_id]),
+    )
+
+    assert (
+        list(location_lint.check_coordinate_provenance(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.tags == (
+        LocationTag.CoordinatesFromNominatim(
+            "way", 1, "leisure", use_bounding_box=True
+        ),
+        LocationTag.CoordinatesFromNominatim(
+            "way", 2, "leisure", use_bounding_box=True
+        ),
+    )
+
+
+def test_coordinate_provenance_lint_updates_category_but_reports_changed_extent(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates()
+    loc.latitude = "37.9°N"
+    loc.longitude = "122.1°W"
+    old_tag = LocationTag.CoordinatesFromNominatim(
+        "node", 1234, "place", use_bounding_box=False
+    )
+    loc.tags = (old_tag,)  # type: ignore[assignment]
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+    result = _nominatim_result(
+        latitude="38",
+        longitude="-122",
+        osm_type="node",
+        osm_id=1234,
+        category="natural",
+    )
+    monkeypatch.setattr(nominatim, "lookup", Mock(return_value=result))
+
+    messages = list(
+        location_lint.check_coordinate_provenance(loc, LintConfig(autofix=True))
+    )
+
+    assert any("do not exactly match" in message for message in messages)
+    assert loc.tags == (
+        LocationTag.CoordinatesFromNominatim(
+            "node", 1234, "natural", use_bounding_box=False
+        ),
+    )
 
 
 def test_location_infers_coordinates_from_geonames(

@@ -425,58 +425,159 @@ def _display(value: float) -> str:
 
 LATLONG = re.compile(
     r"""
-    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[NS])(?:[.,\s\[\]|;–—]+|\band\b)+
-    (long\.\s)?(?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[EWO])
+    (?P<latitude>[+−–-]?\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[NS])(?:[.,/:&\s\[\]|;–—]+|\band\b)+
+    (long(?:\.|itude)\s*)?(?P<longitude>[+−–-]?\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[EWO])
     """,
     re.VERBOSE,
 )
 LATLONG_NO_SIGN = re.compile(
     r"""
-    (?P<latitude>\d+\.\d+\s*[NS])(?:[,\s|;–—]+|\band\b)+
-    (?P<longitude>\d+\.\d+\s*[EWO])
+    (?P<latitude>[+−–-]?\d+\.\d+\s*[NS])(?:[.,/:&\s|;\-–—]+|\band\b)+
+    ([Ll]ong(?:\.|itude)?\s*)?
+    (?P<longitude>[+−–-]?\d+\.\d+\s*[EWO])
     """,
     re.VERBOSE,
 )
 LONG_LAT = re.compile(
     r"""
-    (?P<longitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[EWO])(?:[.,\s\[\]|;–—]+|\band\b)+
-    (?P<latitude>\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[NS])
+    (?P<longitude>[+−–-]?\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[EWO])(?:[.,/:&\s\[\]|;–—]+|\band\b)+
+    ([Ll]at(?:\.|itude)?\s*)?
+    (?P<latitude>[+−–-]?\d+(\.\d+)?\s*[°*]\s*(\d+(\.\d+)?\s*')?\s*(\d+(\.\d+)?\s*")?\s*[NS])
     """,
     re.VERBOSE,
+)
+SIGNED_DECIMAL_LATLONG = re.compile(
+    r"""
+    (?<![\d.])(?P<latitude>[+−–-]?\d+\.\d+)\s*[\u00b0*]?\s*[,;:]\s*
+    (?P<longitude>[+−–-]?\d+\.\d+)\s*[\u00b0*]?
+    """,
+    re.VERBOSE,
+)
+COMPACT_DEGREES_MINUTES_LATLONG = re.compile(
+    r"(?<!\d)(?P<latitude>\d{4}[NS])\s*/\s*(?P<longitude>\d{4,5}[EWO])(?!\w)"
+)
+DOTTED_DEGREES_MINUTES_LATLONG = re.compile(
+    r"(?<![\d.])"
+    r"(?P<latitude_degrees>\d{1,2})\.(?P<latitude_minutes>[0-5]\d)\s*"
+    r"(?P<latitude_direction>[NS])\s*[-–—]\s*"
+    r"(?P<longitude_degrees>\d{1,3})\.(?P<longitude_minutes>[0-5]\d)\s*"
+    r"(?P<longitude_direction>[EWO])(?!\w)",
+    re.IGNORECASE,
 )
 
 
 def _normalize_coordinate_symbols(text: str) -> str:
     """Normalize typographic coordinate symbols before applying extraction regexes."""
+    # Some gazetteer-style sources write degrees and minutes as ``DD.MM`` and
+    # separate the latitude and longitude with a dash.  This is distinguishable
+    # from ordinary decimal degrees because the dash is part of the pair format
+    # and both two-digit suffixes are valid minutes.
+    text = DOTTED_DEGREES_MINUTES_LATLONG.sub(
+        lambda match: (
+            f"{match.group('latitude_degrees')}°"
+            f"{match.group('latitude_minutes')}'"
+            f"{match.group('latitude_direction')} "
+            f"{match.group('longitude_degrees')}°"
+            f"{match.group('longitude_minutes')}'"
+            f"{match.group('longitude_direction')}"
+        ),
+        text,
+    )
+    # A leading minus sign is definitive even when a source redundantly prints
+    # a contradictory cardinal letter (for example ``−9.1547 E``). Preserve the
+    # numeric sign by normalizing the direction before later parsing strips it.
+    text = re.sub(
+        r"(?<![\d.])[-−–](?P<value>\d+(?:\.\d+)?)\s*(?P<direction>[NSEWO])\b",
+        lambda match: match.group("value")
+        + {"N": "S", "S": "S", "E": "W", "W": "W", "O": "W"}[
+            match.group("direction").upper()
+        ],
+        text,
+        flags=re.IGNORECASE,
+    )
     text = re.sub(r"(?<=\d),(?=\d)", ".", text)
     text = (
         text.replace("º", "°")
         .replace("˚", "°")
         .replace("◦", "°")
+        .replace("·", ".")
         .replace("′", "'")
         .replace("ʹ", "'")
         .replace("’", "'")
         .replace("‘", "'")
+        .replace("¢", "'")
         .replace("″", '"')
         .replace("”", '"')
         .replace("“", '"')
+        # Greek epsilon is an occasional OCR substitution for east in
+        # coordinate pairs (for example ``N50°52' Ε 20°38'``).
+        .replace("Ε", "E")
+        .replace("ε", "E")
     )
+    text = re.sub(r"\[\s*([NSEWO])\s*\]", r"\1", text)
+    text = re.sub(r"(?<=\d)±\d+(?=[\'\"])", "", text)
+    # Some transcriptions use a second prime where a double-prime was intended,
+    # for example ``23°29'00'N``.  In a complete degrees-minutes-seconds value the
+    # prime immediately before the cardinal direction can only be the seconds
+    # marker, so normalize this narrow form without changing ordinary degree-minute
+    # coordinates.
+    text = re.sub(
+        r"(?P<prefix>\d+\s*[°*]\s*\d+\s*')"
+        r"(?P<seconds>\d+(?:\.\d+)?)'(?P<direction>[NSEWO])",
+        r'\g<prefix>\g<seconds>"\g<direction>',
+        text,
+    )
+    for wording, direction in {
+        "north latitude": "N",
+        "south latitude": "S",
+        "east longitude": "E",
+        "west longitude": "W",
+    }.items():
+        text = re.sub(wording, direction, text, flags=re.IGNORECASE)
     # A few source conventions put the cardinal direction before the complete DMS
     # value, and OCR commonly renders the degree sign as a lower-case ``o`` in DMS
     # pairs. Move the direction after the complete value, not merely after the
     # degrees (which would turn ``S 41°57'`` into the invalid ``41°S57'``).
-    text = re.sub(
+    direction_before_coordinate = re.compile(
         # Avoid treating the trailing direction of one coordinate as the prefix
         # of the next one in pairs such as ``1°30'N 30°30'E``.
         r"(?<![\d°*.'\"])\b([NSEWO])\s*"
         r"(\d+(?:\.\d+)?\s*[°*]\s*"
         r"(?:\d+(?:\.\d+)?\s*')?\s*"
         r'(?:\d+(?:\.\d+)?\s*")?)',
-        r"\2\1",
+        flags=re.IGNORECASE,
+    )
+
+    def move_direction(match: re.Match[str]) -> str:
+        # A direction preceded (apart from whitespace) by a degree, minute, or
+        # second value belongs to that preceding coordinate. For example, the
+        # ``S`` in ``24°21' S 133°43' E`` must not be moved onto 133°43'.
+        preceding = text[: match.start()].rstrip()
+        if preceding.endswith(("°", "*", "'", '"')):
+            return match.group(0)
+        return f"{match.group(2)}{match.group(1)}"
+
+    text = direction_before_coordinate.sub(move_direction, text)
+    # In pairs written as ``N46°11' E95°03'``, moving the latitude direction
+    # first leaves the longitude direction between the two coordinates. Move
+    # that second prefix without mistaking it for part of the latitude.
+    coordinate_value = (
+        r"\d+(?:\.\d+)?\s*[°*]\s*"
+        r"(?:\d+(?:\.\d+)?\s*')?\s*"
+        r'(?:\d+(?:\.\d+)?\s*")?'
+    )
+    text = re.sub(
+        rf"(?P<latitude_direction>[NS])\s*(?P<longitude_direction>[EWO])\s*"
+        rf"(?P<longitude>{coordinate_value})",
+        lambda match: (
+            f"{match.group('latitude_direction')} "
+            f"{match.group('longitude')}{match.group('longitude_direction')}"
+        ),
         text,
         flags=re.IGNORECASE,
     )
-    text = re.sub(r"(?<=\d)[oO](?=\d)", "°", text)
+    text = re.sub(r"(?<=\d)[oO](?=\s*\d)", "°", text)
+    text = re.sub(r"\bL([NSEWO])\b", r"\1", text)
     text = re.sub(r"östl\.?\s+Länge", "E", text, flags=re.IGNORECASE)
     text = re.sub(r"nördl\.?\s+Breite", "N", text, flags=re.IGNORECASE)
     return re.sub(r'(?<=\d)\.(?=")', "", text)
@@ -490,21 +591,59 @@ def extract_coordinate_pairs(text: str) -> list[tuple[str, str]]:
         for rgx in (LATLONG, LATLONG_NO_SIGN, LONG_LAT)
         for match in rgx.finditer(text)
     )
-    output: list[tuple[str, str]] = []
+    positioned_pairs: list[tuple[int, tuple[str, str]]] = []
     for _, match in matches:
+        latitude_text = match.group("latitude").lstrip("+−–-")
+        longitude_text = match.group("longitude").lstrip("+−–-")
         try:
-            latitude, _ = standardize_coordinates(
-                match.group("latitude"), is_latitude=True
-            )
+            latitude, _ = standardize_coordinates(latitude_text, is_latitude=True)
         except InvalidCoordinates:
             continue
         try:
-            longitude, _ = standardize_coordinates(
-                match.group("longitude"), is_latitude=False
-            )
+            longitude, _ = standardize_coordinates(longitude_text, is_latitude=False)
         except InvalidCoordinates:
             continue
         pair = (latitude, longitude)
+        positioned_pairs.append((match.start(), pair))
+    for match in SIGNED_DECIMAL_LATLONG.finditer(text):
+        latitude_text = match.group("latitude")
+        longitude_text = match.group("longitude")
+        if not latitude_text.startswith(
+            ("+", "−", "–", "-")
+        ) and not longitude_text.startswith(("+", "−", "–", "-")):
+            continue
+        latitude_value = float(latitude_text.replace("−", "-").replace("–", "-"))
+        longitude_value = float(longitude_text.replace("−", "-").replace("–", "-"))
+        if not (-90 <= latitude_value <= 90 and -180 <= longitude_value <= 180):
+            continue
+        latitude_direction = "S" if latitude_value < 0 else "N"
+        longitude_direction = "W" if longitude_value < 0 else "E"
+        latitude, _ = standardize_coordinates(
+            f"{_display(abs(latitude_value))}°{latitude_direction}", is_latitude=True
+        )
+        longitude, _ = standardize_coordinates(
+            f"{_display(abs(longitude_value))}°{longitude_direction}", is_latitude=False
+        )
+        pair = (latitude, longitude)
+        positioned_pairs.append((match.start(), pair))
+    for match in COMPACT_DEGREES_MINUTES_LATLONG.finditer(text):
+        compact_latitude = match.group("latitude")
+        compact_longitude = match.group("longitude")
+        latitude, _ = standardize_coordinates(
+            f"{compact_latitude[:-3]}°{compact_latitude[-3:-1]}'"
+            f"{compact_latitude[-1]}",
+            is_latitude=True,
+        )
+        longitude, _ = standardize_coordinates(
+            f"{compact_longitude[:-3]}°{compact_longitude[-3:-1]}'"
+            f"{compact_longitude[-1]}",
+            is_latitude=False,
+        )
+        pair = (latitude, longitude)
+        positioned_pairs.append((match.start(), pair))
+
+    output: list[tuple[str, str]] = []
+    for _, pair in sorted(positioned_pairs, key=lambda item: item[0]):
         if pair not in output:
             output.append(pair)
     return output

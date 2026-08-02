@@ -6,6 +6,7 @@ from typing import Self, cast
 import pytest
 
 from taxonomy import coordinates
+from taxonomy.apis import nominatim
 from taxonomy.db import coordinate_lint
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models.region import Region
@@ -252,6 +253,17 @@ def test_check_point_in_region_reports_actual_subnational_region(
         "coordinates Point(longitude=1, latitude=1) are in Actual State, "
         "not Expected State"
     ]
+
+
+def test_check_point_in_region_allows_french_overseas_country_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = cast(Region, FakeRegion("Guadeloupe"))
+    point = coordinates.Point(-61.0, 16.3)
+    monkeypatch.setattr(coordinates, "get_path", lambda country_name: None)
+    monkeypatch.setattr(nominatim, "get_openstreetmap_country", lambda point: "France")
+
+    assert list(coordinate_lint.check_point_in_region(point, country)) == []
 
 
 def test_check_extent_in_region_allows_overlapping_range(

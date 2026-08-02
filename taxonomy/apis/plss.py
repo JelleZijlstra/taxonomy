@@ -51,7 +51,8 @@ _TOWNSHIP_RANGE_RE = re.compile(
     re.IGNORECASE | re.VERBOSE,
 )
 _SECTION_RE = re.compile(
-    r"\b(?P<section_label>Sections?|Sects?|Secs?)\.?\s*(?P<section>\d{1,3})\b",
+    r"\b(?P<section_label>Sections?|Sects?|Secs?)\.*\s*"
+    r"(?P<section>3[0-6]|[12]\d|[1-9])\b",
     re.IGNORECASE,
 )
 _SECTION_ALTERNATIVE_RE = re.compile(
@@ -168,8 +169,8 @@ class PLSSDescription:
             raise ValueError(f"invalid township direction {self.township_direction!r}")
         if self.range_direction not in "NSEW":
             raise ValueError(f"invalid range direction {self.range_direction!r}")
-        if self.section is not None and self.section <= 0:
-            raise ValueError("section number must be positive")
+        if self.section is not None and not 1 <= self.section <= 36:
+            raise ValueError("section number must be between 1 and 36")
         if any(
             part not in {"N", "S", "E", "W", "NE", "NW", "SE", "SW"}
             for part in self.aliquot
@@ -361,17 +362,29 @@ def _parse_optional_components(
     # Section normally follows township/range. Accept it immediately before the
     # township as well, but do not cross a semicolon or sentence boundary.
     suffix = text[match.end() : match.end() + 140]
-    section_match = _SECTION_RE.search(suffix)
+    section_match: re.Match[str] | None = None
     section_is_prefix = False
-    if section_match is None:
-        prefix_start = max(0, match.start() - 60)
-        prefix = text[prefix_start : match.start()]
-        prefix_matches = list(_SECTION_RE.finditer(prefix))
-        if prefix_matches and not re.search(
-            r"[.;]", prefix[prefix_matches[-1].end() :]
+    prefix_start = max(0, match.start() - 60)
+    prefix = text[prefix_start : match.start()]
+    prefix_matches = list(_SECTION_RE.finditer(prefix))
+    # Prefer a safe prefix over a later section.  In lists such as
+    # ``Sec. 36, T33N R56W; Sec. 2, T32N R56W``, the following section belongs to
+    # the next township rather than the current one.
+    if prefix_matches:
+        candidate = prefix_matches[-1]
+        intervening = prefix[candidate.end() :]
+        if re.fullmatch(r"[\s,.:()\[\]–—-]*", intervening) or _has_section_alternative(
+            candidate, intervening
         ):
-            section_match = prefix_matches[-1]
+            section_match = candidate
             section_is_prefix = True
+    if section_match is None:
+        suffix_candidate = _SECTION_RE.search(suffix)
+        if (
+            suffix_candidate is not None
+            and ";" not in suffix[: suffix_candidate.start()]
+        ):
+            section_match = suffix_candidate
 
     section: int | None = None
     aliquot: tuple[str, ...] = ()
@@ -593,6 +606,8 @@ def get_townships(
 
 def _normalize_meridian(text: str) -> str:
     text = text.casefold()
+    text = re.sub(r"\bmt\.?\s*d\.?\b", "mount diablo", text)
+    text = re.sub(r"\bmt\.?\b", "mount", text)
     for word, replacement in {
         "first": "1st",
         "second": "2nd",
@@ -603,7 +618,7 @@ def _normalize_meridian(text: str) -> str:
     }.items():
         text = re.sub(rf"\b{word}\b", replacement, text)
     text = re.sub(
-        r"\b(?:principal|meridian|base\s*line|baseline|and)\b",
+        r"\b(?:principal|principle|meridian|base\s*line|baseline|base|and|of)\b",
         "",
         text,
         flags=re.IGNORECASE,
