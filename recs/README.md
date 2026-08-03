@@ -5,6 +5,8 @@ and recommendation generators belong in `scripts/`; generated JSONL recommendati
 and Location manifests belong in `manifests/`. Both subdirectories are ignored by Git
 and may be created as needed.
 
-Durable import infrastructure, validators, and applicators belong in the repository's
-`data_import/` and `scripts/` directories. Recommendation manifests should be reviewed
-and dry-run there before any human-authorized database write.
+Durable import infrastructure and command-line entry points belong in `data_import/` and
+`scripts/`. The recommendation applicator's implementation lives in
+`taxonomy/applicator/`; its public entry point is `scripts/apply_recommendations.py`.
+Recommendation manifests should be reviewed and dry-run there before any
+human-authorized database write.

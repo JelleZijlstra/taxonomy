@@ -194,6 +194,10 @@ no_implicit_optional = true
 disallow_any_generics = true
 strict_equality = true
 implicit_reexport = false
+
+[tool.pytest.ini_options]
+norecursedirs = ["recs"]
+
 [[tool.mypy.overrides]]
 module = ["taxonomy.pycroscope_check"]
 ignore_errors = true

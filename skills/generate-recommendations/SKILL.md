@@ -35,6 +35,13 @@ entry point.
    python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --dry-run
    ```
 
+   To limit the compact review to particular actions, repeat `--review-action`:
+
+   ```bash
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --review \
+       --review-action manual_review
+   ```
+
    For a manifest containing unresolved rows or actionable rows with important review
    caveats, inspect their complete notes with:
 
@@ -155,7 +162,7 @@ does not fit them cleanly, add an action instead of forcing the change into a mi
 existing action:
 
 1. implement a parser, stale-state validator/planner, review output, and dry-run/apply
-   executor in an appropriate backend module under `scripts/`;
+   executor in an appropriate backend module under `taxonomy/applicator/`;
 2. register its action name in `scripts/apply_recommendations.py`;
 3. reject duplicate or interacting mutations that cannot be applied safely;
 4. add focused parsing, stale-state, idempotence, dry-run, and application tests; and
