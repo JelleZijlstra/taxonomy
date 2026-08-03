@@ -235,8 +235,8 @@ coordinate-provenance tag. The tag records the evidence used:
   generic fragment. The lint checks that the substring remains present. For a neotype,
   it must occur in a `LocationDetail` from the neotype-designation source; text about
   the original type locality does not qualify.
-- _CoordinatesFromOccurrenceRecord_ records the identifier of a linked occurrence record
-  with `Coordinates` or parseable `VerbatimCoordinates` evidence.
+- _CoordinatesFromOccurrenceRecord_ references a linked occurrence record with
+  `Coordinates` or parseable `VerbatimCoordinates` evidence.
 - _CoordinatesFromPLSS_ records the BLM township `plss_id` of the reviewed _PLSS_ tag
   whose polygon bounds supplied the coordinates.
 - _CoordinatesFromGeoNames_ records a GeoNames identifier.

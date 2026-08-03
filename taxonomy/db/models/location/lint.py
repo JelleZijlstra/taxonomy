@@ -2020,7 +2020,7 @@ def _get_linked_coordinate_evidence(
                         longitude,
                         extent,
                         f"OccurrenceRecord {record}",
-                        LocationTag.CoordinatesFromOccurrenceRecord(record.id),
+                        LocationTag.CoordinatesFromOccurrenceRecord(record),
                     )
                 )
     return evidence
@@ -3719,14 +3719,14 @@ def _get_coordinate_provenance_extents(
             (
                 record
                 for record in location.occurrence_records
-                if record.id == provenance.occurrence_record_id
+                if record.id == provenance.occurrence_record.id
             ),
             None,
         )
         if record is None:
             return (
                 [],
-                f"OccurrenceRecord {provenance.occurrence_record_id} is no longer "
+                f"OccurrenceRecord {provenance.occurrence_record.id} is no longer "
                 "linked to the Location",
             )
         extents = []
@@ -3754,7 +3754,7 @@ def _get_coordinate_provenance_extents(
         if not extents:
             return (
                 [],
-                f"OccurrenceRecord {provenance.occurrence_record_id} has no valid "
+                f"OccurrenceRecord {provenance.occurrence_record.id} has no valid "
                 "coordinate evidence",
             )
         return extents, None

@@ -772,9 +772,7 @@ class Location(BaseModel):
                     add_choice(
                         *parsed,
                         f"OccurrenceRecord {record.id} verbatim coordinates",
-                        models.tags.LocationTag.CoordinatesFromOccurrenceRecord(
-                            record.id
-                        ),
+                        models.tags.LocationTag.CoordinatesFromOccurrenceRecord(record),
                     )
 
         for (
@@ -1160,7 +1158,7 @@ class Location(BaseModel):
             ):
                 tags.append(
                     "coordinate provenance OccurrenceRecord "
-                    f"{tag.occurrence_record_id}"
+                    f"{tag.occurrence_record.id}"
                 )
             elif tag is models.tags.LocationTag.CoordinatesFromLocationName:
                 tags.append("coordinate provenance Location name")

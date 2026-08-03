@@ -12,7 +12,7 @@ from taxonomy.db.constants import (
     Markdown,
 )
 
-from . import Article, Collection, Name, Region, Taxon
+from . import Article, Collection, Name, OccurrenceRecord, Region, Taxon
 
 
 class PersonTag(adt.ADT):
@@ -69,7 +69,7 @@ class LocationTag(adt.ADT):
         name=Name, text=NotRequired[Markdown], tag=12
     )
     CoordinatesFromOccurrenceRecord(  # type: ignore[name-defined]
-        occurrence_record_id=int, tag=13
+        occurrence_record=OccurrenceRecord, tag=13
     )
     CoordinatesFromLocationName(tag=14)  # type: ignore[name-defined]
     CoordinatesManual(comment=Markdown, tag=15)  # type: ignore[name-defined]

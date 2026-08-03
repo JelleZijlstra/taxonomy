@@ -1612,7 +1612,7 @@ def test_plss_tag_serialization() -> None:
             "relation", 1234, "place", use_bounding_box=False
         ),
         LocationTag.CoordinatesFromName(models.Name(101)),
-        LocationTag.CoordinatesFromOccurrenceRecord(202),
+        LocationTag.CoordinatesFromOccurrenceRecord(models.OccurrenceRecord(202)),
         LocationTag.CoordinatesFromLocationName,
         LocationTag.CoordinatesManual("Reviewed against the specimen label."),
     ],
@@ -1636,6 +1636,22 @@ def test_coordinates_from_name_uses_name_object_with_compatible_serialization() 
     assert (
         LocationTag.CoordinatesFromName,
         "name",
+    ) in Location.get_completers_for_adt_field("tags")
+
+
+def test_coordinates_from_occurrence_record_uses_model_reference() -> None:
+    record = models.OccurrenceRecord(202)
+    tag = LocationTag.CoordinatesFromOccurrenceRecord(record)
+
+    assert tag.occurrence_record is record
+    assert tag.serialize() == [13, 202]
+    restored = LocationTag.unserialize([13, 202])
+    assert isinstance(restored, LocationTag.CoordinatesFromOccurrenceRecord)
+    assert isinstance(restored.occurrence_record, models.OccurrenceRecord)
+    assert restored.occurrence_record.id == 202
+    assert (
+        LocationTag.CoordinatesFromOccurrenceRecord,
+        "occurrence_record",
     ) in Location.get_completers_for_adt_field("tags")
 
 
@@ -2306,7 +2322,9 @@ def test_location_inference_envelopes_compatible_evidence() -> None:
     assert loc.longitude == "122.1°W-122.09°W"
     assert loc.tags == (
         LocationTag.CoordinatesFromName(cast(models.Name, name)),
-        LocationTag.CoordinatesFromOccurrenceRecord(1),
+        LocationTag.CoordinatesFromOccurrenceRecord(
+            cast(models.OccurrenceRecord, record)
+        ),
     )
 
 
@@ -2533,7 +2551,9 @@ def test_coordinate_provenance_lint_accepts_exact_multi_source_union(
     loc.longitude = "122.1°W-122.09°W"
     loc.tags = (  # type: ignore[assignment]
         LocationTag.CoordinatesFromName(cast(models.Name, name)),
-        LocationTag.CoordinatesFromOccurrenceRecord(202),
+        LocationTag.CoordinatesFromOccurrenceRecord(
+            cast(models.OccurrenceRecord, record)
+        ),
     )
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
 
@@ -2583,7 +2603,9 @@ def test_coordinate_provenance_lint_rejects_stale_extra_provenance(
     loc.longitude = "122.1°W"
     loc.tags = (  # type: ignore[assignment]
         LocationTag.CoordinatesFromName(cast(models.Name, name)),
-        LocationTag.CoordinatesFromOccurrenceRecord(202),
+        LocationTag.CoordinatesFromOccurrenceRecord(
+            cast(models.OccurrenceRecord, record)
+        ),
     )
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
 
@@ -2614,7 +2636,9 @@ def test_coordinate_provenance_lint_backfills_exact_multi_source_union(
     assert messages == []
     assert loc.tags == (
         LocationTag.CoordinatesFromName(cast(models.Name, name)),
-        LocationTag.CoordinatesFromOccurrenceRecord(202),
+        LocationTag.CoordinatesFromOccurrenceRecord(
+            cast(models.OccurrenceRecord, record)
+        ),
     )
 
 
