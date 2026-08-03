@@ -15,13 +15,14 @@ from taxonomy.db.constants import RegionKind, SpeciesGroupType
 from taxonomy.db.models import lint as model_lint
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.location import Location, LocationStatus, LocationTag
+from taxonomy.db.models.location import Location, LocationStatus
 from taxonomy.db.models.location import lint as location_lint
 from taxonomy.db.models.location import model as location_model
 from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region, RegionTag
+from taxonomy.db.models.tags import LocationTag
 
 _REAL_GET_GEONAMES_COORDINATE_MATCHES = location_lint._get_geonames_coordinate_matches
 
@@ -4545,7 +4546,7 @@ def test_location_disambiguator_lint_rejects_other_qualifiers(
         f"disambiguator {disambiguator!r} is not an enclosing Region, "
         "an assigned Period, or an assigned StratigraphicUnit" in messages[0]
     )
-    assert f"location name should be {f'Top Camp: {disambiguator}'!r}" in messages[0]
+    assert "location name should be" not in messages[0]
 
 
 def test_location_disambiguator_lint_accepts_modifier() -> None:
@@ -4554,13 +4555,13 @@ def test_location_disambiguator_lint_accepts_modifier() -> None:
     assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
 
 
-def test_location_disambiguator_lint_does_not_autofix_modifier() -> None:
+def test_location_disambiguator_lint_does_not_propose_or_autofix_modifier() -> None:
     loc = _location_without_coordinates(name="Lomas Cantadas (upper)")
 
     messages = list(location_lint.check_disambiguator(loc, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "location name should be 'Lomas Cantadas: upper'" in messages[0]
+    assert "location name should be" not in messages[0]
     assert loc.name == "Lomas Cantadas (upper)"
 
 

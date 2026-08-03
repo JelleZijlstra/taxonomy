@@ -7,7 +7,7 @@ from collections.abc import Iterable
 
 from taxonomy import getinput
 from taxonomy.db.models import Location, Region
-from taxonomy.db.models.location import LocationTag
+from taxonomy.db.models.tags import LocationTag
 
 
 def all_locations(region: Region) -> Iterable[Location]:

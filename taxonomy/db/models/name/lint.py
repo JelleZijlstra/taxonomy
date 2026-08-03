@@ -1769,9 +1769,7 @@ def check_location_detail_plss(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
 
     location_tags = list(
-        nam.type_locality.get_tags(
-            nam.type_locality.tags, models.location.LocationTag.PLSS
-        )
+        nam.type_locality.get_tags(nam.type_locality.tags, models.tags.LocationTag.PLSS)
     )
     if len(location_tags) != 1:
         return

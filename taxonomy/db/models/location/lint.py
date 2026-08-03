@@ -17,9 +17,10 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region, RegionTag
+from taxonomy.db.models.tags import LocationTag, is_coordinate_provenance_tag
 
 from .age import is_recent_location
-from .model import Location, LocationTag, is_coordinate_provenance_tag
+from .model import Location
 from .name import ParsedLocationName, split_trailing_parenthetical
 
 _GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "water", "waterway"}

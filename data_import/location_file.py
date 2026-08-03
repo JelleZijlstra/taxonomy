@@ -6,11 +6,8 @@ from typing import Any, NotRequired, TypedDict, cast
 
 from data_import import lib
 from taxonomy.db import coordinate_lint, helpers, models
-from taxonomy.db.models.location import (
-    LocationStatus,
-    LocationTag,
-    get_expected_general_name,
-)
+from taxonomy.db.models.location import LocationStatus, get_expected_general_name
+from taxonomy.db.models.tags import LocationTag
 
 
 class LocationFileError(ValueError):

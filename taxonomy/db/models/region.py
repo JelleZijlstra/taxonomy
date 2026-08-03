@@ -182,7 +182,7 @@ class Region(BaseModel):
                 continue
             if location.stratigraphic_unit is not None:
                 continue
-            if location.has_tag(models.location.LocationTag.General):
+            if location.has_tag(models.tags.LocationTag.General):
                 continue
             location.display(full=full, depth=depth + 4, file=file)
 

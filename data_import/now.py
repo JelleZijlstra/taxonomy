@@ -9,7 +9,8 @@ import csv
 from pathlib import Path
 
 from taxonomy.db.models import Period
-from taxonomy.db.models.location import Location, LocationTag
+from taxonomy.db.models.location import Location
+from taxonomy.db.models.tags import LocationTag
 
 ROOT = Path(__file__).parent.parent
 

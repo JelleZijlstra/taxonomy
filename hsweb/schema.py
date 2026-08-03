@@ -110,11 +110,13 @@ def build_adt_member(adt_cls: type[ADT], adt: type[ADT]) -> type[ObjectType]:
     namespace["Meta"] = Meta
 
     if adt._has_args:
-        name = adt.__name__
+        member_name = adt.__name__
     else:
-        name = type(adt).__name__
+        member_name = type(adt).__name__
 
-    return type(name, (ObjectType,), namespace)
+    # GraphQL type names share one global namespace. Qualifying ADT members avoids
+    # collisions with enums and with same-named members of other ADTs.
+    return type(f"{adt_cls.__name__}{member_name}", (ObjectType,), namespace)
 
 
 @cache

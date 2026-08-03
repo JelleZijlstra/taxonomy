@@ -25,6 +25,76 @@ class PersonTag(adt.ADT):
     OnlineBio(text=URL, tag=7)  # type: ignore[name-defined]
 
 
+class LocationTag(adt.ADT):
+    # General locality; should be simplified if possible.
+    General(tag=1)  # type: ignore[name-defined]
+
+    # Locality identifiers in other databases
+
+    # Paleobiology Database
+    PBDB(id=Managed, tag=2)  # type: ignore[name-defined]
+
+    # {North America Tertiary-localities.pdf}, appendix to
+    # Evolution of Tertiary Mammals of North America
+    ETMNA(id=Managed, tag=3)  # type: ignore[name-defined]
+
+    # Neogene of the Old World database
+    NOW(id=Managed, tag=4)  # type: ignore[name-defined]
+
+    IgnoreLintLocation(  # type: ignore[name-defined]
+        label=Managed, comment=NotRequired[Markdown], tag=5
+    )
+
+    # Indicate that after some research, it is unclear where this place is
+    Unplaced(comment=NotRequired[Markdown], tag=6)  # type: ignore[name-defined]
+
+    # Region that is nearby and used as a base for a disambiguator
+    NearbyRegion(region=Region, tag=7)  # type: ignore[name-defined]
+
+    # Reviewed Public Land Survey System description. The text is a canonical,
+    # human-readable land description; plss_id is the township-level CadNSDI
+    # PLSSID and therefore also records the resolved principal meridian.
+    PLSS(  # type: ignore[name-defined]
+        text=Managed, plss_id=Managed, comment=NotRequired[Markdown], tag=8
+    )
+
+    # Evidence supporting the Location's latitude and longitude fields. External
+    # identifiers are snapshots of the object used, not cached coordinate values.
+    CoordinatesFromPLSS(plss_id=Managed, tag=9)  # type: ignore[name-defined]
+    CoordinatesFromGeoNames(geoname_id=Managed, tag=10)  # type: ignore[name-defined]
+    CoordinatesFromNominatim(  # type: ignore[name-defined]
+        osm_type=Managed,
+        osm_id=Managed,
+        category=Managed,
+        use_bounding_box=Managed,
+        tag=11,
+    )
+    CoordinatesFromName(  # type: ignore[name-defined]
+        name=Name, text=NotRequired[Markdown], tag=12
+    )
+    CoordinatesFromOccurrenceRecord(  # type: ignore[name-defined]
+        occurrence_record_id=Managed, tag=13
+    )
+    CoordinatesFromLocationName(tag=14)  # type: ignore[name-defined]
+    CoordinatesManual(comment=Markdown, tag=15)  # type: ignore[name-defined]
+
+
+COORDINATE_PROVENANCE_TAG_TYPES = (
+    LocationTag.CoordinatesFromPLSS,
+    LocationTag.CoordinatesFromGeoNames,
+    LocationTag.CoordinatesFromNominatim,
+    LocationTag.CoordinatesFromName,
+    LocationTag.CoordinatesFromOccurrenceRecord,
+    LocationTag.CoordinatesManual,
+)
+
+
+def is_coordinate_provenance_tag(tag: adt.ADT) -> bool:
+    return tag is LocationTag.CoordinatesFromLocationName or isinstance(
+        tag, COORDINATE_PROVENANCE_TAG_TYPES
+    )
+
+
 class TaxonTag(adt.ADT):
     NominalGenus(genus=Name, tag=1)  # type: ignore[name-defined]
     MDD(id=Managed, tag=2)  # type: ignore[name-defined]

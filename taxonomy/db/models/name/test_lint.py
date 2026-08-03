@@ -336,7 +336,7 @@ def test_location_detail_plss_reports_conflict_with_reviewed_location() -> None:
         ("T33S R25W Sec. 21 NW1/4 NE1/4",),
         location_coordinates=(None, None),
         location_tags=(
-            models.location.LocationTag.PLSS(
+            models.tags.LocationTag.PLSS(
                 "T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"
             ),
         ),
@@ -354,7 +354,7 @@ def test_location_detail_plss_allows_narrower_reviewed_location_evidence() -> No
         ("T33S R28W Sec. 21 NW1/4 NE1/4",),
         location_coordinates=(None, None),
         location_tags=(
-            models.location.LocationTag.PLSS(
+            models.tags.LocationTag.PLSS(
                 "T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"
             ),
         ),
@@ -370,7 +370,7 @@ def test_location_detail_plss_allows_reviewed_section_from_explicit_alternative(
         ("Sections 30-31, T6N R3E",),
         location_coordinates=(None, None),
         location_tags=(
-            models.location.LocationTag.PLSS(
+            models.tags.LocationTag.PLSS(
                 "T6N R3E Sec. 31, Wind River Meridian", "WY340060N0030E0"
             ),
         ),
