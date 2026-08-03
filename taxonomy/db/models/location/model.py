@@ -1213,7 +1213,9 @@ class LocationTag(adt.ADT):
         use_bounding_box=Managed,
         tag=11,
     )
-    CoordinatesFromName(name=_CoordinatesFromNameTarget, tag=12)  # type: ignore[name-defined]
+    CoordinatesFromName(  # type: ignore[name-defined]
+        name=_CoordinatesFromNameTarget, text=NotRequired[Markdown], tag=12
+    )
     CoordinatesFromOccurrenceRecord(  # type: ignore[name-defined]
         occurrence_record_id=Managed, tag=13
     )

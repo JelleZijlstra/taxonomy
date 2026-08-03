@@ -309,6 +309,116 @@ def test_neotype_name_provenance_uses_only_designation_source() -> None:
     ] == [("11°N", "21°E")]
 
 
+def test_quoted_name_provenance_accepts_unparsed_location_detail() -> None:
+    source = cast(Article, SimpleNamespace(id=99))
+    quote = "38o 10' 52.92\" S–57o 39' 11.66\" W"
+    name = _tagged_object(
+        (TypeTag.LocationDetail(f"Punta San Andrés ({quote})", source),), name_tags=True
+    )
+    name.id = 101
+    loc = _location_without_coordinates(names=(name,))
+    loc.latitude = "38°10'52.92\"S"
+    loc.longitude = "57°39'11.66\"W"
+
+    extents, issue = location_lint._get_coordinate_provenance_extents(
+        loc, LocationTag.CoordinatesFromName(cast(models.Name, name), text=quote)
+    )
+
+    assert issue is None
+    assert [
+        (extent.latitude.standardized_text, extent.longitude.standardized_text)
+        for extent in extents
+    ] == [("38°10'52.92\"S", "57°39'11.66\"W")]
+
+
+@pytest.mark.parametrize(
+    ("quote", "latitude", "longitude"),
+    [
+        ("Kampungu, 2.37 S – 26.47 E", "2°37'S", "26°47'E"),
+        ("lat. I2°32'S, long. 132°23'E", "12°32'S", "132°23'E"),
+        ("36° östl. Länge und 5° 10' südl. Breite", "5°10'S", "36°E"),
+        ("lat. 32° 27' north, long. 115* 53' west", "32°27'N", "115°53'W"),
+    ],
+)
+def test_quoted_name_provenance_safely_normalizes_reviewed_source_formats(
+    quote: str, latitude: str, longitude: str
+) -> None:
+    source = cast(Article, SimpleNamespace(id=99))
+    name = _tagged_object(
+        (TypeTag.LocationDetail(f"Type locality: {quote}", source),), name_tags=True
+    )
+    name.id = 101
+    loc = _location_without_coordinates(names=(name,))
+    loc.latitude = latitude
+    loc.longitude = longitude
+
+    extents, issue = location_lint._get_coordinate_provenance_extents(
+        loc, LocationTag.CoordinatesFromName(cast(models.Name, name), text=quote)
+    )
+
+    assert issue is None
+    assert len(extents) == 1
+    assert extents[0] == coordinate_lint.make_extent(latitude, longitude)
+
+
+def test_quoted_name_provenance_rejects_stale_text() -> None:
+    source = cast(Article, SimpleNamespace(id=99))
+    name = _tagged_object(
+        (TypeTag.LocationDetail("Punta San Andrés, coastal cliffs", source),),
+        name_tags=True,
+    )
+    name.id = 101
+    loc = _location_without_coordinates(names=(name,))
+    loc.latitude = "38°S"
+    loc.longitude = "57°W"
+
+    extents, issue = location_lint._get_coordinate_provenance_extents(
+        loc,
+        LocationTag.CoordinatesFromName(
+            cast(models.Name, name), text="38o 10' 52.92\" S"
+        ),
+    )
+
+    assert extents == []
+    assert issue is not None
+    assert "is not present in an applicable LocationDetail tag" in issue
+
+
+def test_quoted_neotype_name_provenance_rejects_original_locality() -> None:
+    original_source = cast(Article, SimpleNamespace(id=98))
+    neotype_source = cast(Article, SimpleNamespace(id=99))
+    name = _tagged_object(
+        (
+            TypeTag.NeotypeDesignation(
+                optional_source=neotype_source, neotype="USNM 1", valid=True
+            ),
+            TypeTag.LocationDetail(
+                "original locality at unusual 10o N by 20o E", original_source
+            ),
+            TypeTag.LocationDetail(
+                "neotype locality at unusual 11o N by 21o E", neotype_source
+            ),
+        ),
+        name_tags=True,
+    )
+    name.id = 101
+    name.species_type_kind = SpeciesGroupType.neotype
+    loc = _location_without_coordinates(names=(name,))
+    loc.latitude = "10°N"
+    loc.longitude = "20°E"
+
+    extents, issue = location_lint._get_coordinate_provenance_extents(
+        loc,
+        LocationTag.CoordinatesFromName(
+            cast(models.Name, name), text="unusual 10o N by 20o E"
+        ),
+    )
+
+    assert extents == []
+    assert issue is not None
+    assert "is not present in an applicable LocationDetail tag" in issue
+
+
 def test_neotype_plss_evidence_uses_only_designation_source() -> None:
     original_source = cast(Article, SimpleNamespace(id=98))
     neotype_source = cast(Article, SimpleNamespace(id=99))
@@ -1517,6 +1627,15 @@ def test_coordinates_from_name_uses_name_object_with_compatible_serialization() 
     ) in Location.get_completers_for_adt_field("tags")
 
 
+def test_coordinates_from_name_serializes_optional_source_text() -> None:
+    name = models.Name(101)
+    text = "38o 10' 52.92\" S–57o 39' 11.66\" W"
+    tag = LocationTag.CoordinatesFromName(name, text=text)
+
+    assert tag.serialize() == [12, 101, text]
+    assert LocationTag.unserialize(tag.serialize()) == tag
+
+
 def test_location_plss_lint_suggests_tag_from_linked_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2005,6 +2124,20 @@ def test_location_infers_coordinates_from_name() -> None:
     assert loc.tags == (LocationTag.CoordinatesFromName(cast(models.Name, name)),)
 
 
+def test_unplaced_location_does_not_infer_point_coordinates_from_name() -> None:
+    name = _tagged_object((TypeTag.Coordinates("37.9", "-122.1"),), name_tags=True)
+    loc = _location_without_coordinates(names=(name,))
+    loc.tags = (LocationTag.Unplaced(),)  # type: ignore[assignment]
+
+    assert (
+        list(location_lint.check_linked_coordinates(loc, LintConfig(autofix=True)))
+        == []
+    )
+    assert loc.latitude is None
+    assert loc.longitude is None
+    assert loc.tags == (LocationTag.Unplaced(),)
+
+
 def test_location_infers_coordinates_from_name_location_detail() -> None:
     source = cast(models.Article, object())
     name = _tagged_object(
@@ -2020,6 +2153,24 @@ def test_location_infers_coordinates_from_name_location_detail() -> None:
     assert loc.latitude == "37.9°N"
     assert loc.longitude == "122.1°W"
     assert loc.tags == (LocationTag.CoordinatesFromName(cast(models.Name, name)),)
+
+
+def test_location_coordinate_evidence_honors_name_coordinate_ignore() -> None:
+    source = cast(models.Article, object())
+    name = _tagged_object(
+        (
+            TypeTag.LocationDetail("Referred specimen at 37.9°N, 122.1°W", source),
+            TypeTag.IgnoreLintName(
+                "location_detail_coordinates",
+                comment="The coordinate belongs to a referred specimen.",
+            ),
+        ),
+        name_tags=True,
+    )
+    name.has_lint_ignore = lambda label: label == "location_detail_coordinates"  # type: ignore[attr-defined]
+    loc = _location_without_coordinates(names=(name,))
+
+    assert location_lint._get_linked_coordinate_evidence(loc) == []
 
 
 def test_location_infers_coordinates_from_name_specimen_detail() -> None:

@@ -67,6 +67,21 @@ def test_extract_coordinate_pairs_accepts_dotted_degrees_minutes() -> None:
     ]
 
 
+def test_extract_coordinate_pairs_treats_lone_double_prime_as_minutes() -> None:
+    assert helpers.extract_coordinate_pairs(
+        'near Haritalyangar (31*32"N, 76*38"E)'
+    ) == [("31°32'N", "76°38'E")]
+
+
+def test_extract_coordinate_pairs_ignores_radiocarbon_uncertainty() -> None:
+    assert (
+        helpers.extract_coordinate_pairs(
+            "radiocarbon date of 23,900 years (-1-4,100, -2,700 years)"
+        )
+        == []
+    )
+
+
 def test_extract_coordinate_pairs_respects_negative_sign_with_direction() -> None:
     assert helpers.extract_coordinate_pairs("São Bento (38.7115 N, −9.1547 E)") == [
         ("38.7115°N", "9.1547°W")

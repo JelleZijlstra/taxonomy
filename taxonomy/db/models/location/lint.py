@@ -616,6 +616,14 @@ def _extract_name_text_tag_coordinate_pairs(
     """
     from taxonomy.db.models.name import TypeTag
 
+    if getattr(name, "has_lint_ignore", lambda _label: False)(
+        "location_detail_coordinates"
+    ):
+        # A reviewed Name-level ignore records that coordinate-looking text in
+        # its locality evidence is inapplicable, erroneous, or too uncertain to
+        # drive the selected type locality. Location inference and provenance
+        # must honor that decision as well as the Name lint itself.
+        return ()
     if (
         isinstance(tag, TypeTag.SpecimenDetail)
         and getattr(name, "species_type_kind", None) is not SpeciesGroupType.neotype
@@ -1947,7 +1955,11 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
 
 
 def _should_infer_coordinates(location: Location) -> bool:
-    if location.is_invalid() or location.is_general():
+    if (
+        location.is_invalid()
+        or location.is_general()
+        or location.has_tag(LocationTag.Unplaced)
+    ):
         return False
     return not (
         location.stratigraphic_unit is not None
@@ -3642,6 +3654,65 @@ def _get_coordinate_provenance_extents(
                 [],
                 f"Name {provenance.name.id} is no longer linked to the Location",
             )
+        if provenance.text is not None:
+            if not provenance.text.strip():
+                return [], "quoted coordinate evidence is empty"
+            matching_details = [
+                tag
+                for tag in _get_applicable_location_detail_tags(name)
+                if provenance.text in tag.text
+            ]
+            if not matching_details:
+                return (
+                    [],
+                    f"quoted coordinate evidence {provenance.text!r} is not present "
+                    "in an applicable LocationDetail tag",
+                )
+            # The quote was selected explicitly, so it is safe to accept a small
+            # normalization that would be too permissive in arbitrary prose. In
+            # particular, older sources often put a dash directly between the
+            # latitude direction and the longitude. If the ordinary parser can
+            # then read the quote, retain its numeric extent so a later Location
+            # coordinate edit is still cross-checked. Otherwise the exact-quote
+            # assertion itself is the reviewed evidence.
+            parseable_text = re.sub(
+                r"(?<=[NS])\s*[-\N{EN DASH}\N{EM DASH}]\s*(?=\d)",
+                ", ",
+                provenance.text,
+                flags=re.IGNORECASE,
+            )
+            parseable_text = re.sub(
+                r"(?<![\d°])(?P<degrees>\d{1,3})\.(?P<minutes>\d{2})"
+                r"(?=\s*[NSEW]\b)",
+                r"\g<degrees>°\g<minutes>'",
+                parseable_text,
+                flags=re.IGNORECASE,
+            )
+            parseable_text = re.sub(
+                r"\b(?P<direction>north|south|east|west)\b",
+                lambda match: match.group("direction")[0].upper(),
+                parseable_text,
+                flags=re.IGNORECASE,
+            )
+            parseable_text = re.sub(
+                r"südl\.?\s+Breite", "S", parseable_text, flags=re.IGNORECASE
+            )
+            parseable_text = re.sub(r"\bI(?=\d+°)", "1", parseable_text)
+            extents = []
+            for latitude, longitude in helpers.extract_coordinate_pairs(parseable_text):
+                parsed = coordinate_lint.standardize_coordinate_pair(
+                    latitude, longitude
+                )
+                if parsed is not None:
+                    extents.append(parsed[2])
+            if extents:
+                return extents, None
+            location_extent = coordinate_lint.make_extent(
+                location.latitude, location.longitude
+            )
+            if location_extent is None:
+                return [], "Location no longer has valid coordinates"
+            return [location_extent], None
         extents = []
         for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
             parsed = coordinate_lint.standardize_coordinate_pair(

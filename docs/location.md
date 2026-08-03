@@ -228,7 +228,13 @@ Every populated `latitude` and `longitude` pair should be supported by at least 
 coordinate-provenance tag. The tag records the evidence used:
 
 - _CoordinatesFromName_ references a linked Name with coordinate evidence in a
-  `Coordinates` or `LocationDetail` tag.
+  `Coordinates` or `LocationDetail` tag. When the general coordinate parser cannot
+  safely recognize an unusual source format, its optional `text` field may contain an
+  exact, source-verbatim substring from an applicable `LocationDetail` tag that supports
+  the Location coordinates. Use enough context to identify both coordinates, not a
+  generic fragment. The lint checks that the substring remains present. For a neotype,
+  it must occur in a `LocationDetail` from the neotype-designation source; text about
+  the original type locality does not qualify.
 - _CoordinatesFromOccurrenceRecord_ records the identifier of a linked occurrence record
   with `Coordinates` or parseable `VerbatimCoordinates` evidence.
 - _CoordinatesFromPLSS_ records the BLM township `plss_id` of the reviewed _PLSS_ tag

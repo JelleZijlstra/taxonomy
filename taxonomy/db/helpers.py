@@ -527,6 +527,17 @@ def _normalize_coordinate_symbols(text: str) -> str:
         r'\g<prefix>\g<seconds>"\g<direction>',
         text,
     )
+    # OCR and a few source transcriptions use a double quote for the only
+    # subdivision following degrees, for example ``31*32\"N``. Coordinates do
+    # not conventionally omit minutes while giving seconds, so this narrow form
+    # represents degrees and minutes rather than degrees and seconds.
+    text = re.sub(
+        r"(?P<degrees>\d+(?:\.\d+)?\s*[°*]\s*)"
+        r'(?P<minutes>\d+(?:\.\d+)?)"(?P<direction>[NSEWO])',
+        r"\g<degrees>\g<minutes>'\g<direction>",
+        text,
+        flags=re.IGNORECASE,
+    )
     for wording, direction in {
         "north latitude": "N",
         "south latitude": "S",
@@ -606,6 +617,14 @@ def extract_coordinate_pairs(text: str) -> list[tuple[str, str]]:
         pair = (latitude, longitude)
         positioned_pairs.append((match.start(), pair))
     for match in SIGNED_DECIMAL_LATLONG.finditer(text):
+        # Uncertainty intervals on dates and ages can look like a pair of
+        # negative decimal coordinates after thousands separators have been
+        # normalized (for example ``-4,100, -2,700 years``). A following time
+        # unit makes the interpretation unambiguously non-geographic.
+        if re.match(
+            r"\s*(?:years?|yrs?|BP|[kM]a)\b", text[match.end() :], flags=re.IGNORECASE
+        ):
+            continue
         latitude_text = match.group("latitude")
         longitude_text = match.group("longitude")
         if not latitude_text.startswith(
