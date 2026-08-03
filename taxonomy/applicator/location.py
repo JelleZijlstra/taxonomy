@@ -16,12 +16,16 @@ import json
 import textwrap
 from collections import Counter
 from collections.abc import Callable, Iterable
+from contextlib import redirect_stdout
 from dataclasses import dataclass
+from io import StringIO
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db.models import Article, Location, Period, Region, StratigraphicUnit
 from taxonomy.db.models.location import LocationStatus
+from taxonomy.db.models.location.model import merge_location_data
 from taxonomy.db.models.tags import LocationTag
 
 SCHEMA_VERSION = 1
@@ -1003,6 +1007,47 @@ def print_full_review_notes(recommendations: Iterable[Recommendation]) -> None:
             print(item.text)
     if rows:
         print(f"\n{len(rows)} Location actionable review note(s).")
+
+
+def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> None:
+    """Apply Location plan actions to shared virtual model copies."""
+    for action in plan.actions:
+        if action.already_applied:
+            continue
+        row = action.recommendation
+        context = f"Location manifest line {row.line_number}"
+        if isinstance(action, PlannedRename):
+            if not isinstance(action.location, Location):
+                continue
+            assert row.new_name is not None
+            builder.copy(action.location, context=context).name = row.new_name
+        elif isinstance(action, PlannedEdit):
+            if not isinstance(action.location, Location):
+                continue
+            proposal = builder.copy(action.location, context=context)
+            for change in row.changes:
+                setattr(
+                    proposal,
+                    change.field,
+                    _resolve_new_field_value(change.field, change.new_value),
+                )
+            tags = tuple(proposal.tags or ())
+            tags = tuple(tag for tag in tags if tag not in row.remove_tags)
+            tags = (*tags, *(tag for tag in row.add_tags if tag not in tags))
+            proposal.tags = tuple(sorted(set(tags)))  # type: ignore[assignment]
+        else:
+            if not isinstance(action.source, Location) or not isinstance(
+                action.target, Location
+            ):
+                continue
+            source = builder.copy(action.source, context=context)
+            target = builder.copy(action.target, context=context)
+            # Merge only the two model states. Reassigning database backrefs belongs
+            # exclusively to the real apply step.
+            with redirect_stdout(StringIO()):
+                merge_location_data(source, target)
+            source.deleted = LocationStatus.alias
+            source.parent = target
 
 
 def execute_plan(

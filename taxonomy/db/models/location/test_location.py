@@ -2560,6 +2560,32 @@ def test_coordinate_provenance_lint_accepts_exact_multi_source_union(
     assert list(location_lint.check_coordinate_provenance(loc, LintConfig())) == []
 
 
+def test_coordinate_provenance_lint_accepts_virtual_linked_name() -> None:
+    loc = Location.virtual(
+        name="Precise site", latitude="37.9°N", longitude="122.1°W", tags=()
+    )
+    name = models.Name.virtual(
+        type_locality=loc, type_tags=(TypeTag.Coordinates("37.9°N", "122.1°W"),)
+    )
+    loc.tags = (LocationTag.CoordinatesFromName(name),)
+
+    assert list(location_lint.check_coordinate_provenance(loc, LintConfig())) == []
+
+
+def test_coordinate_provenance_lint_accepts_virtual_linked_occurrence() -> None:
+    loc = Location.virtual(
+        name="Precise site", latitude="37.9°N", longitude="122.1°W", tags=()
+    )
+    record = models.OccurrenceRecord.virtual(
+        location=loc,
+        locality_text="Precise site",
+        tags=(OccurrenceRecordTag.Coordinates("37.9°N", "122.1°W"),),
+    )
+    loc.tags = (LocationTag.CoordinatesFromOccurrenceRecord(record),)
+
+    assert list(location_lint.check_coordinate_provenance(loc, LintConfig())) == []
+
+
 def test_coordinate_provenance_lint_accepts_alternative_when_each_source_is_exact(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

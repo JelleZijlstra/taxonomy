@@ -33,7 +33,7 @@ dependencies = [
   "black",
   "ruff",
   "gspread",
-  "clirm",
+  "clirm>=0.2.0",
   "httpx",
   "IPython>8",
   "prompt_toolkit",

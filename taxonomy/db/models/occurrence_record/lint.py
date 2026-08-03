@@ -30,7 +30,7 @@ _SIGNED_DECIMAL_COORDINATES = re.compile(
 )
 _ELEVATION = re.compile(
     r"^\s*(?:elev(?:ation)?\.?|alt(?:itude)?\.?)?\s*"
-    r"(?P<approximate>~|ca\.?)?\s*"
+    r"(?P<approximate>~|ca\.?|approximately)?\s*"
     r"(?P<elevation>-?\d[\d,]*(?:\.\d+)?(?:\s*[-–]\s*\d[\d,]*(?:\.\d+)?)?)"
     r"\s*(?P<unit>m|met(?:er|re)s?|ft|feet|foot)\.?\s*$",
     re.IGNORECASE,
@@ -67,8 +67,24 @@ LINT = Lint(OccurrenceRecord, get_ignores, remove_unused_ignores, add_ignore)
 
 
 def get_inferred_taxon(record: OccurrenceRecord) -> Taxon | None:
-    mapped_name = record.classification_entry.mapped_name
+    classification_entry = record.classification_entry
+    mapped_name = classification_entry.mapped_name
     if mapped_name is None:
+        # A source-faithful indeterminate species entry such as ``Sorex sp.``
+        # cannot map to a species Name. It can, however, be assigned safely to the
+        # mapped genus used as its parent in the same classification.
+        parent = classification_entry.parent
+        if (
+            classification_entry.rank is Rank.species
+            and re.fullmatch(r"[A-Z][A-Za-z-]+ sp\.?", classification_entry.name)
+            and parent is not None
+            and parent.rank is Rank.genus
+            and parent.mapped_name is not None
+        ):
+            parent_taxon = parent.mapped_name.taxon.resolve_redirect()
+            if parent_taxon.rank is Rank.genus:
+                return parent_taxon
+            return parent_taxon.parent_of_rank(Rank.genus)
         return None
     taxon = mapped_name.taxon.resolve_redirect()
     if (
@@ -141,6 +157,18 @@ def check_taxon_mapping(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[s
     if record.has_tag(OccurrenceRecordTag.TaxonomicSplitFrom) or record.has_tag(
         OccurrenceRecordTag.CommentFromDatabase
     ):
+        return
+    if (
+        record.taxon.rank is Rank.subspecies
+        and record.taxon.is_nominate_subspecies()
+        and record.taxon.parent_of_rank(Rank.species) == inferred
+    ):
+        message = f"change taxon from {record.taxon} to {inferred}"
+        if cfg.autofix and not LINT.is_ignoring_lint(record, "taxon_mapping"):
+            print(f"{record}: {message}")
+            record.taxon = inferred
+        else:
+            yield message
         return
     yield f"taxon {record.taxon} differs from classification-entry mapping {inferred} without an explanation"
 
@@ -305,6 +333,12 @@ def _parse_iso_date(text: str) -> str | None:
 def parse_verbatim_date(text: str) -> str | None:
     """Return a source date in a queryable ISO 8601-style representation."""
     text = text.strip()
+    if "/" in text:
+        parts = text.split("/")
+        if len(parts) == 2 and all(_parse_iso_date(part) is not None for part in parts):
+            return text
+    if parsed := _parse_verbatim_date_range(text):
+        return parsed
     if parsed := _parse_iso_date(text):
         return parsed
     try:
@@ -326,6 +360,56 @@ def parse_verbatim_date(text: str) -> str | None:
             continue
         output = parsed_date.strftime(output_fmt)
         return f"<{output}" if before else output
+    return None
+
+
+def _parse_date_endpoint(text: str, *, default_year: int | None = None) -> str | None:
+    """Parse one endpoint of a source date interval."""
+    text = text.strip()
+    if default_year is not None and re.search(r"\b\d{4}\b", text) is None:
+        text = f"{text} {default_year}"
+    return parse_verbatim_date(text)
+
+
+def _parse_verbatim_date_range(text: str) -> str | None:
+    """Parse common prose date ranges as ISO 8601 intervals."""
+    month_range = re.fullmatch(
+        r"(?P<start>[A-Za-z]+)\s+to\s+(?P<end>[A-Za-z]+)\s+(?P<year>\d{4})",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if month_range is not None:
+        year = int(month_range.group("year"))
+        start = _parse_date_endpoint(month_range.group("start"), default_year=year)
+        end = _parse_date_endpoint(month_range.group("end"), default_year=year)
+        if start is not None and end is not None:
+            return f"{start}/{end}"
+
+    between_range = re.fullmatch(
+        r"between\s+(?P<start>.+?)\s+and\s+(?P<end>.+)", text, flags=re.IGNORECASE
+    )
+    if between_range is not None:
+        end_text = between_range.group("end")
+        year_match = re.search(r"\b(?P<year>\d{4})\b", end_text)
+        default_year = int(year_match.group("year")) if year_match is not None else None
+        start = _parse_date_endpoint(
+            between_range.group("start"), default_year=default_year
+        )
+        end = _parse_date_endpoint(end_text)
+        if start is not None and end is not None:
+            return f"{start}/{end}"
+
+    dash_range = re.fullmatch(r"(?P<start>.+?)[–—](?P<end>.+)", text)
+    if dash_range is not None:
+        end_text = dash_range.group("end")
+        year_match = re.search(r"\b(?P<year>\d{4})\b", end_text)
+        default_year = int(year_match.group("year")) if year_match is not None else None
+        start = _parse_date_endpoint(
+            dash_range.group("start"), default_year=default_year
+        )
+        end = _parse_date_endpoint(end_text)
+        if start is not None and end is not None:
+            return f"{start}/{end}"
     return None
 
 
@@ -470,11 +554,32 @@ def _check_verbatim_dates(record: OccurrenceRecord, cfg: LintConfig) -> Iterable
         expected = OccurrenceRecordTag.Date(parsed)
         if expected not in normalized:
             if normalized:
-                yield (f"{tag} parses as {expected}, inconsistent with {normalized}")
+                if len(normalized) == 1 and _is_date_refinement(
+                    expected.date, normalized[0].date
+                ):
+                    message = (
+                        f"replace {normalized[0]} with {expected} to preserve source "
+                        "date precision"
+                    )
+                    if cfg.autofix:
+                        print(f"{record}: {message}")
+                        _replace_tag(record, normalized[0], expected)
+                        normalized[0] = expected
+                    else:
+                        yield message
+                else:
+                    yield f"{tag} parses as {expected}, inconsistent with {normalized}"
             else:
                 yield from _add_inferred_tag(record, expected, tag, cfg)
                 if cfg.autofix:
                     normalized.append(expected)
+
+
+def _is_date_refinement(expected: str, existing: str) -> bool:
+    """Return whether an exact source date refines one stored coarse date."""
+    if expected == existing or "/" in existing:
+        return False
+    return all(part.startswith(existing) for part in expected.split("/"))
 
 
 def _standardize_normalized_tags(

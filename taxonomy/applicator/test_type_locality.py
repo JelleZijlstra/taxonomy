@@ -1,13 +1,16 @@
 import json
+from collections import Counter
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import cast
 
 import pytest
 
 from taxonomy.applicator import type_locality as recommendations
-from taxonomy.db.constants import DistributionOrigin, OccurrenceValidity
-from taxonomy.db.models import TypeTag
+from taxonomy.applicator.proposals import ProposalBuilder
+from taxonomy.db.constants import DistributionOrigin, OccurrenceValidity, RegionKind
+from taxonomy.db.models import Location, Name, Period, Region, TypeTag
 from taxonomy.db.models.location import LocationStatus
 from taxonomy.db.models.tags import LocationTag, TaxonTag
 
@@ -162,6 +165,60 @@ def test_reads_optional_actionable_review_note(tmp_path: Path) -> None:
     assert parsed[0].review_note == (
         "Review the historical epoch terminology before applying."
     )
+
+
+def test_virtual_proposal_links_name_to_new_virtual_location() -> None:
+    row = recommendations.parse_recommendation(
+        _row(action=recommendations.CREATE_LOCATION, target=_new_target()), 1
+    )
+    assert row.target is not None
+    region = Region.virtual(name="South Sudan", kind=RegionKind.country, tags=())
+    period = Period.virtual(name="Recent")
+    current = Location.virtual(name="Africa", region=region, tags=())
+    name = Name.virtual(type_locality=current, type_tags=())
+    plan = recommendations.RecommendationPlan(
+        updates=(
+            recommendations.PlannedUpdate(
+                row,
+                cast(recommendations.NameLike, name),
+                target=None,
+                new_location_name="Farajala",
+                already_applied=False,
+            ),
+        ),
+        new_locations=(
+            recommendations.NewLocationDefinition(
+                row.target,
+                region,
+                min_period=period,
+                max_period=period,
+                stratigraphic_unit=None,
+            ),
+        ),
+        location_tag_updates=(),
+        serialized_location_tag_updates=(),
+        type_locality_validity_updates=(),
+        regional_origin_updates=(),
+        action_counts=Counter({recommendations.CREATE_LOCATION: 1}),
+    )
+    builder = ProposalBuilder()
+
+    recommendations.add_virtual_models(plan, builder)
+
+    proposals = builder.build()
+    proposed_location = next(
+        proposal.model
+        for proposal in proposals
+        if isinstance(proposal.model, Location)
+        and proposal.model.virtual_origin is None
+    )
+    proposed_name = next(
+        proposal.model for proposal in proposals if isinstance(proposal.model, Name)
+    )
+    assert proposed_location.name == "Farajala"
+    assert proposed_location.virtual_origin_id is None
+    assert proposed_name.type_locality is proposed_location
+    assert name.type_locality is current
 
 
 def test_rejects_duplicate_name_ids(tmp_path: Path) -> None:

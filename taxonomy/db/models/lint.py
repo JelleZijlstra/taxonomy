@@ -6,6 +6,8 @@ from dataclasses import dataclass, field, replace
 from functools import cache
 from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
 
+from clirm import UnsetVirtualFieldError
+
 from taxonomy import getinput
 from taxonomy.config import is_network_available
 
@@ -44,6 +46,15 @@ class LintWrapper(Generic[ModelT]):
     lint: Lint[ModelT]
     requires_network: bool = False
 
+    @staticmethod
+    def _format_object(obj: ModelT) -> str:
+        try:
+            return str(obj)
+        except UnsetVirtualFieldError:
+            if not obj.is_virtual:
+                raise
+            return f"<virtual {type(obj).__name__} {obj.id!r}>"
+
     def __call__(self, obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
         if self.requires_network and not is_network_available():
             return {self.label}
@@ -51,7 +62,7 @@ class LintWrapper(Generic[ModelT]):
             issues = list(self.linter(obj, cfg))
         except Exception as e:
             traceback.print_exc()
-            yield f"{obj}: error running {self.label} linter: {e}"
+            yield f"{self._format_object(obj)}: error running {self.label} linter: {e}"
             # The linter could not establish whether an IgnoreLint is still needed.
             # Preserve it rather than allowing Lint.run() to remove it as unused.
             return {self.label}
@@ -61,7 +72,7 @@ class LintWrapper(Generic[ModelT]):
         if self.label in ignored_lints:
             return {self.label}
         for issue in issues:
-            yield f"{obj}: {issue} [{self.label}]"
+            yield f"{self._format_object(obj)}: {issue} [{self.label}]"
         return set()
 
 

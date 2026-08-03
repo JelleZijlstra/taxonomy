@@ -3623,14 +3623,21 @@ def _get_coordinate_provenance_extents(
             return [], "Location name no longer contains valid coordinates"
         return [plan.parsed_coordinates[2]], None
     if isinstance(provenance, LocationTag.CoordinatesFromName):
-        name = next(
-            (
-                name
-                for name in location.type_localities
-                if name.id == provenance.name.id
-            ),
-            None,
-        )
+        if (
+            provenance.name.is_virtual
+            and "type_locality" not in provenance.name.missing_virtual_fields
+            and provenance.name.type_locality is location
+        ):
+            name = provenance.name
+        else:
+            name = next(
+                (
+                    name
+                    for name in location.type_localities
+                    if name.id == provenance.name.id
+                ),
+                None,
+            )
         if name is None:
             return (
                 [],
@@ -3715,14 +3722,21 @@ def _get_coordinate_provenance_extents(
             return ([], f"Name {provenance.name.id} has no valid coordinate evidence")
         return extents, None
     if isinstance(provenance, LocationTag.CoordinatesFromOccurrenceRecord):
-        record = next(
-            (
-                record
-                for record in location.occurrence_records
-                if record.id == provenance.occurrence_record.id
-            ),
-            None,
-        )
+        if (
+            provenance.occurrence_record.is_virtual
+            and "location" not in provenance.occurrence_record.missing_virtual_fields
+            and provenance.occurrence_record.location is location
+        ):
+            record = provenance.occurrence_record
+        else:
+            record = next(
+                (
+                    record
+                    for record in location.occurrence_records
+                    if record.id == provenance.occurrence_record.id
+                ),
+                None,
+            )
         if record is None:
             return (
                 [],

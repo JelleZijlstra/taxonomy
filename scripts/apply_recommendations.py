@@ -7,7 +7,9 @@ for a database-independent summary, ``--review-manual`` for the complete text of
 manual-review rows and actionable rows carrying ``review_note``, and ``--edit-manual``
 to open every manual-review object in the database editor after printing its complete
 note. Combine ``--apply --edit-manual`` to apply actionable rows first and then work
-through the unresolved objects interactively.
+through the unresolved objects interactively. Add ``--virtual-lint`` to construct the
+final proposed model states in memory and run advisory lint before the dry run or
+apply step.
 """
 
 import argparse
@@ -20,6 +22,7 @@ from typing import Any
 from taxonomy import getinput
 from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator import location as location_recommendations
+from taxonomy.applicator import proposals as virtual_proposals
 from taxonomy.applicator import type_locality as type_recommendations
 from taxonomy.db.models import Name
 
@@ -408,6 +411,34 @@ def build_generic_manual_review_plan(
         raise RecommendationError(str(exc)) from exc
 
 
+def build_virtual_proposals(
+    plans: tuple[
+        generic_recommendations.RecommendationPlan,
+        location_recommendations.RecommendationPlan,
+        type_recommendations.RecommendationPlan,
+    ],
+) -> tuple[virtual_proposals.ProposedModel, ...]:
+    """Build the final in-memory state represented by all actionable plans."""
+    generic_plan, location_plan, type_plan = plans
+    builder = virtual_proposals.ProposalBuilder()
+    # Match execute_plans() ordering so actions that touch the same model compose.
+    type_recommendations.add_virtual_models(type_plan, builder)
+    location_recommendations.add_virtual_models(location_plan, builder)
+    generic_recommendations.add_virtual_models(generic_plan, builder)
+    return builder.build()
+
+
+def run_virtual_lint(
+    plans: tuple[
+        generic_recommendations.RecommendationPlan,
+        location_recommendations.RecommendationPlan,
+        type_recommendations.RecommendationPlan,
+    ],
+) -> None:
+    proposals = build_virtual_proposals(plans)
+    virtual_proposals.print_lint_results(virtual_proposals.lint_proposals(proposals))
+
+
 def execute_plans(
     plans: tuple[
         generic_recommendations.RecommendationPlan,
@@ -479,9 +510,19 @@ def main() -> None:
             "may be combined with --apply to apply actionable rows first"
         ),
     )
+    parser.add_argument(
+        "--virtual-lint",
+        action="store_true",
+        help=(
+            "build virtual versions of all proposed models and run advisory, "
+            "best-effort lint before dry-run output or writes"
+        ),
+    )
     args = parser.parse_args()
     if args.review_action and not args.review:
         parser.error("--review-action requires --review")
+    if args.virtual_lint and (args.review or args.review_manual):
+        parser.error("--virtual-lint requires database-backed plan validation")
     if (args.apply or args.edit_manual) and (
         args.dry_run or args.review or args.review_manual
     ):
@@ -535,6 +576,11 @@ def main() -> None:
             manual_items = _resolve_manual_review_objects(recommendations, plans[0])
     except RecommendationError as exc:
         parser.error(str(exc))
+    if args.virtual_lint:
+        if plans is None:
+            parser.error("--virtual-lint requires a complete actionable plan")
+        run_virtual_lint(plans)
+        print()
     if args.apply:
         assert plans is not None
         execute_plans(plans, apply=True)

@@ -2,12 +2,15 @@ from types import SimpleNamespace
 from typing import cast
 
 import pytest
+from clirm import VirtualReferenceError
 
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AgeClass,
     Group,
+    NamingConvention,
     OccurrenceValidity,
+    PersonType,
     Rank,
     SpeciesGroupType,
     SpecimenOrgan,
@@ -41,25 +44,21 @@ def test_parse_date() -> None:
 def _name_with_collector_dates(
     *, death: str | None, dates: tuple[str, ...], additional_collector: bool = False
 ) -> Name:
-    person = SimpleNamespace(death=death)
+    def make_person(person_death: str | None) -> models.Person:
+        return models.Person.virtual(
+            family_name="Collector",
+            death=person_death,
+            naming_convention=NamingConvention.general,
+            type=PersonType.checked,
+        )
+
+    person = make_person(death)
     tags = (
-        TypeTag.CollectedBy(cast(models.Person, person)),
-        *(
-            (TypeTag.CollectedBy(cast(models.Person, SimpleNamespace(death=None))),)
-            if additional_collector
-            else ()
-        ),
+        TypeTag.CollectedBy(person),
+        *((TypeTag.CollectedBy(make_person(None)),) if additional_collector else ()),
         *(TypeTag.Date(date) for date in dates),
     )
-    return cast(
-        Name,
-        SimpleNamespace(
-            type_tags=tags,
-            get_tags=lambda values, tag_type: (
-                tag for tag in values if isinstance(tag, tag_type)
-            ),
-        ),
-    )
+    return Name.virtual(type_tags=tags)
 
 
 def test_collector_lifespan_flags_collection_after_death() -> None:
@@ -68,10 +67,9 @@ def test_collector_lifespan_flags_collection_after_death() -> None:
     messages = list(check_collector_lifespan(name, LintConfig()))
 
     assert len(messages) == 1
-    assert (
-        "collector namespace(death='1900') died in 1900, before collection date 2 January 1901"
-        in messages[0]
-    )
+    assert messages[0].startswith("<virtual Name ")
+    assert "collector Collector" in messages[0]
+    assert "died in 1900, before collection date 2 January 1901" in messages[0]
 
 
 @pytest.mark.parametrize(
@@ -95,6 +93,15 @@ def test_collector_lifespan_checks_all_collectors() -> None:
     )
 
     assert len(list(check_collector_lifespan(name, LintConfig()))) == 1
+
+
+def test_virtual_adt_field_preserves_and_protects_model_references() -> None:
+    name = _name_with_collector_dates(death="1900", dates=("2 January 1901",))
+    (collector,) = name.get_tags(name.type_tags, TypeTag.CollectedBy)
+
+    assert collector.person.is_virtual
+    with pytest.raises(VirtualReferenceError):
+        Name.type_tags.validate_persistent(name.type_tags)
 
 
 def _name_with_coordinates(

@@ -491,3 +491,51 @@ def test_apply_and_edit_manual_validates_then_applies_then_edits(
     apply_recommendations.main()
 
     assert events == ["resolve", "apply", "edit"]
+
+
+def test_virtual_lint_runs_before_dry_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    events: list[str] = []
+    fake_plans = (object(), object(), object())
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "run_virtual_lint",
+        lambda plans: events.append("virtual lint"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda plans, *, apply: events.append("apply" if apply else "dry-run"),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--virtual-lint"]
+    )
+
+    apply_recommendations.main()
+
+    assert events == ["virtual lint", "dry-run"]
+
+
+def test_virtual_lint_rejects_review_only_mode(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["apply_recommendations.py", str(path), "--review", "--virtual-lint"],
+    )
+
+    with pytest.raises(SystemExit):
+        apply_recommendations.main()
+
+    assert "--virtual-lint requires database-backed plan validation" in (
+        capsys.readouterr().err
+    )

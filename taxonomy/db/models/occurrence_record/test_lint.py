@@ -86,6 +86,61 @@ def test_taxon_lint_autofills_from_classification_entry() -> None:
     assert record.taxon is taxon
 
 
+def test_taxon_lint_autofills_genus_for_indeterminate_species() -> None:
+    taxon = cast(Taxon, SimpleNamespace(rank=Rank.genus))
+    taxon.resolve_redirect = lambda: taxon  # type: ignore[method-assign]
+    parent = SimpleNamespace(rank=Rank.genus, mapped_name=SimpleNamespace(taxon=taxon))
+    record = _record(
+        taxon=None,
+        classification_entry=SimpleNamespace(
+            name="Sorex sp.", rank=Rank.species, mapped_name=None, parent=parent
+        ),
+    )
+
+    assert list(check_missing_taxon(record, LintConfig(autofix=True))) == []
+    assert record.taxon is taxon
+
+
+def test_taxon_lint_uses_genus_above_mapped_nominate_subgenus() -> None:
+    genus = cast(Taxon, SimpleNamespace(rank=Rank.genus))
+    subgenus_obj = SimpleNamespace(rank=Rank.subgenus)
+    subgenus_obj.resolve_redirect = lambda: subgenus_obj
+    subgenus_obj.parent_of_rank = lambda rank: genus if rank is Rank.genus else None
+    subgenus = cast(Taxon, subgenus_obj)
+    parent = SimpleNamespace(
+        rank=Rank.genus, mapped_name=SimpleNamespace(taxon=subgenus)
+    )
+    record = _record(
+        taxon=None,
+        classification_entry=SimpleNamespace(
+            name="Sorex sp.", rank=Rank.species, mapped_name=None, parent=parent
+        ),
+    )
+
+    assert list(check_missing_taxon(record, LintConfig(autofix=True))) == []
+    assert record.taxon is genus
+
+
+def test_taxon_lint_does_not_infer_genus_for_unmapped_species() -> None:
+    taxon = cast(Taxon, SimpleNamespace(rank=Rank.genus))
+    parent = SimpleNamespace(rank=Rank.genus, mapped_name=SimpleNamespace(taxon=taxon))
+    record = _record(
+        taxon=None,
+        classification_entry=SimpleNamespace(
+            name="Sorex problematicus",
+            rank=Rank.species,
+            mapped_name=None,
+            parent=parent,
+        ),
+    )
+
+    messages = list(check_missing_taxon(record, LintConfig(autofix=True)))
+
+    assert len(messages) == 1
+    assert "cannot infer taxon" in messages[0]
+    assert record.taxon is None
+
+
 def _nominate_subspecies_mapping(
     classification_entry_rank: Rank,
 ) -> tuple[Taxon, Taxon, object]:
@@ -116,6 +171,31 @@ def test_taxon_mapping_allows_species_for_implicit_nominate_subspecies() -> None
     record = _record(taxon=species, classification_entry=classification_entry, tags=())
 
     assert list(check_taxon_mapping(record, LintConfig())) == []
+
+
+def test_taxon_mapping_autofixes_implicit_nominate_subspecies() -> None:
+    species, subspecies, classification_entry = _nominate_subspecies_mapping(
+        Rank.species
+    )
+    record = _record(
+        taxon=subspecies, classification_entry=classification_entry, tags=()
+    )
+
+    assert list(check_taxon_mapping(record, LintConfig(autofix=True))) == []
+    assert record.taxon is species
+
+
+def test_taxon_mapping_reports_implicit_nominate_subspecies_without_autofix() -> None:
+    _, subspecies, classification_entry = _nominate_subspecies_mapping(Rank.species)
+    record = _record(
+        taxon=subspecies, classification_entry=classification_entry, tags=()
+    )
+
+    messages = list(check_taxon_mapping(record, LintConfig(autofix=False)))
+
+    assert len(messages) == 1
+    assert "change taxon from" in messages[0]
+    assert record.taxon is subspecies
 
 
 def test_taxon_lint_keeps_explicit_nominate_subspecies() -> None:
@@ -253,6 +333,7 @@ def test_parse_verbatim_coordinates(
         ("500-750 feet", ("500-750", AltitudeUnit.ft)),
         ("~50 ft", ("~50", AltitudeUnit.ft)),
         ("ca. 50 ft", ("~50", AltitudeUnit.ft)),
+        ("approximately 1,600 m", ("~1600", AltitudeUnit.m)),
         ("elev. ca. 1,200 m", ("~1200", AltitudeUnit.m)),
         ("below the summit", None),
     ],
@@ -270,6 +351,11 @@ def test_parse_verbatim_elevation(
         ("Feb. 1992", "1992-02"),
         ("24 February 1992", "1992-02-24"),
         ("1992-02-24", "1992-02-24"),
+        ("July to September 2023", "2023-07/2023-09"),
+        ("between 28 January and 6 February 1983", "1983-01-28/1983-02-06"),
+        ("14 July–16 August 1996", "1996-07-14/1996-08-16"),
+        ("5 October 1994–9 April 1995", "1994-10-05/1995-04-09"),
+        ("1994-10-05/1995-04-09", "1994-10-05/1995-04-09"),
         ("31 February 1992", None),
     ],
 )
@@ -290,6 +376,18 @@ def test_source_data_lint_adds_normalized_tags() -> None:
     assert OccurrenceRecordTag.Coordinates("40.5°N", "74.25°W") in record.tags
     assert OccurrenceRecordTag.Elevation("1200", AltitudeUnit.m) in record.tags
     assert OccurrenceRecordTag.Date("1992-02-24") in record.tags
+
+
+def test_source_data_lint_refines_coarse_date_from_source_interval() -> None:
+    coarse = OccurrenceRecordTag.Date("2023")
+    interval = OccurrenceRecordTag.Date("2023-07/2023-09")
+    record = _record(
+        tags=(OccurrenceRecordTag.VerbatimDate("July to September 2023"), coarse)
+    )
+
+    assert list(check_source_data_tags(record, LintConfig(autofix=True))) == []
+    assert interval in record.tags
+    assert coarse not in record.tags
 
 
 def test_source_data_lint_translates_approximate_elevation() -> None:

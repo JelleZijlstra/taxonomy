@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db import coordinate_lint
 from taxonomy.db.constants import DistributionOrigin, OccurrenceValidity
 from taxonomy.db.models import (
@@ -21,6 +22,7 @@ from taxonomy.db.models import (
     Period,
     Region,
     StratigraphicUnit,
+    Taxon,
     TypeTag,
 )
 from taxonomy.db.models.location import LocationStatus
@@ -1189,6 +1191,132 @@ def print_full_manual_reviews(
             f"\n{len(rows)} review item(s): {manual_count} manual_review, "
             f"{note_count} actionable review note(s)."
         )
+
+
+def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> None:
+    """Apply type-locality plan actions to shared virtual model copies."""
+    new_locations: dict[str, Location] = {}
+
+    for location_tag_update in plan.location_tag_updates:
+        if not isinstance(location_tag_update.location, Location):
+            continue
+        location_proposal = builder.copy(
+            location_tag_update.location,
+            context=(
+                "type-locality Location tags for "
+                f"{location_tag_update.location.name}"
+            ),
+        )
+        for spec in location_tag_update.tags:
+            location_proposal.add_tag(_make_location_tag(spec))
+
+    for serialized_tag_update in plan.serialized_location_tag_updates:
+        if not isinstance(serialized_tag_update.location, Location):
+            continue
+        location_proposal = builder.copy(
+            serialized_tag_update.location,
+            context=(
+                "type-locality serialized Location tags for "
+                f"{serialized_tag_update.location.name}"
+            ),
+        )
+        for tag in serialized_tag_update.tags:
+            location_proposal.add_tag(tag)
+
+    recent: Period | None = None
+    for definition in plan.new_locations:
+        if not isinstance(definition.region, Region):
+            continue
+        target = definition.target
+        min_period = definition.min_period
+        if min_period is None:
+            if recent is None:
+                recent = Period.get(name="Recent")
+            min_period = recent
+        if not isinstance(min_period, Period):
+            continue
+        max_period = definition.max_period or min_period
+        if not isinstance(max_period, Period):
+            continue
+        stratigraphic_unit = definition.stratigraphic_unit
+        if stratigraphic_unit is not None and not isinstance(
+            stratigraphic_unit, StratigraphicUnit
+        ):
+            continue
+        tags = (
+            *(_make_location_tag(spec) for spec in target.location_tags),
+            *target.serialized_location_tags,
+        )
+        new_location = builder.create(
+            Location,
+            context=f"new Location {target.location_name!r}",
+            name=target.location_name,
+            min_period=min_period,
+            max_period=max_period,
+            min_age=target.min_age,
+            max_age=target.max_age,
+            stratigraphic_unit=stratigraphic_unit,
+            region=definition.region,
+            comment=_coordinate_comment(target),
+            latitude=target.latitude,
+            longitude=target.longitude,
+            location_detail="None",
+            age_detail="None",
+            deleted=LocationStatus.valid,
+            tags=tags,
+        )
+        new_locations[target.location_name] = new_location
+
+    for validity_update in plan.type_locality_validity_updates:
+        if validity_update.already_applied or not isinstance(
+            validity_update.name, Name
+        ):
+            continue
+        name_proposal = builder.copy(
+            validity_update.name,
+            context=(
+                "type-locality manifest line "
+                f"{validity_update.recommendation.line_number}"
+            ),
+        )
+        name_proposal.add_type_tag(
+            _make_type_locality_validity_tag(validity_update.spec)
+        )
+
+    for origin_update in plan.regional_origin_updates:
+        if origin_update.already_applied or not isinstance(origin_update.taxon, Taxon):
+            continue
+        taxon_proposal = builder.copy(
+            origin_update.taxon,
+            context=(
+                "type-locality manifest line "
+                f"{origin_update.recommendation.line_number}"
+            ),
+        )
+        taxon_proposal.add_tag(
+            _make_regional_origin_tag(
+                origin_update.spec, origin_update.region, origin_update.source
+            )
+        )
+
+    for planned_update in plan.updates:
+        if planned_update.already_applied or not isinstance(planned_update.name, Name):
+            continue
+        row = planned_update.recommendation
+        name_proposal = builder.copy(
+            planned_update.name,
+            context=f"type-locality manifest line {row.line_number}",
+        )
+        if row.action == ADD_IMPRECISE_LOCALITY:
+            name_proposal.add_type_tag(_make_imprecise_tag(row.tag_comment))
+            continue
+        maybe_target = planned_update.target
+        if isinstance(maybe_target, Location):
+            name_proposal.type_locality = builder.replacement(maybe_target)
+        elif planned_update.new_location_name is not None:
+            maybe_new_location = new_locations.get(planned_update.new_location_name)
+            if maybe_new_location is not None:
+                name_proposal.type_locality = maybe_new_location
 
 
 def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:

@@ -109,7 +109,12 @@ def _merge_coordinates(source: Location, target: Location) -> bool:
     return False
 
 
-def _merge_location_data(source: Location, target: Location) -> None:
+def merge_location_data(source: Location, target: Location) -> None:
+    """Merge the fields and tags on ``source`` into ``target``.
+
+    This deliberately excludes reference reassignment and aliasing so callers can
+    also use it to model a merge on virtual Locations.
+    """
     if source.region != target.region:
         print(
             f"warning: keeping region on {target}: {target.region}; "
@@ -382,7 +387,7 @@ class Location(BaseModel):
                 return
         if other == self:
             raise ValueError("cannot merge a Location into itself")
-        _merge_location_data(self, other)
+        merge_location_data(self, other)
         self.reassign_references(other)
         self.deleted = LocationStatus.alias
         self.parent = other

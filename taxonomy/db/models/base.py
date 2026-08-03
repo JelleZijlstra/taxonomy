@@ -18,7 +18,7 @@ from types import NoneType
 from typing import Any, ClassVar, Generic, Self, TypeVar
 
 import typing_inspect
-from clirm import Clirm, Field, Model, Query
+from clirm import Clirm, Field, Model, Query, VirtualReferenceError
 
 from taxonomy import adt, config, events, getinput
 from taxonomy.apis.cloud_search import SearchField
@@ -1578,6 +1578,38 @@ class ADTField(Field[Sequence[ADTT]]):
         elif value is None:
             return None
         raise TypeError(f"Unsupported type {value}")
+
+    def prepare_virtual(
+        self, value: Sequence[ADTT]
+    ) -> tuple[str | None, Sequence[ADTT]]:
+        raw_value = self.serialize(value)
+        if isinstance(value, str):
+            return raw_value, self.deserialize(raw_value)
+        return raw_value, tuple(value or ())
+
+    def validate_persistent(self, value: Sequence[ADTT]) -> None:
+        super().validate_persistent(value)
+
+        def iter_models(item: Any) -> Iterable[Model]:
+            if isinstance(item, Model):
+                yield item
+            elif isinstance(item, adt.ADT):
+                for attribute in item._get_attributes():
+                    yield from iter_models(attribute)
+            elif isinstance(item, Mapping):
+                for key, element in item.items():
+                    yield from iter_models(key)
+                    yield from iter_models(element)
+            elif isinstance(item, (list, tuple, set, frozenset)):
+                for element in item:
+                    yield from iter_models(element)
+
+        for model in iter_models(value):
+            if model.is_virtual:
+                raise VirtualReferenceError(
+                    f"cannot store virtual {type(model).__name__} {model.id!r} in "
+                    f"persisted field {self.model_cls.__name__}.{self.attribute_name}"
+                )
 
     def get_resolved_type(self) -> tuple[Any, type[object], bool]:
         orig_class = self.__orig_class__

@@ -35,6 +35,18 @@ entry point.
    python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --dry-run
    ```
 
+   When the applicator supports it, also lint the complete proposed object graph in
+   memory before handoff:
+
+   ```bash
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl \
+       --virtual-lint
+   ```
+
+   Virtual lint is advisory because database-wide queries cannot see newly proposed
+   objects, but it catches ordinary field, tag, relationship, and model-lint problems
+   before the user writes anything.
+
    To limit the compact review to particular actions, repeat `--review-action`:
 
    ```bash
@@ -88,13 +100,15 @@ domain semantics.
 
 ### Generic actions, schema version 1
 
+- `create_object`: create one model object from typed field values and assign it a
+  manifest-local reference for subsequent actions.
 - `set_field`: set one ordinary database field after checking its old value.
 - `add_tag`: add one serialized ADT tag to a named tag field.
 - `remove_tag`: remove one serialized ADT tag from a named tag field.
 - `manual_review`: record a non-mutating, evidence-bearing review decision for any
   database object after validating its ID and label.
 
-The three mutation actions use:
+Existing-object mutation actions use:
 
 ```json
 {
@@ -119,6 +133,23 @@ Generic `manual_review` omits `field`, `old_value`, `new_value`, and `tag`. It u
 same `object`, `confidence`, `reason`, and nonempty `evidence` fields, remains a no-op
 under `--apply`, and is printed in full by `--review-manual`. Type-locality
 `manual_review` retains its Name-specific schema below.
+
+`create_object` uses an `object.ref` instead of an ID and provides a `values` mapping.
+The values use the same typed representations as `set_field`; an ADT field is a list of
+serialized tags. A later row may use the created object either as its target or as a
+foreign-key value by giving
+`{"model": "Location", "ref": "precise_site", "label": "Precise site"}`. References are
+file-local, must be unique, and may only point backward to an earlier `create_object`
+row. For example:
+
+```json
+{"schema_version":1,"action":"create_object","confidence":"high","reason":"Reviewed evidence.","evidence":[{"kind":"source","text":"Exact evidence."}],"object":{"model":"Location","ref":"precise_site","label":"Precise site"},"values":{"name":"Precise site","region":{"model":"Region","id":1,"label":"Region"},"tags":[]}}
+{"schema_version":1,"action":"set_field","confidence":"high","reason":"Use the precise site.","evidence":[{"kind":"source","text":"Exact evidence."}],"object":{"model":"OccurrenceRecord","id":2,"label":"Source locality"},"field":"location","old_value":null,"new_value":{"model":"Location","ref":"precise_site","label":"Precise site"}}
+```
+
+Creation is restart-safe when the model's label identifies exactly one existing object
+and every supplied field already has the recommended value. An existing same-label
+object with different data is a validation error rather than an implicit reuse.
 
 ### Location actions, schema version 1
 

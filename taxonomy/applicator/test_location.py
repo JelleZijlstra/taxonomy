@@ -1,4 +1,5 @@
 import json
+from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -6,6 +7,9 @@ from typing import cast
 import pytest
 
 from taxonomy.applicator import location as recommendations
+from taxonomy.applicator.proposals import ProposalBuilder
+from taxonomy.db.constants import RegionKind
+from taxonomy.db.models import Location, Region
 from taxonomy.db.models.location import LocationStatus
 from taxonomy.db.models.tags import LocationTag
 
@@ -526,3 +530,53 @@ def test_apply_edit_sorts_location_tags() -> None:
     recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
 
     assert location.tags == tuple(sorted((earlier, later)))
+
+
+def test_virtual_merge_proposal_combines_models_without_database_backrefs() -> None:
+    region = Region.virtual(name="Example Region", kind=RegionKind.country, tags=())
+    source = Location.virtual(
+        name="Example-Cave",
+        region=region,
+        latitude="1°N",
+        longitude="2°E",
+        location_detail="Source evidence.",
+        age_detail="",
+        tags=(),
+        deleted=LocationStatus.valid,
+    )
+    target = Location.virtual(
+        name="Example Cave",
+        region=region,
+        location_detail="",
+        age_detail="",
+        tags=(),
+        deleted=LocationStatus.valid,
+    )
+    row = recommendations.parse_recommendation(merge_row(), 1)
+    plan = recommendations.RecommendationPlan(
+        (
+            recommendations.PlannedMerge(
+                row,
+                cast(recommendations.LocationLike, source),
+                cast(recommendations.LocationLike, target),
+                already_applied=False,
+            ),
+        ),
+        Counter({recommendations.MERGE_LOCATION: 1}),
+    )
+    builder = ProposalBuilder()
+
+    recommendations.add_virtual_models(plan, builder)
+
+    proposals = builder.build()
+    assert len(proposals) == 2
+    proposed_source = proposals[0].model
+    proposed_target = proposals[1].model
+    assert isinstance(proposed_source, Location)
+    assert isinstance(proposed_target, Location)
+    assert proposed_source.deleted is LocationStatus.alias
+    assert proposed_source.parent is proposed_target
+    assert (proposed_target.latitude, proposed_target.longitude) == ("1°N", "2°E")
+    assert proposed_target.location_detail == "Source evidence."
+    assert source.deleted is LocationStatus.valid
+    assert target.latitude is None
