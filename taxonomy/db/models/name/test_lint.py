@@ -577,10 +577,11 @@ def test_type_locality_validity_rejects_valid_tag() -> None:
 
 
 def test_redirect_rule_flags_name_type_locality() -> None:
-    region = SimpleNamespace()
-    region.all_parents = lambda: iter(())
-    target = SimpleNamespace()
-    source = SimpleNamespace()
+    region_data = SimpleNamespace()
+    region_data.all_parents = lambda: iter(())
+    region = cast(models.Region, region_data)
+    target = cast(models.Taxon, SimpleNamespace())
+    source = cast(models.Article, SimpleNamespace())
     rule = models.tags.TaxonTag.RedirectOccurrences(region, target, source)
     taxon = SimpleNamespace(tags=(rule,))
     taxon.get_tags = lambda values, tag_type: (

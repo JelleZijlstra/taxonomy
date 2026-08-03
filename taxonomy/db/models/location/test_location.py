@@ -22,6 +22,7 @@ from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region, RegionTag
+from taxonomy.db.models.stratigraphic_unit import StratigraphicUnit
 from taxonomy.db.models.tags import LocationTag
 
 _REAL_GET_GEONAMES_COORDINATE_MATCHES = location_lint._get_geonames_coordinate_matches
@@ -50,7 +51,7 @@ def test_create_interactively_recovers_from_duplicate_name_race(
 ) -> None:
     region = cast(Region, object())
     period = cast(Period, object())
-    created = SimpleNamespace(fill_required_fields=Mock())
+    created = cast(Location, SimpleNamespace(fill_required_fields=Mock()))
     make = Mock(side_effect=[sqlite3.IntegrityError, created])
     get_line = Mock(return_value="Walnut Creek, California")
     monkeypatch.setattr(Location, "make", make)
@@ -110,6 +111,8 @@ def test_open_coordinates_opens_opposite_range_corner_markers(
 
     Location.open_coordinates(loc)
 
+    assert loc.latitude is not None
+    assert loc.longitude is not None
     extent = coordinate_lint.make_extent(loc.latitude, loc.longitude)
     assert extent is not None
     open_.assert_called_once_with(["open", *extent.openstreetmap_urls])
@@ -553,14 +556,17 @@ def _mergeable_location(**kwargs: object) -> Location:
 
 def test_merge_preserves_compatible_metadata() -> None:
     article = cast(Article, object())
+    min_period = cast(Period, object())
+    max_period = cast(Period, object())
+    stratigraphic_unit = cast(StratigraphicUnit, object())
     source = _mergeable_location(
         id=1,
         name="Old spelling",
         min_age=100,
         max_age=200,
-        min_period="source minimum period",
-        max_period="source maximum period",
-        stratigraphic_unit="source stratigraphic unit",
+        min_period=min_period,
+        max_period=max_period,
+        stratigraphic_unit=stratigraphic_unit,
         source=article,
         latitude="10°N",
         longitude="20°E",
@@ -575,9 +581,9 @@ def test_merge_preserves_compatible_metadata() -> None:
 
     assert target.min_age == 100
     assert target.max_age == 200
-    assert target.min_period == "source minimum period"
-    assert target.max_period == "source maximum period"
-    assert target.stratigraphic_unit == "source stratigraphic unit"
+    assert target.min_period is min_period
+    assert target.max_period is max_period
+    assert target.stratigraphic_unit is stratigraphic_unit
     assert target.source is article
     assert (target.latitude, target.longitude) == ("10°N", "20°E")
     assert target.comment == "Source comment."
@@ -5616,4 +5622,4 @@ def test_remove_unused_location_ignore() -> None:
 
     location_lint.remove_unused_ignores(loc, {"period"})
 
-    assert loc.tags == []
+    assert loc.tags == ()

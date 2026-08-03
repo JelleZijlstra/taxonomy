@@ -532,7 +532,7 @@ def remove_unused_ignores(location: Location, unused: Collection[str]) -> None:
             print(f"{location}: removing unused IgnoreLint tag: {tag}")
         else:
             new_tags.append(tag)
-    location.tags = new_tags  # type: ignore[assignment]
+    location.tags = tuple(new_tags)  # type: ignore[assignment]
 
 
 def get_ignores(location: Location) -> Iterable[IgnoreLint]:
@@ -3525,7 +3525,7 @@ def _get_undesignated_region_name(region: Region, name: str) -> str | None:
         ),
         None,
     )
-    if found_designator not in matching_designators:
+    if found_designator is None or found_designator not in matching_designators:
         return None
     return name[: -len(found_designator) - 1]
 
@@ -3549,21 +3549,20 @@ def _get_region_name_aliases(region: Region) -> set[str]:
     names.add(_get_unqualified_region_name(region))
     names.update(_get_osm_region_name_translations(region))
     shortest_name = min(names, key=lambda name: (len(name), name))
+    matching_designators = (
+        _ADMINISTRATIVE_DESIGNATORS
+        if region.kind is RegionKind.subnational
+        else frozenset(
+            designator
+            for kind, designator in _REGION_KIND_DESIGNATORS.items()
+            if region.kind is kind
+        )
+    )
     undesignated_name = _get_undesignated_region_name(region, shortest_name)
     if undesignated_name is not None:
         found_designator = shortest_name[len(undesignated_name) + 1 :]
         names.add(undesignated_name)
         names.add(f"{found_designator} of {undesignated_name}")
-    else:
-        matching_designators = (
-            _ADMINISTRATIVE_DESIGNATORS
-            if region.kind is RegionKind.subnational
-            else frozenset(
-                designator
-                for kind, designator in _REGION_KIND_DESIGNATORS.items()
-                if region.kind is kind
-            )
-        )
     if undesignated_name is None and len(matching_designators) == 1:
         designator = next(iter(matching_designators))
         names.add(f"{shortest_name} {designator}")
@@ -3690,6 +3689,8 @@ def _get_coordinate_provenance_extents(
                     extents.append(parsed[2])
             if extents:
                 return extents, None
+            if location.latitude is None or location.longitude is None:
+                return [], "Location no longer has coordinates"
             location_extent = coordinate_lint.make_extent(
                 location.latitude, location.longitude
             )

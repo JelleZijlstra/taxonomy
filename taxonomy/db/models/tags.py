@@ -1,7 +1,7 @@
 """Tag classes that need to defined after all models for import cycle reasons."""
 
 from collections.abc import Iterable
-from typing import Any, NotRequired
+from typing import NotRequired, Protocol
 
 from taxonomy import adt
 from taxonomy.db.constants import (
@@ -61,19 +61,15 @@ class LocationTag(adt.ADT):
     # Evidence supporting the Location's latitude and longitude fields. External
     # identifiers are snapshots of the object used, not cached coordinate values.
     CoordinatesFromPLSS(plss_id=Managed, tag=9)  # type: ignore[name-defined]
-    CoordinatesFromGeoNames(geoname_id=Managed, tag=10)  # type: ignore[name-defined]
+    CoordinatesFromGeoNames(geoname_id=int, tag=10)  # type: ignore[name-defined]
     CoordinatesFromNominatim(  # type: ignore[name-defined]
-        osm_type=Managed,
-        osm_id=Managed,
-        category=Managed,
-        use_bounding_box=Managed,
-        tag=11,
+        osm_type=Managed, osm_id=int, category=Managed, use_bounding_box=bool, tag=11
     )
     CoordinatesFromName(  # type: ignore[name-defined]
         name=Name, text=NotRequired[Markdown], tag=12
     )
     CoordinatesFromOccurrenceRecord(  # type: ignore[name-defined]
-        occurrence_record_id=Managed, tag=13
+        occurrence_record_id=int, tag=13
     )
     CoordinatesFromLocationName(tag=14)  # type: ignore[name-defined]
     CoordinatesManual(comment=Markdown, tag=15)  # type: ignore[name-defined]
@@ -154,9 +150,13 @@ def is_region_within(region: Region, ancestor: Region) -> bool:
     return region_distance(region, ancestor) is not None
 
 
-def get_matching_taxon_tags(
-    taxon: Taxon, region: Region, tag_type: type[Any]
-) -> list[Any]:
+class _RegionalTag(Protocol):
+    region: Region
+
+
+def get_matching_taxon_tags[Tag: _RegionalTag](
+    taxon: Taxon, region: Region, tag_type: type[Tag]
+) -> list[Tag]:
     return [
         tag
         for tag in taxon.tags
@@ -165,9 +165,9 @@ def get_matching_taxon_tags(
     ]
 
 
-def get_effective_regional_tag(
-    taxon: Taxon, region: Region, tag_type: type[Any]
-) -> Any | None:
+def get_effective_regional_tag[Tag: _RegionalTag](
+    taxon: Taxon, region: Region, tag_type: type[Tag]
+) -> Tag | None:
     """Return the most specific unambiguous regional tag for a taxon."""
     matches_with_distance = [
         (distance, tag)
@@ -180,16 +180,19 @@ def get_effective_regional_tag(
     closest = [
         tag for distance, tag in matches_with_distance if distance == closest_distance
     ]
-    status_attribute = "origin" if tag_type is TaxonTag.RegionalOrigin else "presence"
-    statuses = {getattr(tag, status_attribute) for tag in closest}
+    statuses = {
+        tag.origin if isinstance(tag, TaxonTag.RegionalOrigin) else tag.presence
+        for tag in closest
+        if isinstance(tag, (TaxonTag.RegionalOrigin, TaxonTag.RegionalPresence))
+    }
     if len(statuses) != 1:
         return None
     return closest[0]
 
 
-def iter_overlapping_region_pairs(
-    tags: Iterable[TaxonTag],
-) -> Iterable[tuple[TaxonTag, TaxonTag]]:
+def iter_overlapping_region_pairs[Tag: _RegionalTag](
+    tags: Iterable[Tag],
+) -> Iterable[tuple[Tag, Tag]]:
     tags = list(tags)
     for index, first in enumerate(tags):
         for second in tags[index + 1 :]:

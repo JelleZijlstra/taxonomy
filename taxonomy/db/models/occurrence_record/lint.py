@@ -2,6 +2,7 @@ import datetime
 import re
 from collections.abc import Collection, Iterable
 from dataclasses import replace
+from typing import Protocol
 
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import (
@@ -638,7 +639,12 @@ def check_status_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str
                 )
 
 
-def _tag_cutoff_year(tag: models.tags.TaxonTag) -> int | None:
+class _CutoffYearTag(Protocol):
+    cutoff_year: int | None
+    source: models.Article
+
+
+def _tag_cutoff_year(tag: _CutoffYearTag) -> int | None:
     if tag.cutoff_year is not None:
         return tag.cutoff_year
     return tag.source.valid_numeric_year()

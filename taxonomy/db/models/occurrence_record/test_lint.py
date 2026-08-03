@@ -474,7 +474,7 @@ def test_status_lint_flags_duplicate_status() -> None:
     assert "duplicate PresenceFromSource for vagrant" in messages[0]
 
 
-def _region(name: str, parent: Any = None) -> object:
+def _region(name: str, parent: Any = None) -> models.Region:
     region = SimpleNamespace(name=name, parent=parent)
 
     def all_parents() -> object:
@@ -485,7 +485,7 @@ def _region(name: str, parent: Any = None) -> object:
 
     region.all_parents = all_parents
     region.__str__ = lambda: name  # type: ignore[method-assign]
-    return region
+    return cast(models.Region, region)
 
 
 def _rule_taxon(name: str, tags: tuple[object, ...]) -> Taxon:
@@ -498,9 +498,12 @@ def _rule_taxon(name: str, tags: tuple[object, ...]) -> Taxon:
     return cast(Taxon, taxon)
 
 
-def _article(name: str, year: int) -> object:
-    return SimpleNamespace(
-        name=name, valid_numeric_year=lambda: year, __str__=lambda: name
+def _article(name: str, year: int) -> models.Article:
+    return cast(
+        models.Article,
+        SimpleNamespace(
+            name=name, valid_numeric_year=lambda: year, __str__=lambda: name
+        ),
     )
 
 

@@ -22,10 +22,10 @@ class FakeRegion:
 
     def parent_of_kind(self, kind: RegionKind) -> Self | None:
         assert kind is RegionKind.country
-        region: Self | None = self
+        region: FakeRegion | None = self
         while region is not None:
             if region.parent is None:
-                return region
+                return cast(Self, region)
             region = region.parent
         return None
 

@@ -51,30 +51,30 @@ class RecommendationError(Exception):
     pass
 
 
-class RegionLike(Protocol):
-    id: int
+class _IdentifiedLike(Protocol):
+    @property
+    def id(self) -> int: ...
+
+
+class RegionLike(_IdentifiedLike, Protocol):
     name: str
 
 
-class ArticleLike(Protocol):
-    id: int
+class ArticleLike(_IdentifiedLike, Protocol):
     name: str
 
 
-class NamedLike(Protocol):
-    id: int
+class NamedLike(_IdentifiedLike, Protocol):
     name: str
 
 
-class TaxonLike(Protocol):
-    id: int
+class TaxonLike(_IdentifiedLike, Protocol):
     tags: Sequence[TaxonTag] | None
 
     def add_tag(self, tag: TaxonTag) -> None: ...
 
 
-class LocationLike(Protocol):
-    id: int
+class LocationLike(_IdentifiedLike, Protocol):
     name: str
     region: RegionLike
     latitude: str | None
@@ -94,8 +94,7 @@ class LocationLike(Protocol):
     def add_tag(self, tag: LocationTag) -> None: ...
 
 
-class NameLike(Protocol):
-    id: int
+class NameLike(_IdentifiedLike, Protocol):
     type_locality: LocationLike | None
     type_tags: Sequence[TypeTag] | None
     taxon: TaxonLike

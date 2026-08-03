@@ -490,12 +490,10 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
                 yield message
             return
         # Expand existing tag if possible
-        existing_min = (
-            existing.min_year
-        )  # static analysis: ignore[attribute_is_never_set]
-        existing_max = (
-            existing.max_year
-        )  # static analysis: ignore[attribute_is_never_set]
+        # static analysis: ignore[attribute_is_never_set]
+        existing_min = existing.min_year
+        # static analysis: ignore[attribute_is_never_set]
+        existing_max = existing.max_year
         new_min = existing_min
         new_max = existing_max
         if (

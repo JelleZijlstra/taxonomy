@@ -389,8 +389,6 @@ def _parse_optional_components(
     lot: str | None = None
     has_alternative_section = False
     end = match.end()
-    component_text = suffix
-    before_section = ""
     if section_match is not None:
         section = int(section_match.group("section"))
         if not section_is_prefix:

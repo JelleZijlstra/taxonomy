@@ -592,7 +592,11 @@ class BaseModel(Model):
                 print(f"{field}: could not get value")
 
     def full_reverse_rel(self) -> None:
-        for field in sorted(field.related_name for field in self.clirm_backrefs):
+        for field in sorted(
+            field.related_name
+            for field in self.clirm_backrefs
+            if field.related_name is not None
+        ):
             objects = list(getattr(self, field))
             if not objects:
                 continue
