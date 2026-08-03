@@ -45,6 +45,12 @@
 - Do not commit secrets. Use env vars for credentials (Google Sheets, AWS, Zotero).
 - Avoid committing large datasets; reference them in `docs/`.
 - Keep local paths/tokens out of VCS.
+- Agents must run commands that may open the taxonomy database with `CLIRM_READONLY=1`
+  unless the user has explicitly authorized that exact command to write to the database.
+  The project Codex configuration sets this automatically.
+- Use `CLIRM_READONLY=0` only for an explicitly authorized database-writing command or
+  for tests that operate exclusively on isolated temporary/in-memory databases. Keep
+  ordinary tests and all read-only audits at the default value.
 
 ## Writing data import scripts
 

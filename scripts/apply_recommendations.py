@@ -15,9 +15,12 @@ apply step.
 import argparse
 import json
 from collections.abc import Callable
+from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from clirm import readonly
 
 from taxonomy import getinput
 from taxonomy.applicator import generic as generic_recommendations
@@ -464,6 +467,71 @@ def execute_plans(
         generic_recommendations.execute_plan(generic_plan, apply=apply)
 
 
+def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
+    manual_items: tuple[ManualReviewObject, ...] | None = None
+    plans: (
+        tuple[
+            generic_recommendations.RecommendationPlan,
+            location_recommendations.RecommendationPlan,
+            type_recommendations.RecommendationPlan,
+        ]
+        | None
+    ) = None
+    try:
+        recommendations = read_recommendations(args.recommendations)
+        if args.review:
+            actions = set(args.review_action) if args.review_action else None
+            print_review(recommendations, actions=actions)
+            return
+        if args.review_manual:
+            print_manual_reviews(recommendations)
+            return
+        if args.edit_manual and not args.apply:
+            try:
+                plans = build_plans(recommendations)
+                generic_plan = plans[0]
+            except RecommendationError as exc:
+                print(
+                    getinput.yellow(
+                        "Warning: the complete manifest no longer matches the "
+                        "database. Because --edit-manual does not apply actionable "
+                        "rows, it will validate the manual-review objects separately "
+                        "and continue:"
+                    )
+                )
+                print(exc)
+                print()
+                generic_plan = build_generic_manual_review_plan(recommendations)
+            manual_items = _resolve_manual_review_objects(
+                recommendations, generic_plan, allow_name_label_changes=plans is None
+            )
+        else:
+            plans = build_plans(recommendations)
+        if args.edit_manual and args.apply:
+            # Resolve every editor target before --apply is allowed to write. This
+            # avoids discovering a stale later manual-review row after a partial run.
+            assert plans is not None
+            manual_items = _resolve_manual_review_objects(recommendations, plans[0])
+    except RecommendationError as exc:
+        parser.error(str(exc))
+    if args.virtual_lint:
+        if plans is None:
+            parser.error("--virtual-lint requires a complete actionable plan")
+        run_virtual_lint(plans)
+        print()
+    if args.apply:
+        assert plans is not None
+        execute_plans(plans, apply=True)
+        if manual_items is not None:
+            print()
+            _edit_manual_review_objects(manual_items)
+    elif manual_items is not None:
+        _edit_manual_review_objects(manual_items)
+    else:
+        assert plans is not None
+        execute_plans(plans, apply=False)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("recommendations", type=Path)
@@ -530,68 +598,9 @@ def main() -> None:
             "--apply and --edit-manual may be combined with each other, but not with "
             "--dry-run, --review, or --review-manual"
         )
-    manual_items: tuple[ManualReviewObject, ...] | None = None
-    plans: (
-        tuple[
-            generic_recommendations.RecommendationPlan,
-            location_recommendations.RecommendationPlan,
-            type_recommendations.RecommendationPlan,
-        ]
-        | None
-    ) = None
-    try:
-        recommendations = read_recommendations(args.recommendations)
-        if args.review:
-            actions = set(args.review_action) if args.review_action else None
-            print_review(recommendations, actions=actions)
-            return
-        if args.review_manual:
-            print_manual_reviews(recommendations)
-            return
-        if args.edit_manual and not args.apply:
-            try:
-                plans = build_plans(recommendations)
-                generic_plan = plans[0]
-            except RecommendationError as exc:
-                print(
-                    getinput.yellow(
-                        "Warning: the complete manifest no longer matches the "
-                        "database. Because --edit-manual does not apply actionable "
-                        "rows, it will validate the manual-review objects separately "
-                        "and continue:"
-                    )
-                )
-                print(exc)
-                print()
-                generic_plan = build_generic_manual_review_plan(recommendations)
-            manual_items = _resolve_manual_review_objects(
-                recommendations, generic_plan, allow_name_label_changes=plans is None
-            )
-        else:
-            plans = build_plans(recommendations)
-        if args.edit_manual and args.apply:
-            # Resolve every editor target before --apply is allowed to write. This
-            # avoids discovering a stale later manual-review row after a partial run.
-            assert plans is not None
-            manual_items = _resolve_manual_review_objects(recommendations, plans[0])
-    except RecommendationError as exc:
-        parser.error(str(exc))
-    if args.virtual_lint:
-        if plans is None:
-            parser.error("--virtual-lint requires a complete actionable plan")
-        run_virtual_lint(plans)
-        print()
-    if args.apply:
-        assert plans is not None
-        execute_plans(plans, apply=True)
-        if manual_items is not None:
-            print()
-            _edit_manual_review_objects(manual_items)
-    elif manual_items is not None:
-        _edit_manual_review_objects(manual_items)
-    else:
-        assert plans is not None
-        execute_plans(plans, apply=False)
+    context = nullcontext() if args.apply or args.edit_manual else readonly()
+    with context:
+        _run(args, parser)
 
 
 if __name__ == "__main__":

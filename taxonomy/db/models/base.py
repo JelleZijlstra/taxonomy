@@ -12,6 +12,7 @@ import typing
 import urllib.parse
 from collections import defaultdict
 from collections.abc import Callable, Collection, Container, Iterable, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, replace
 from functools import partial
 from types import NoneType
@@ -152,7 +153,11 @@ class BaseModel(Model):
         """Add IgnoreLint tags to every valid object failing a registered lint."""
         cls.clear_lint_caches()
         lint = models.lint.Lint.for_model(cls)
-        return lint.add_ignore_lint_to_all(label, comment, dry_run=dry_run, query=query)
+        context = cls.clirm.readonly() if dry_run else nullcontext()
+        with context:
+            return lint.add_ignore_lint_to_all(
+                label, comment, dry_run=dry_run, query=query
+            )
 
     @classmethod
     def lint_all(
@@ -167,32 +172,34 @@ class BaseModel(Model):
         experimental: bool = False,
         query: Iterable[Self] | None = None,
     ) -> list[tuple[Self, list[str]]]:
-        cls.clear_lint_caches()
-        cfg = LintConfig(
-            autofix=autofix,
-            interactive=interactive,
-            verbose=verbose,
-            manual_mode=manual_mode,
-            enable_all=enable_all,
-            experimental=experimental,
-        )
-        if query is None:
+        context = nullcontext() if autofix else cls.clirm.readonly()
+        with context:
+            cls.clear_lint_caches()
+            cfg = LintConfig(
+                autofix=autofix,
+                interactive=interactive,
+                verbose=verbose,
+                manual_mode=manual_mode,
+                enable_all=enable_all,
+                experimental=experimental,
+            )
+            if query is None:
+                if linter is None:
+                    query = cls.select()
+                else:
+                    # For specific linters, only worry about valid names
+                    query = cls.select_valid()
             if linter is None:
-                query = cls.select()
-            else:
-                # For specific linters, only worry about valid names
-                query = cls.select_valid()
-        if linter is None:
-            linter = cls.general_lint
-        bad = []
-        for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
-            messages = list(linter(obj, cfg))
-            if messages:
-                for message in messages:
-                    print(message)
-                bad.append((obj, messages))
-        cls.clear_lint_caches()
-        return bad
+                linter = cls.general_lint
+            bad = []
+            for obj in getinput.print_every_n(query, label=f"{cls.__name__}s"):
+                messages = list(linter(obj, cfg))
+                if messages:
+                    for message in messages:
+                        print(message)
+                    bad.append((obj, messages))
+            cls.clear_lint_caches()
+            return bad
 
     def format(self, *, quiet: bool = False, cfg: LintConfig = LintConfig()) -> bool:
         # First autofix

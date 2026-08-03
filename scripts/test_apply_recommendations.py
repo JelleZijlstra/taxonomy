@@ -1,6 +1,8 @@
 import json
 import sys
 from collections import Counter
+from collections.abc import Iterator
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -500,6 +502,16 @@ def test_virtual_lint_runs_before_dry_run(
     _write(path, [_generic_manual_row()])
     events: list[str] = []
     fake_plans = (object(), object(), object())
+
+    @contextmanager
+    def readonly() -> Iterator[None]:
+        events.append("read-only enter")
+        try:
+            yield
+        finally:
+            events.append("read-only exit")
+
+    monkeypatch.setattr(apply_recommendations, "readonly", readonly)
     monkeypatch.setattr(
         apply_recommendations, "build_plans", lambda recommendations: fake_plans
     )
@@ -519,7 +531,29 @@ def test_virtual_lint_runs_before_dry_run(
 
     apply_recommendations.main()
 
-    assert events == ["virtual lint", "dry-run"]
+    assert events == ["read-only enter", "virtual lint", "dry-run", "read-only exit"]
+
+
+def test_apply_mode_does_not_enter_read_only_context(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object())
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations, "execute_plans", lambda *_args, **_kwargs: None
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "readonly",
+        lambda: pytest.fail("apply mode entered read-only context"),
+    )
+    monkeypatch.setattr(sys, "argv", ["apply_recommendations.py", str(path), "--apply"])
+
+    apply_recommendations.main()
 
 
 def test_virtual_lint_rejects_review_only_mode(

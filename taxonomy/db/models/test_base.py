@@ -1,3 +1,5 @@
+from collections.abc import Iterator
+from contextlib import contextmanager
 from types import SimpleNamespace
 
 import pytest
@@ -5,6 +7,33 @@ import pytest
 from taxonomy.db import models
 from taxonomy.db.models.base import BaseModel, LintConfig
 from taxonomy.db.models.tags import LocationTag
+
+
+def test_lint_all_uses_read_only_context_without_autofix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+
+    @contextmanager
+    def readonly() -> Iterator[None]:
+        events.append("enter")
+        try:
+            yield
+        finally:
+            events.append("exit")
+
+    def linter(_obj: object, cfg: LintConfig) -> tuple[()]:
+        assert events == ["enter"]
+        assert not cfg.autofix
+        return ()
+
+    monkeypatch.setattr(BaseModel.clirm, "readonly", readonly)
+    monkeypatch.setattr(
+        models.Location, "clear_lint_caches", classmethod(lambda cls: None)
+    )
+
+    assert models.Location.lint_all(linter, autofix=False, query=[]) == []
+    assert events == ["enter", "exit"]
 
 
 def test_read_only_lint_reports_invalid_model_reference_in_tag(

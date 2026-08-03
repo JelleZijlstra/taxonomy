@@ -28,6 +28,7 @@ import sqlite3
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
+from contextlib import nullcontext
 from dataclasses import dataclass, field
 from itertools import groupby, pairwise
 from pathlib import Path
@@ -1832,12 +1833,14 @@ def run_linter_and_fix(
 @command
 def resolve_redirects(*, dry_run: bool = False) -> None:
     cfg = LintConfig(autofix=not dry_run)
-    for model_cls in models.BaseModel.__subclasses__():
-        for obj in getinput.print_every_n(
-            model_cls.select(), label=f"{model_cls.__name__}s"
-        ):
-            for _ in obj.check_all_fields(cfg):
-                pass
+    context = models.BaseModel.clirm.readonly() if dry_run else nullcontext()
+    with context:
+        for model_cls in models.BaseModel.__subclasses__():
+            for obj in getinput.print_every_n(
+                model_cls.select(), label=f"{model_cls.__name__}s"
+            ):
+                for _ in obj.check_all_fields(cfg):
+                    pass
 
 
 @command
