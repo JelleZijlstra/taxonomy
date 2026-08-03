@@ -792,7 +792,8 @@ def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
         for field in OccurrenceRecord.fields()
     )
     if fields_match and cfg.autofix and not LINT.is_ignoring_lint(record, "duplicate"):
-        print(f"{record}: {message}; marking OR#{record.id} deleted")
-        record.status = OccurrenceRecordStatus.deleted
+        print(f"{record}: {message}; redirecting OR#{record.id} to OR#{primary.id}")
+        record.add_tag(OccurrenceRecordTag.RedirectTarget(primary))
+        record.status = OccurrenceRecordStatus.alias
     else:
         yield message

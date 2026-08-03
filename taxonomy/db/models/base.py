@@ -416,8 +416,8 @@ class BaseModel(Model):
                         tag_type = type(tag)
                         for attr_name in tag_type._attributes:
                             attr_value = getattr(tag, attr_name)
-                            if isinstance(value, BaseModel):
-                                if not is_invalid and value.is_invalid():
+                            if isinstance(attr_value, BaseModel):
+                                if not is_invalid and attr_value.is_invalid():
                                     yield (
                                         f"{self}: references invalid object"
                                         f" {attr_value} in {field} tag {tag}"
@@ -603,6 +603,21 @@ class BaseModel(Model):
             print(f"{field}: {len(objects)} objects")
             for obj in objects:
                 print(f"- {obj}")
+
+    def get_direct_backrefs(
+        self, *, include_invalid: bool = False
+    ) -> Iterable[tuple[Field[Any], BaseModel]]:
+        """Yield objects that refer to this object through ordinary model fields.
+
+        This intentionally does not search serialized ADT fields. Those references
+        do not have indexed reverse relationships and require model-specific handling.
+        """
+        for field in self.clirm_backrefs:
+            if field.related_name is None:
+                continue
+            for obj in getattr(self, field.related_name):
+                if include_invalid or not obj.is_invalid():
+                    yield field, obj
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
         return []

@@ -12,6 +12,7 @@ from taxonomy.db.models.classification_entry.lint import (
     _is_misspelling_of,
     check_auxiliary_name,
     check_needs_auxiliary_name,
+    check_parent_cycle,
     check_parent_rank,
     check_verbatim_parent,
 )
@@ -135,6 +136,23 @@ def test_parent_rank_allows_same_rank_auxiliary_subspecies() -> None:
     auxiliary.rank = Rank.subspecies
 
     assert list(check_parent_rank(auxiliary, LintConfig())) == []
+
+
+def test_parent_cycle_lint() -> None:
+    first = _make_ce(parent=None, auxiliary=False)
+    second = _make_ce(parent=first, auxiliary=False)
+    first.parent = second
+
+    assert list(check_parent_cycle.linter(first, LintConfig())) == [
+        "parent cycle detected"
+    ]
+
+
+def test_parent_cycle_lint_accepts_acyclic_tree() -> None:
+    root = _make_ce(parent=None, auxiliary=False)
+    child = _make_ce(parent=root, auxiliary=False)
+
+    assert list(check_parent_cycle.linter(child, LintConfig())) == []
 
 
 def test_is_misspelling_of() -> None:

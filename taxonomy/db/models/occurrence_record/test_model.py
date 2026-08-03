@@ -5,10 +5,11 @@ from unittest.mock import Mock
 import pytest
 
 from taxonomy.db import models
+from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.classification_entry import ClassificationEntry
 from taxonomy.db.models.location import Location
 
-from .model import OccurrenceRecord, OccurrenceRecordStatus
+from .model import OccurrenceRecord, OccurrenceRecordStatus, OccurrenceRecordTag
 
 
 def test_edit_opens_tags_only() -> None:
@@ -38,6 +39,35 @@ def test_status_controls_validity(status: OccurrenceRecordStatus) -> None:
 
     assert OccurrenceRecord.is_invalid(record) is expected  # type: ignore[arg-type]
     assert OccurrenceRecord.should_skip(record) is expected  # type: ignore[arg-type]
+
+
+def test_alias_redirects_to_tagged_record() -> None:
+    target = cast(OccurrenceRecord, SimpleNamespace())
+    record = SimpleNamespace(
+        status=OccurrenceRecordStatus.alias,
+        tags=(OccurrenceRecordTag.RedirectTarget(target),),
+        get_tags=lambda tags, tag_cls: (
+            tag for tag in tags if isinstance(tag, tag_cls)
+        ),
+    )
+
+    assert OccurrenceRecord.get_redirect_target(record) is target  # type: ignore[arg-type]
+
+
+def test_redirect_target_tag_round_trips() -> None:
+    tag = OccurrenceRecordTag.RedirectTarget(OccurrenceRecord(42))
+
+    assert OccurrenceRecordTag.unserialize(tag.serialize()) == tag
+
+
+def test_invalid_alias_requires_exactly_one_redirect_target() -> None:
+    record = SimpleNamespace(
+        status=OccurrenceRecordStatus.alias, tags=(), get_tags=lambda tags, tag_cls: ()
+    )
+
+    assert list(OccurrenceRecord.lint_invalid(record, LintConfig())) == [  # type: ignore[arg-type]
+        "alias has 0 RedirectTarget tags"
+    ]
 
 
 def test_open_coordinates_falls_back_to_location() -> None:

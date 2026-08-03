@@ -86,11 +86,27 @@ class StratigraphicUnit(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
+    def get_redirect_target(self) -> StratigraphicUnit | None:
+        if (
+            not self.deleted
+            or self.parent is None
+            or not self.comment
+            or not self.comment.endswith(f"(P#{self.parent.id})")
+        ):
+            return None
+        return self.parent
+
     def merge(self, other: StratigraphicUnit | None = None) -> None:
         if other is None:
             other = StratigraphicUnit.getter(None).get_one("merge into> ")
             if other is None:
                 return
+        if other == self:
+            raise ValueError("cannot merge a StratigraphicUnit into itself")
+        if other.is_invalid():
+            raise ValueError(
+                "cannot merge a StratigraphicUnit into an invalid StratigraphicUnit"
+            )
         for loc in self.locations:
             loc.stratigraphic_unit = other
         new_comment = f"Merged into {other} (P#{other.id})"

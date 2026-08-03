@@ -153,6 +153,20 @@ def check_parent(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         yield "parent from different article"
 
 
+@LINT.add("parent_cycle")
+def check_parent_cycle(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+    current: ClassificationEntry | None = ce
+    seen: set[int] = set()
+    while current is not None:
+        current_id = getattr(current, "id", None)
+        key = current_id if current_id is not None else id(current)
+        if key in seen:
+            yield "parent cycle detected"
+            return
+        seen.add(key)
+        current = current.parent
+
+
 @LINT.add("verbatim_parent")
 def check_verbatim_parent(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     for tag in ce.get_tags(ce.tags, ClassificationEntryTag.VerbatimParent):

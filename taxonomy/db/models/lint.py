@@ -52,7 +52,9 @@ class LintWrapper(Generic[ModelT]):
         except Exception as e:
             traceback.print_exc()
             yield f"{obj}: error running {self.label} linter: {e}"
-            return set()
+            # The linter could not establish whether an IgnoreLint is still needed.
+            # Preserve it rather than allowing Lint.run() to remove it as unused.
+            return {self.label}
         if not issues:
             return set()
         ignored_lints = self.lint.get_ignored_lints(obj)
@@ -263,7 +265,9 @@ class Lint(Generic[ModelT]):
         actual_ignores = self.get_ignored_lints(obj)
         for linter in linters:
             if linter.label in actual_ignores:
-                lint_cfg = replace(cfg, interactive=False)
+                # IgnoreLint must also prevent automated mutations. Individual
+                # linters should not need to remember to check their own label.
+                lint_cfg = replace(cfg, autofix=False, interactive=False)
             else:
                 lint_cfg = cfg
             used_ignores |= yield from linter(obj, lint_cfg)

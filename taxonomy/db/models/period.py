@@ -96,6 +96,16 @@ class Period(BaseModel):
     def should_skip(self) -> bool:
         return self.deleted
 
+    def get_redirect_target(self) -> Period | None:
+        if (
+            not self.deleted
+            or self.parent is None
+            or not self.comment
+            or not self.comment.endswith(f"(P#{self.parent.id})")
+        ):
+            return None
+        return self.parent
+
     def lint(self, cfg: LintConfig) -> Iterable[str]:
         if self.rank not in SYSTEM_TO_ALLOWED_RANKS[self.system]:
             yield (
@@ -142,6 +152,10 @@ class Period(BaseModel):
                     self.min_age = expected
 
     def merge(self, other: Period) -> None:
+        if other == self:
+            raise ValueError("cannot merge a Period into itself")
+        if other.is_invalid():
+            raise ValueError("cannot merge a Period into an invalid Period")
         for loc in self.locations_min:
             loc.min_period = other
         for loc in self.locations_max:
@@ -151,6 +165,7 @@ class Period(BaseModel):
             self.comment = new_comment
         else:
             self.comment = f"{self.comment} – {new_comment}"
+        self.parent = other
         self.deleted = True
 
     @staticmethod

@@ -2,6 +2,7 @@ import builtins
 import enum
 import sqlite3
 import subprocess
+from collections import Counter
 from collections.abc import Iterable
 from typing import Any, ClassVar, NotRequired, Self, TypeVar
 
@@ -314,12 +315,16 @@ class CitationGroup(BaseModel):
         return self.name
 
     def delete(self) -> None:
+        backrefs = list(self.get_direct_backrefs())
+        backref_counts = Counter(
+            f"{field.model_cls.__name__}.{field.name}" for field, _ in backrefs
+        )
         assert (
-            len(self.get_names()) == 0
-        ), f"cannot delete {self} because it contains names"
-        assert (
-            self.get_articles().count() == 0
-        ), f"cannot delete {self} because it contains articles"
+            not backrefs
+        ), f"cannot delete {self} because it has direct references: " + ", ".join(
+            f"{field_name} ({count})"
+            for field_name, count in sorted(backref_counts.items())
+        )
         self.status = CitationGroupStatus.deleted
 
     def edit(self) -> None:

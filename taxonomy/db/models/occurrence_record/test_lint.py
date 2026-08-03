@@ -684,7 +684,7 @@ def test_duplicate_lint_reports_ids_without_autofix(
     assert "OR#2 duplicates primary record OR#1" in messages[0]
 
 
-def test_duplicate_lint_deletes_exact_higher_id_record(
+def test_duplicate_lint_redirects_exact_higher_id_record(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     primary = _duplicate_record(1, value="same", status=OccurrenceRecordStatus.valid)
@@ -697,7 +697,8 @@ def test_duplicate_lint_deletes_exact_higher_id_record(
     monkeypatch.setattr(OccurrenceRecord, "fields", lambda: ("value", "status"))
 
     assert list(check_duplicate(record, LintConfig(autofix=True))) == []
-    assert record.status is OccurrenceRecordStatus.deleted
+    assert record.status is OccurrenceRecordStatus.alias
+    assert record.tags == (OccurrenceRecordTag.RedirectTarget(primary),)
 
 
 def test_duplicate_lint_does_not_delete_records_with_different_fields(

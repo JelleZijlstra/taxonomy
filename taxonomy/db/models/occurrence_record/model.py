@@ -63,6 +63,14 @@ class OccurrenceRecord(BaseModel):
     def should_skip(self) -> bool:
         return self.status is not OccurrenceRecordStatus.valid
 
+    def get_redirect_target(self) -> OccurrenceRecord | None:
+        if self.status is not OccurrenceRecordStatus.alias:
+            return None
+        targets = list(self.get_tags(self.tags, OccurrenceRecordTag.RedirectTarget))
+        if len(targets) != 1:
+            return None
+        return targets[0].record
+
     def __repr__(self) -> str:
         taxon = self.taxon or self.classification_entry.name
         location = self.location or self.locality_text
@@ -88,6 +96,8 @@ class OccurrenceRecord(BaseModel):
         self.tags = tuple(tag for tag in self.tags if not isinstance(tag, tag_cls))  # type: ignore[assignment]
 
     def get_canonical_record(self) -> OccurrenceRecord:
+        if target := self.get_redirect_target():
+            return target
         split_tags = list(
             self.get_tags(self.tags, OccurrenceRecordTag.TaxonomicSplitFrom)
         )
@@ -185,7 +195,25 @@ class OccurrenceRecord(BaseModel):
         }
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
+        if self.has_tag(OccurrenceRecordTag.RedirectTarget):
+            yield "valid record has RedirectTarget tag"
         yield from models.occurrence_record.lint.LINT.run(self, cfg)
+
+    def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
+        redirect_tags = list(
+            self.get_tags(self.tags, OccurrenceRecordTag.RedirectTarget)
+        )
+        if self.status is OccurrenceRecordStatus.alias:
+            if len(redirect_tags) != 1:
+                yield f"alias has {len(redirect_tags)} RedirectTarget tags"
+                return
+            target = redirect_tags[0].record
+            if target == self:
+                yield "alias redirects to itself"
+            elif target.is_invalid():
+                yield f"alias redirects to invalid record OR#{target.id}"
+        elif redirect_tags:
+            yield "non-alias record has RedirectTarget tag"
 
     @classmethod
     def clear_lint_caches(cls) -> None:
@@ -236,3 +264,4 @@ class OccurrenceRecordTag(ADT):
         article=Article, taxon=Taxon, comment=Markdown, tag=28
     )
     Voucher(text=Managed, collection=Collection, tag=29)  # type: ignore[name-defined]
+    RedirectTarget(record=OccurrenceRecord, tag=30)  # type: ignore[name-defined]

@@ -3,6 +3,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 
+from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import Lint
 
 
@@ -113,3 +114,34 @@ def test_bulk_ignore_finishes_scan_before_writing() -> None:
         lint.add_ignore_lint_to_all("problem", "review later", dry_run=False)
 
     assert first.tags == []
+
+
+def test_linter_error_preserves_ignore() -> None:
+    obj = FakeObject(
+        1,
+        needs_ignore=True,
+        tags=[FakeIgnore("problem", "earlier review")],
+        raises=True,
+    )
+    lint = make_lint([obj])
+
+    messages = list(lint.run(obj, LintConfig(autofix=True, interactive=False)))
+
+    assert messages == ["FakeObject(1): error running problem linter: broken linter"]
+    assert obj.tags == [FakeIgnore("problem", "earlier review")]
+
+
+def test_ignored_linter_does_not_receive_autofix() -> None:
+    obj = FakeObject(
+        1, needs_ignore=True, tags=[FakeIgnore("problem", "earlier review")]
+    )
+    lint = make_lint([obj])
+    received_configs: list[LintConfig] = []
+    lint.linters[0].linter = lambda _obj, cfg: received_configs.append(cfg) or [  # type: ignore[func-returns-value]
+        "has problem"
+    ]
+
+    assert list(lint.run(obj, LintConfig(autofix=True, interactive=True))) == []
+
+    assert received_configs == [LintConfig(autofix=False, interactive=False)]
+    assert obj.tags == [FakeIgnore("problem", "earlier review")]
