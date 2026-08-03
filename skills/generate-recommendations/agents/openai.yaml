@@ -1,0 +1,6 @@
+interface:
+  display_name: "Generate Recommendations"
+  short_description: "Generate guarded taxonomy change manifests"
+  default_prompt:
+    "Use $generate-recommendations to research and create a reviewable JSONL
+    recommendation manifest without applying it."
