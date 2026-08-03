@@ -20,38 +20,40 @@ entry point.
    conventions.
 2. Inspect current database state and primary evidence. Separate source text from
    inference and retain uncertainty.
-3. Write `scripts/generate_<topic>_recommendations.py` when generation is repeated or
-   database-dependent. Generators may read but must never write the database.
-4. Write a new topic- or round-specific JSONL under `data_import/`. Do not revise a
-   manifest that the user has already applied; start another file.
+3. Write `recs/scripts/generate_<topic>_recommendations.py` when generation is repeated
+   or database-dependent. Generators may read but must never write the database. This
+   directory is intentionally untracked; keep durable applicators in `scripts/`.
+4. Write a new topic- or round-specific JSONL under `recs/manifests/`, which is also
+   intentionally untracked. Do not revise a manifest that the user has already applied;
+   start another file.
 5. Give every row `schema_version`, `action`, `confidence`, `reason`, evidence, and
    enough object IDs, labels, and old values to reject stale database state.
 6. Run both views before handoff:
 
    ```bash
-   python scripts/apply_recommendations.py data_import/<file>.jsonl --review
-   python scripts/apply_recommendations.py data_import/<file>.jsonl --dry-run
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --review
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --dry-run
    ```
 
    For a manifest containing unresolved rows or actionable rows with important review
    caveats, inspect their complete notes with:
 
    ```bash
-   python scripts/apply_recommendations.py data_import/<file>.jsonl --review-manual
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --review-manual
    ```
 
    To work through unresolved rows interactively after validating the complete manifest,
    print each full manual-review note and open its database object editor:
 
    ```bash
-   python scripts/apply_recommendations.py data_import/<file>.jsonl --edit-manual
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --edit-manual
    ```
 
    To apply every actionable recommendation and then edit each unresolved manual-review
    object in the same run, use:
 
    ```bash
-   python scripts/apply_recommendations.py data_import/<file>.jsonl --apply --edit-manual
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --apply --edit-manual
    ```
 
    The combined mode validates the complete manifest and resolves all manual editor

@@ -4,10 +4,12 @@
 
 - `taxonomy/`: Core library and CLI (`shell.py`); DB models under `taxonomy/db/`.
 - `hsweb/`: Minimal web UI (run with `python -m hsweb`).
-- `data_import/`: Importer scripts. These scripts parse data in an input data source
-  into a format that is compatible with the database. When adding new scripts, use the
-  newer `CEDict` abstraction, as in `data_import/corbet_hill_1980.py`.
-- `scripts/`: Reports and maintenance scripts (`python scripts/<name>.py`).
+- `data_import/`: Durable import infrastructure and maintained importers.
+- `recs/`: Local Codex-generated recommendation artifacts. One-off extractors and
+  generators go in `recs/scripts/`; JSONL manifests go in `recs/manifests/`. Both
+  subdirectories are intentionally untracked.
+- `scripts/`: Durable reports, maintenance tools, and recommendation applicators
+  (`python scripts/<name>.py`).
 - `docs/`: User/developer docs.
 - `mapper/`: Mapping helpers and inputs.
 - Tests live next to modules (e.g., `taxonomy/db/models/name/test_*.py`).
@@ -46,8 +48,12 @@
 
 ## Writing data import scripts
 
+- Put one-off Codex-generated extraction scripts in `recs/scripts/` and their CE,
+  Location, or recommendation JSONL output in `recs/manifests/`. Reserve `data_import/`
+  for durable infrastructure and intentionally maintained importers.
 - Accuracy is key. Make sure the output of your script matches the classification in the
   source exactly. Make sure page numbers are correct.
+- Use the newer `CEDict` abstraction, as in `data_import/corbet_hill_1980.py`.
 - Use assertions and helper functions to validate invariants, like making sure every
   species name matches the genus it's in.
 - If the source book has text with multiple columns per page, use the split_lines()

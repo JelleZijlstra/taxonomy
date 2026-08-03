@@ -7,7 +7,7 @@ from data_import.ce_file import write_ce_file
 from taxonomy.db import constants, models
 
 ARTICLE_NAME = "Glyptodontidae (Fernicola 2008).pdf"
-OUTPUT_PATH = Path(__file__).parent / "ce_files" / "fernicola_2008_glyptodonts.ce.jsonl"
+OUTPUT_PATH = Path("recs/manifests/fernicola_2008_glyptodonts.ce.jsonl")
 
 # depth | rank | source text. The two printed columns have been placed in
 # hierarchical reading order, with the left column followed by the right.
@@ -158,6 +158,7 @@ def extract(article: models.Article) -> Iterable[lib.CEDict]:
 
 def main() -> None:
     article = models.Article.get(name=ARTICLE_NAME)
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     write_ce_file(OUTPUT_PATH, extract(article))
     print(f"Wrote {OUTPUT_PATH}")
 

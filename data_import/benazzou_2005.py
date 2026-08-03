@@ -6,7 +6,7 @@ from taxonomy.db.constants import Rank
 from taxonomy.db.models import Article
 
 ARTICLE = "Mammalia Morocco (Benazzou 2005).pdf"
-OUTPUT = Path("data_import/ce_files/benazzou_2005.ce.jsonl")
+OUTPUT = Path("recs/manifests/benazzou_2005.ce.jsonl")
 
 # Source spellings from the table on pages 7-8.
 CLASSIFICATION = {

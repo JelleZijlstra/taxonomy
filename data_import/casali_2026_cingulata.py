@@ -9,7 +9,7 @@ from data_import.ce_file import write_ce_file
 from taxonomy.db import constants, models
 
 ARTICLE_NAME = "Cingulata-phylogeny (Casali et al. 2026) (supplement).docx"
-OUTPUT_PATH = Path(__file__).parent / "ce_files" / "casali_2026_cingulata.ce.jsonl"
+OUTPUT_PATH = Path("recs/manifests/casali_2026_cingulata.ce.jsonl")
 NS = {"w": "http://schemas.openxmlformats.org/wordprocessingml/2006/main"}
 RANKS = {
     "Order": constants.Rank.order,
@@ -233,6 +233,7 @@ def extract(article: models.Article) -> Iterable[lib.CEDict]:
 
 def main() -> None:
     article = models.Article.get(name=ARTICLE_NAME)
+    OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
     write_ce_file(OUTPUT_PATH, extract(article))
     print(f"Wrote {OUTPUT_PATH}")
 

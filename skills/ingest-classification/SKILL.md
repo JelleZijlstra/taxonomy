@@ -22,12 +22,13 @@ small fixed list of dictionaries.
 Create an extraction script only when code materially helps parse or transform the
 source—for example, a long classification, repeated records, multi-column text, a table
 requiring normalization, or invariants that should be asserted across many entries. Put
-such scripts in `data_import/`, use the newer `CEDict` abstraction, and write generated
-files with `data_import.ce_file.write_ce_file()`.
+one-off Codex-generated scripts in `recs/scripts/`, use the newer `CEDict` abstraction,
+and write generated files with `data_import.ce_file.write_ce_file()`. Reserve
+`data_import/` for durable infrastructure and intentionally maintained importers.
 
-Put CE files ending in `.ce.jsonl` in `data_import/ce_files/`. Each line is one JSON
-object representing a `data_import.lib.CEDict`. For direct JSONL, use enum member names
-such as `species` and serialize tags as objects with `kind` and `data` keys.
+Put CE files ending in `.ce.jsonl` in `recs/manifests/`. Each line is one JSON object
+representing a `data_import.lib.CEDict`. For direct JSONL, use enum member names such as
+`species` and serialize tags as objects with `kind` and `data` keys.
 
 A CE file may combine entries from multiple Articles. Keep each row's exact source in
 its `article` field and include a complete source-local hierarchy for every Article;
@@ -227,7 +228,7 @@ Whenever a sibling `.locations.jsonl` is present, always run this read-only comm
 before finalizing the artifacts, even if the user requested only transcription:
 
 ```bash
-/Users/jelle/py/venvs/taxonomy314/bin/python scripts/import_ce_file.py PATH.ce.jsonl --verbose
+/Users/jelle/py/venvs/taxonomy314/bin/python scripts/import_ce_file.py recs/manifests/PATH.ce.jsonl --verbose
 ```
 
 Without `--apply`, this command is read-only. It resolves the Article; validates JSON
@@ -255,7 +256,7 @@ source misspellings or genuinely absent database names.
 Only a human may run the database-writing form:
 
 ```bash
-/Users/jelle/py/venvs/taxonomy314/bin/python scripts/import_ce_file.py PATH.ce.jsonl --apply
+/Users/jelle/py/venvs/taxonomy314/bin/python scripts/import_ce_file.py recs/manifests/PATH.ce.jsonl --apply
 ```
 
 The apply path is idempotent for the same CE file. It first creates reviewed missing

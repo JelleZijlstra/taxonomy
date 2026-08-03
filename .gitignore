@@ -12,6 +12,8 @@ data_import/data/
 data_import/wikicache/
 mapper/base_maps/
 notes/
+recs/manifests/
+recs/scripts/
 .vscode/
 .ipynb_checkpoints/
 aws/
