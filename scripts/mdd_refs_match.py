@@ -9,8 +9,6 @@ Heuristics (in order):
 Outputs a per-heuristic breakdown and lists unmatched references for follow-up.
 """
 
-from __future__ import annotations
-
 import argparse
 import csv
 import re
@@ -490,6 +488,7 @@ type ArticleIndexes = tuple[
 
 
 def _build_article_info(art: Article) -> ArticleInfo:
+    citation_group = art.get_citation_group()
     return ArticleInfo(
         id=art.id,
         title=art.title,
@@ -499,7 +498,7 @@ def _build_article_info(art: Article) -> ArticleInfo:
         alnum_norm_title=_norm_alnum(art.title),
         years=_extract_years_from_article(art),
         cg_name_norm=_normalize_journal_name(
-            getattr(art.get_citation_group(), "name", None)
+            citation_group.name if citation_group is not None else None
         ),
     )
 

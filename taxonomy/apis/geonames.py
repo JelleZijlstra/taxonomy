@@ -1,7 +1,5 @@
 """Query the local SQLite copy of the GeoNames gazetteer."""
 
-from __future__ import annotations
-
 import functools
 import math
 import sqlite3

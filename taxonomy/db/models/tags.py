@@ -89,7 +89,7 @@ def get_matching_taxon_tags(
 ) -> list[Any]:
     return [
         tag
-        for tag in getattr(taxon, "tags", ())
+        for tag in taxon.tags
         if isinstance(tag, tag_type)
         if is_region_within(region, tag.region)
     ]

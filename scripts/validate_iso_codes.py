@@ -7,8 +7,6 @@ Usage:
 The CSV is expected to have at least columns: name, alpha-2
 """
 
-from __future__ import annotations
-
 import csv
 import sys
 from pathlib import Path

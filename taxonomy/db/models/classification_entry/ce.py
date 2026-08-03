@@ -1,7 +1,5 @@
 """Entries in a published classification."""
 
-from __future__ import annotations
-
 import datetime
 import enum
 import re

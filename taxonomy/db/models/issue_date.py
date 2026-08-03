@@ -1,7 +1,5 @@
 """Dates of publication for issues."""
 
-from __future__ import annotations
-
 from collections.abc import Iterable
 from functools import cache
 from typing import NotRequired

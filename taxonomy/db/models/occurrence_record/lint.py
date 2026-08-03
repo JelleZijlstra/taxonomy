@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import datetime
 import re
 from collections.abc import Collection, Iterable
@@ -631,7 +629,7 @@ def check_status_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str
     review_keys = [(tag.article, tag.taxon) for tag in reviews]
     for article, taxon in {key for key in review_keys if review_keys.count(key) > 1}:
         yield f"has duplicate ReviewedInLightOf for {article} and {taxon}"
-    if getattr(record, "taxon", None) is not None:
+    if record.taxon is not None:
         for tag in reviews:
             if tag.taxon != record.taxon:
                 yield (

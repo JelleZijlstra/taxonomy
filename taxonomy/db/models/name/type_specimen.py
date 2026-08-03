@@ -4,8 +4,6 @@ The main interface is parse_type_specimen().
 
 """
 
-from __future__ import annotations
-
 import re
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field, replace

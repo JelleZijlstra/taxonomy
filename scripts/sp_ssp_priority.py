@@ -100,8 +100,7 @@ for taxon in taxa:
         if base_has_selection:
             priority_sel.append(other)
         elif any(
-            isinstance(tag, NameTag.SelectionOfPriority)
-            and getattr(tag, "over_name", None) is base
+            isinstance(tag, NameTag.SelectionOfPriority) and tag.over_name is base
             for tag in other.tags
         ):
             priority_sel.append(other)

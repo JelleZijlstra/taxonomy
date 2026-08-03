@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from taxonomy import command_set
 from taxonomy.db.models.classification_entry import ClassificationEntry
 from taxonomy.db.models.taxon import Taxon

@@ -160,7 +160,7 @@ class CitationGroup(BaseModel):
         """
         if self.type is constants.ArticleType.JOURNAL:
             tag = self.get_tag(CitationGroupTag.AbbreviatedTitle)
-            if tag is not None and getattr(tag, "text", None):
+            if tag is not None and tag.text:
                 return tag.text
         return self.name
 

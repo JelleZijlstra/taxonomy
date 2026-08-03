@@ -259,7 +259,7 @@ def _get_geojson_file(path: str) -> Path:
 def _get_geojson_roots() -> list[Path]:
     options = get_options()
     paths = []
-    generated_geojson_path = getattr(options, "generated_geojson_path", Path())
+    generated_geojson_path = options.generated_geojson_path
     if generated_geojson_path != Path():
         paths.append(generated_geojson_path)
     paths.append(options.geojson_path)

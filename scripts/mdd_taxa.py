@@ -1258,13 +1258,12 @@ def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
         return False
     location = name.type_locality
     if location is not None and location.min_period is not None:
-        max_period = getattr(location, "max_period", location.min_period)
-        min_period_age = getattr(location.min_period, "min_age", None)
-        max_period_age = getattr(max_period, "min_age", None)
-        if (
-            getattr(location.min_period, "name", None) != "Recent"
-            and min_period_age != 0
-        ) or (getattr(max_period, "name", None) != "Recent" and max_period_age != 0):
+        min_period = location.min_period
+        max_period = location.max_period
+        if (min_period.name != "Recent" and min_period.min_age != 0) or (
+            max_period is None
+            or (max_period.name != "Recent" and max_period.min_age != 0)
+        ):
             return False
     validities = [
         tag.validity

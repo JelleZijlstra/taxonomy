@@ -490,8 +490,12 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
                 yield message
             return
         # Expand existing tag if possible
-        existing_min = getattr(existing, "min_year", None)
-        existing_max = getattr(existing, "max_year", None)
+        existing_min = (
+            existing.min_year
+        )  # static analysis: ignore[attribute_is_never_set]
+        existing_max = (
+            existing.max_year
+        )  # static analysis: ignore[attribute_is_never_set]
         new_min = existing_min
         new_max = existing_max
         if (
@@ -606,11 +610,11 @@ def check_identifier_tag_consistency(
 
         # Validate that each Must range is contained in each May range
         for may in may_tags:
-            may_min = getattr(may, "min_year", None)
-            may_max = getattr(may, "max_year", None)
+            may_min = may.min_year
+            may_max = may.max_year
             for must in must_tags:
-                must_min = getattr(must, "min_year", None)
-                must_max = getattr(must, "max_year", None)
+                must_min = must.min_year
+                must_max = must.max_year
                 if lower_value(may_min) > lower_value(must_min) or upper_value(
                     may_max
                 ) < upper_value(must_max):

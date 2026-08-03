@@ -1,7 +1,5 @@
 """Abstraction for linting models."""
 
-from __future__ import annotations
-
 import traceback
 from collections.abc import Callable, Collection, Generator, Hashable, Iterable
 from dataclasses import dataclass, field, replace

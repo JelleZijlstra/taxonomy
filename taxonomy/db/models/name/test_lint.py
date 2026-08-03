@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import cast
 
@@ -223,6 +221,8 @@ def _name_with_location_details(
         SimpleNamespace(
             type_locality=location,
             type_tags=tags,
+            species_type_kind=None,
+            has_lint_ignore=lambda label: False,
             get_tags=lambda values, tag_type: (
                 tag for tag in values if isinstance(tag, tag_type)
             ),
@@ -332,13 +332,13 @@ def test_location_detail_plss_allows_compatible_precision() -> None:
 
 
 def test_location_detail_plss_reports_conflict_with_reviewed_location() -> None:
-    from taxonomy.db.models.location import LocationTag
-
     name = _name_with_location_details(
         ("T33S R25W Sec. 21 NW1/4 NE1/4",),
         location_coordinates=(None, None),
         location_tags=(
-            LocationTag.PLSS("T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"),
+            models.location.LocationTag.PLSS(
+                "T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"
+            ),
         ),
     )
 
@@ -350,13 +350,13 @@ def test_location_detail_plss_reports_conflict_with_reviewed_location() -> None:
 
 
 def test_location_detail_plss_allows_narrower_reviewed_location_evidence() -> None:
-    from taxonomy.db.models.location import LocationTag
-
     name = _name_with_location_details(
         ("T33S R28W Sec. 21 NW1/4 NE1/4",),
         location_coordinates=(None, None),
         location_tags=(
-            LocationTag.PLSS("T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"),
+            models.location.LocationTag.PLSS(
+                "T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"
+            ),
         ),
     )
 
@@ -366,13 +366,13 @@ def test_location_detail_plss_allows_narrower_reviewed_location_evidence() -> No
 def test_location_detail_plss_allows_reviewed_section_from_explicit_alternative() -> (
     None
 ):
-    from taxonomy.db.models.location import LocationTag
-
     name = _name_with_location_details(
         ("Sections 30-31, T6N R3E",),
         location_coordinates=(None, None),
         location_tags=(
-            LocationTag.PLSS("T6N R3E Sec. 31, Wind River Meridian", "WY340060N0030E0"),
+            models.location.LocationTag.PLSS(
+                "T6N R3E Sec. 31, Wind River Meridian", "WY340060N0030E0"
+            ),
         ),
     )
 

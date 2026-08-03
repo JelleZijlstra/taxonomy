@@ -1,7 +1,5 @@
 """Parsing and rendering for structured Location names."""
 
-from __future__ import annotations
-
 from dataclasses import dataclass
 
 

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from collections.abc import Callable, Hashable, Iterable
 from typing import TypeVar
 

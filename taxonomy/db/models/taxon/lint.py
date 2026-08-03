@@ -1,7 +1,5 @@
 """Lint steps for Taxon."""
 
-from __future__ import annotations
-
 import enum
 from collections import Counter, defaultdict
 from collections.abc import Callable, Container, Iterable, Sequence

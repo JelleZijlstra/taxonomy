@@ -1,24 +1,14 @@
-from __future__ import annotations
-
 import subprocess
 import tempfile
 from collections.abc import Iterable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from taxonomy.coordinates import Point
-from taxonomy.db import coordinate_lint
-from taxonomy.db.models.name import TypeTag
-from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
+from taxonomy.db import coordinate_lint, models
 from taxonomy.svg_map import MapPoint, write_svg_map
 
-if TYPE_CHECKING:
-    from taxonomy.db.models.name import Name
-    from taxonomy.db.models.occurrence_record import OccurrenceRecord
-    from taxonomy.db.models.taxon import Taxon
 
-
-def get_coordinates(taxon: Taxon) -> list[MapPoint]:
+def get_coordinates(taxon: models.Taxon) -> list[MapPoint]:
     """Return scalar type-locality and occurrence coordinates below a taxon."""
     points: set[MapPoint] = set()
     for name in taxon.all_names_lazy():
@@ -32,7 +22,7 @@ def get_coordinates(taxon: Taxon) -> list[MapPoint]:
     )
 
 
-def display_coordinates(taxon: Taxon) -> list[MapPoint]:
+def display_coordinates(taxon: models.Taxon) -> list[MapPoint]:
     points = get_coordinates(taxon)
     for point in points:
         print(f"{point.latitude:.6g}, {point.longitude:.6g}: {point.label}")
@@ -40,13 +30,13 @@ def display_coordinates(taxon: Taxon) -> list[MapPoint]:
     return points
 
 
-def write_map(taxon: Taxon, output_path: Path) -> Path:
+def write_map(taxon: models.Taxon, output_path: Path) -> Path:
     return write_svg_map(
         get_coordinates(taxon), output_path, title=f"Coordinates for {taxon.valid_name}"
     )
 
 
-def plot_coordinates(taxon: Taxon) -> Path | None:
+def plot_coordinates(taxon: models.Taxon) -> Path | None:
     points = get_coordinates(taxon)
     if not points:
         print(f"No coordinates found for {taxon.valid_name}")
@@ -60,13 +50,13 @@ def plot_coordinates(taxon: Taxon) -> Path | None:
     return path
 
 
-def _iter_taxa(taxon: Taxon) -> Iterable[Taxon]:
+def _iter_taxa(taxon: models.Taxon) -> Iterable[models.Taxon]:
     yield taxon
     for child in taxon.get_children():
         yield from _iter_taxa(child)
 
 
-def _name_coordinates(name: Name) -> Iterable[MapPoint]:
+def _name_coordinates(name: models.Name) -> Iterable[MapPoint]:
     location = name.type_locality
     if location is not None and not location.is_general():
         label = location.name
@@ -74,7 +64,7 @@ def _name_coordinates(name: Name) -> Iterable[MapPoint]:
         label = f"Type locality of {_name_label(name)}"
 
     found_source_point = False
-    for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
+    for tag in name.get_tags(name.type_tags, models.name.TypeTag.Coordinates):
         point = coordinate_lint.make_point(tag.latitude, tag.longitude)
         if point is not None:
             found_source_point = True
@@ -86,7 +76,7 @@ def _name_coordinates(name: Name) -> Iterable[MapPoint]:
         yield MapPoint(point.latitude, point.longitude, label)
 
 
-def _occurrence_coordinates(record: OccurrenceRecord) -> Iterable[MapPoint]:
+def _occurrence_coordinates(record: models.OccurrenceRecord) -> Iterable[MapPoint]:
     location = record.location
     if location is not None and not location.is_general():
         label = location.name
@@ -94,7 +84,9 @@ def _occurrence_coordinates(record: OccurrenceRecord) -> Iterable[MapPoint]:
         label = record.locality_text
 
     found_source_point = False
-    for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
+    for tag in record.get_tags(
+        record.tags, models.occurrence_record.OccurrenceRecordTag.Coordinates
+    ):
         point = coordinate_lint.make_point(tag.latitude, tag.longitude)
         if point is not None:
             found_source_point = True
@@ -112,5 +104,5 @@ def _location_point(latitude: str | None, longitude: str | None) -> Point | None
     return coordinate_lint.make_point(latitude, longitude)
 
 
-def _name_label(name: Name) -> str:
+def _name_label(name: models.Name) -> str:
     return name.corrected_original_name or name.original_name or name.root_name

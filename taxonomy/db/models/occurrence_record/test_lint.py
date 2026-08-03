@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from types import SimpleNamespace
 from typing import Any, cast
 
@@ -45,6 +43,7 @@ from taxonomy.db.models.taxon import Taxon
 
 def _record(**kwargs: object) -> OccurrenceRecord:
     kwargs.setdefault("tags", ())
+    kwargs.setdefault("taxon", None)
     record = SimpleNamespace(**kwargs)
     record.has_tag = lambda tag_cls: any(
         tag._tag == tag_cls._tag for tag in record.tags

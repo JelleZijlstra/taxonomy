@@ -1,7 +1,5 @@
 """Import Natural Earth admin-1 polygons into the configured GeoJSON repo."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import re

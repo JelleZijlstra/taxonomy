@@ -1,19 +1,17 @@
 """Lint steps for Locations."""
 
-from __future__ import annotations
-
 import re
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
 from functools import cache
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import httpx
 
 from taxonomy import adt, coordinates
 from taxonomy.apis import geonames, nominatim, plss
-from taxonomy.db import coordinate_lint, helpers
+from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import RegionKind, SpeciesGroupType
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import IgnoreLint, Lint
@@ -23,9 +21,6 @@ from taxonomy.db.models.region import Region, RegionTag
 from .age import is_recent_location
 from .model import Location, LocationTag, is_coordinate_provenance_tag
 from .name import ParsedLocationName, split_trailing_parenthetical
-
-if TYPE_CHECKING:
-    from taxonomy.db.models.name import Name
 
 _GEOCODABLE_OSM_CATEGORIES = {"boundary", "natural", "place", "water", "waterway"}
 _OSM_CATEGORY_PRIORITY = {
@@ -566,14 +561,12 @@ def _get_applicable_location_detail_tags(name: Any) -> tuple[Any, ...]:
     Coordinates tag remains usable because it represents the Name's current type
     locality directly.
     """
-    from taxonomy.db.models.name import TypeTag
-
-    details = tuple(name.get_tags(name.type_tags, TypeTag.LocationDetail))
-    if getattr(name, "species_type_kind", None) is not SpeciesGroupType.neotype:
+    details = tuple(name.get_tags(name.type_tags, models.name.TypeTag.LocationDetail))
+    if name.species_type_kind is not SpeciesGroupType.neotype:
         return details
     designation_source_ids = {
         tag.optional_source.id
-        for tag in name.get_tags(name.type_tags, TypeTag.NeotypeDesignation)
+        for tag in name.get_tags(name.type_tags, models.name.TypeTag.NeotypeDesignation)
         if tag.valid and tag.optional_source is not None
     }
     return tuple(tag for tag in details if tag.source.id in designation_source_ids)
@@ -581,29 +574,26 @@ def _get_applicable_location_detail_tags(name: Any) -> tuple[Any, ...]:
 
 def _get_applicable_coordinate_text_tags(name: Any) -> tuple[Any, ...]:
     """Return Name text tags that may document its current type locality."""
-    from taxonomy.db.models.name import TypeTag
-
     details = (
         *_get_applicable_location_detail_tags(name),
-        *name.get_tags(name.type_tags, TypeTag.SpecimenDetail),
+        *name.get_tags(name.type_tags, models.name.TypeTag.SpecimenDetail),
     )
-    if getattr(name, "species_type_kind", None) is not SpeciesGroupType.neotype:
+    if name.species_type_kind is not SpeciesGroupType.neotype:
         return details
     designation_source_ids = {
         tag.optional_source.id
-        for tag in name.get_tags(name.type_tags, TypeTag.NeotypeDesignation)
+        for tag in name.get_tags(name.type_tags, models.name.TypeTag.NeotypeDesignation)
         if tag.valid and tag.optional_source is not None
     }
     return tuple(
         tag
         for tag in details
-        if getattr(tag, "source", None) is not None
-        and tag.source.id in designation_source_ids
+        if tag.source is not None and tag.source.id in designation_source_ids
     )
 
 
 def _extract_name_text_tag_coordinate_pairs(
-    name: Name, tag: Any
+    name: models.Name, tag: Any
 ) -> tuple[tuple[str, str], ...]:
     """Extract usable type-locality coordinates from a Name text tag.
 
@@ -614,19 +604,15 @@ def _extract_name_text_tag_coordinate_pairs(
     LocationDetail tags are locality evidence throughout, so retain all pairs from
     them and let the compatibility lint report genuine conflicts.
     """
-    from taxonomy.db.models.name import TypeTag
-
-    if getattr(name, "has_lint_ignore", lambda _label: False)(
-        "location_detail_coordinates"
-    ):
+    if name.has_lint_ignore("location_detail_coordinates"):
         # A reviewed Name-level ignore records that coordinate-looking text in
         # its locality evidence is inapplicable, erroneous, or too uncertain to
         # drive the selected type locality. Location inference and provenance
         # must honor that decision as well as the Name lint itself.
         return ()
     if (
-        isinstance(tag, TypeTag.SpecimenDetail)
-        and getattr(name, "species_type_kind", None) is not SpeciesGroupType.neotype
+        isinstance(tag, models.name.TypeTag.SpecimenDetail)
+        and name.species_type_kind is not SpeciesGroupType.neotype
         and re.search(r"\bpropos\w*\s+to\s+designat", tag.text, re.IGNORECASE)
     ):
         # A proposed neotype does not replace the name-bearing type until the
@@ -634,7 +620,7 @@ def _extract_name_text_tag_coordinate_pairs(
         # its specimen locality must not overwrite the current holotype locality.
         return ()
     pairs = tuple(dict.fromkeys(helpers.extract_coordinate_pairs(tag.text)))
-    if isinstance(tag, TypeTag.SpecimenDetail) and len(pairs) != 1:
+    if isinstance(tag, models.name.TypeTag.SpecimenDetail) and len(pairs) != 1:
         return ()
     return pairs
 
@@ -661,12 +647,10 @@ def _get_us_plss_context(location: Location) -> tuple[str, str, str | None] | No
 
 
 def _get_linked_plss_evidence(location: Location) -> list[_LinkedPLSSEvidence]:
-    from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
-
     evidence: list[_LinkedPLSSEvidence] = []
     own_texts = (
         (location.name, "Location name"),
-        (getattr(location, "location_detail", None), "Location location_detail"),
+        (location.location_detail, "Location location_detail"),
     )
     for text, source in own_texts:
         if text:
@@ -689,14 +673,19 @@ def _get_linked_plss_evidence(location: Location) -> list[_LinkedPLSSEvidence]:
                 for extracted in plss.extract_plss(tag.text)
             )
     occurrence_text_tags = (
-        OccurrenceRecordTag.LocationHint,
-        OccurrenceRecordTag.SpecimenDetail,
-        OccurrenceRecordTag.CommentFromSource,
+        models.occurrence_record.OccurrenceRecordTag.LocationHint,
+        models.occurrence_record.OccurrenceRecordTag.SpecimenDetail,
+        models.occurrence_record.OccurrenceRecordTag.CommentFromSource,
     )
     for record in location.occurrence_records:
         for tag_type in occurrence_text_tags:
             for tag in record.get_tags(record.tags, tag_type):
-                text = getattr(tag, "text", None) or getattr(tag, "name", None)
+                if isinstance(
+                    tag, models.occurrence_record.OccurrenceRecordTag.LocationHint
+                ):
+                    text = tag.name
+                else:
+                    text = tag.text
                 if text:
                     evidence.extend(
                         _LinkedPLSSEvidence(
@@ -1422,14 +1411,12 @@ def _get_locations_by_region() -> dict[int, tuple[Location, ...]]:
 def check_explicit_location_equivalence(
     location: Location, cfg: LintConfig
 ) -> Iterable[str]:
-    from taxonomy.db.models.name import TypeTag
-
     if location.is_general():
         return
     candidates = _get_locations_by_region().get(location.region.id, ())
     reported: set[tuple[str, int]] = set()
     for name in location.type_localities:
-        for tag in name.get_tags(name.type_tags, TypeTag.LocationDetail):
+        for tag in name.get_tags(name.type_tags, models.name.TypeTag.LocationDetail):
             for equivalent, explicitly_marked, start in _iter_location_equivalences(
                 tag.text
             ):
@@ -1527,7 +1514,7 @@ def _get_coordinate_collision_map() -> dict[int, tuple[Location, ...]]:
 
 def _coordinate_collision_plss_key(location: Location) -> plss.PLSSDescription | None:
     """Return the one PLSS description that deliberately supplied the extent."""
-    tags = tuple(getattr(location, "tags", ()) or ())
+    tags = tuple(location.tags or ())
     provenance = tuple(
         tag for tag in tags if isinstance(tag, LocationTag.CoordinatesFromPLSS)
     )
@@ -1979,13 +1966,10 @@ class _LinkedCoordinateEvidence:
 def _get_linked_coordinate_evidence(
     location: Location,
 ) -> list[_LinkedCoordinateEvidence]:
-    from taxonomy.db.models.name import TypeTag
-    from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
-
     evidence: list[_LinkedCoordinateEvidence] = []
     seen_name_extents: set[tuple[int, str, str]] = set()
     for name in location.type_localities:
-        for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
+        for tag in name.get_tags(name.type_tags, models.name.TypeTag.Coordinates):
             parsed = coordinate_lint.standardize_coordinate_pair(
                 tag.latitude, tag.longitude
             )
@@ -2021,7 +2005,9 @@ def _get_linked_coordinate_evidence(
                     )
                 )
     for record in location.occurrence_records:
-        for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
+        for tag in record.get_tags(
+            record.tags, models.occurrence_record.OccurrenceRecordTag.Coordinates
+        ):
             parsed = coordinate_lint.standardize_coordinate_pair(
                 tag.latitude, tag.longitude
             )
@@ -3629,10 +3615,6 @@ def _get_plss_provenance_extent(
 def _get_coordinate_provenance_extents(
     location: Location, provenance: Any
 ) -> tuple[list[coordinate_lint.CoordinateExtent], str | None]:
-    from taxonomy.db.models.name import TypeTag
-    from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
-    from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
-
     if isinstance(provenance, LocationTag.CoordinatesManual):
         return [], None
     if provenance is LocationTag.CoordinatesFromLocationName:
@@ -3714,7 +3696,7 @@ def _get_coordinate_provenance_extents(
                 return [], "Location no longer has valid coordinates"
             return [location_extent], None
         extents = []
-        for tag in name.get_tags(name.type_tags, TypeTag.Coordinates):
+        for tag in name.get_tags(name.type_tags, models.name.TypeTag.Coordinates):
             parsed = coordinate_lint.standardize_coordinate_pair(
                 tag.latitude, tag.longitude
             )
@@ -3746,7 +3728,9 @@ def _get_coordinate_provenance_extents(
                 "linked to the Location",
             )
         extents = []
-        for tag in record.get_tags(record.tags, OccurrenceRecordTag.Coordinates):
+        for tag in record.get_tags(
+            record.tags, models.occurrence_record.OccurrenceRecordTag.Coordinates
+        ):
             parsed = coordinate_lint.standardize_coordinate_pair(
                 tag.latitude, tag.longitude
             )
@@ -3755,9 +3739,12 @@ def _get_coordinate_provenance_extents(
         if extents:
             return extents, None
         for tag in record.get_tags(
-            record.tags, OccurrenceRecordTag.VerbatimCoordinates
+            record.tags,
+            models.occurrence_record.OccurrenceRecordTag.VerbatimCoordinates,
         ):
-            verbatim = parse_verbatim_coordinates(tag.text)
+            verbatim = models.occurrence_record.lint.parse_verbatim_coordinates(
+                tag.text
+            )
             if verbatim is not None:
                 standardized = coordinate_lint.standardize_coordinate_pair(*verbatim)
                 if standardized is not None:

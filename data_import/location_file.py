@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass
@@ -313,8 +311,8 @@ def print_plan(plan: LocationPlan) -> None:
         status = plan.statuses[name]
         location = plan.locations[name]
         if location is not None:
-            target_name = getattr(location, "name", name)
-            identifier = getattr(location, "id", None)
+            target_name = location.name
+            identifier = location.id
             target = target_name
             if identifier is not None:
                 target += f" (#{identifier})"

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import enum
 import subprocess
 from collections.abc import Iterable

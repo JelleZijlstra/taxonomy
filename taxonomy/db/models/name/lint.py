@@ -6,8 +6,6 @@ TODOs:
 
 """
 
-from __future__ import annotations
-
 import enum
 import functools
 import itertools
@@ -1630,12 +1628,10 @@ def check_collector_lifespan(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 @LINT.add("location_detail_coordinates")
 def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    from taxonomy.db.models.location import lint as location_lint
-
     extracted: list[  # type: ignore[name-defined]
         tuple[TypeTag.LocationDetail, str, str, coordinate_lint.CoordinateExtent]
     ] = []
-    for tag in location_lint._get_applicable_location_detail_tags(nam):
+    for tag in models.location.lint._get_applicable_location_detail_tags(nam):
         coordinates = helpers.extract_coordinates(tag.text)
         if coordinates is None:
             continue
@@ -1738,11 +1734,8 @@ def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[st
 @LINT.add("location_detail_plss")
 def check_location_detail_plss(nam: Name, cfg: LintConfig) -> Iterable[str]:
     """Report conflicts within one Name or with its reviewed Location PLSS tag."""
-    from taxonomy.db.models.location import LocationTag
-    from taxonomy.db.models.location import lint as location_lint
-
     descriptions: list[tuple[Any, plss.PLSSDescription]] = []
-    for tag in location_lint._get_applicable_location_detail_tags(nam):
+    for tag in models.location.lint._get_applicable_location_detail_tags(nam):
         for extracted in plss.extract_plss(tag.text):
             description = extracted.description
             if extracted.has_alternative_section:
@@ -1776,7 +1769,9 @@ def check_location_detail_plss(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
 
     location_tags = list(
-        nam.type_locality.get_tags(nam.type_locality.tags, LocationTag.PLSS)
+        nam.type_locality.get_tags(
+            nam.type_locality.tags, models.location.LocationTag.PLSS
+        )
     )
     if len(location_tags) != 1:
         return

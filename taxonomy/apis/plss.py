@@ -5,8 +5,6 @@ BLM national CadNSDI service. County geometry used for disambiguation comes from
 2020 Census TIGERweb service. Raw successful responses are persisted in ``url_cache``.
 """
 
-from __future__ import annotations
-
 import itertools
 import json
 import math

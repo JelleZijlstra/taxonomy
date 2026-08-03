@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import dataclasses
 import math
 import sqlite3
@@ -466,6 +464,7 @@ def test_generalize_adds_tag_removes_only_point_coordinates_and_formats(
         SimpleNamespace(
             latitude=latitude,
             longitude=longitude,
+            tags=(),
             has_tag=lambda tag_cls: bool(tags),
             add_tag=add_tag,
             format=format_location,
@@ -1163,6 +1162,7 @@ def test_coordinate_collision_rechecks_cached_candidates(
             region=region,
             min_period=recent,
             max_period=recent,
+            tags=(),
             reload=lambda: current,  # type: ignore[has-type]
             is_invalid=lambda: False,
         ),
@@ -1177,6 +1177,7 @@ def test_coordinate_collision_rechecks_cached_candidates(
             region=region,
             min_period=recent,
             max_period=recent,
+            tags=(),
         ),
     )
     nendo = cast(
@@ -1189,6 +1190,7 @@ def test_coordinate_collision_rechecks_cached_candidates(
             region=region,
             min_period=recent,
             max_period=recent,
+            tags=(),
             reload=lambda: nendo,  # type: ignore[has-type]
             is_invalid=lambda: False,
         ),
@@ -1442,10 +1444,12 @@ def _tagged_object(tags: tuple[object, ...], *, name_tags: bool) -> _TaggedObjec
     field = "type_tags" if name_tags else "tags"
     obj = _TaggedObject()
     obj.id = 1
+    obj.species_type_kind = None
     setattr(obj, field, tags)
     obj.get_tags = lambda values, tag_type: (  # type: ignore[attr-defined]
         tag for tag in values if isinstance(tag, tag_type)
     )
+    obj.has_lint_ignore = lambda label: False  # type: ignore[attr-defined]
     return obj
 
 
@@ -1477,6 +1481,7 @@ def _location_without_coordinates(
         min_age=min_age,
         max_age=max_age,
         stratigraphic_unit=stratigraphic_unit,
+        location_detail="",
         type_localities=names,
         occurrence_records=records,
         tags=(),

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import builtins
 import enum
 import functools
@@ -122,6 +120,8 @@ class BaseModel(Model):
 
     def __init_subclass__(cls) -> None:
         super().__init_subclass__()
+        if "call_sign_field" not in cls.__dict__ and hasattr(cls, "label_field"):
+            cls.call_sign_field = cls.label_field
         if hasattr(cls, "call_sign"):
             BaseModel.call_sign_to_model[cls.call_sign] = cls
         cls._name_to_derived_field = {field.name: field for field in cls.derived_fields}
@@ -151,9 +151,7 @@ class BaseModel(Model):
     ) -> Any:
         """Add IgnoreLint tags to every valid object failing a registered lint."""
         cls.clear_lint_caches()
-        from .lint import Lint
-
-        lint = Lint.for_model(cls)
+        lint = models.lint.Lint.for_model(cls)
         return lint.add_ignore_lint_to_all(label, comment, dry_run=dry_run, query=query)
 
     @classmethod
@@ -892,8 +890,7 @@ class BaseModel(Model):
 
     @classmethod
     def get_call_sign_getter(cls) -> _NameGetter[Self]:
-        field = getattr(cls, "call_sign_field", cls.label_field)
-        return cls.getter(field)
+        return cls.getter(cls.call_sign_field)
 
     @classmethod
     def get_one_by(

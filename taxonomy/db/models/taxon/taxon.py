@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import operator
 import re
 import sqlite3
@@ -775,24 +773,16 @@ class Taxon(BaseModel):
         }
 
     def get_coordinates(self) -> list[MapPoint]:
-        from . import coordinates
-
-        return coordinates.get_coordinates(self)
+        return models.taxon.coordinates.get_coordinates(self)
 
     def display_coordinates(self) -> list[MapPoint]:
-        from . import coordinates
-
-        return coordinates.display_coordinates(self)
+        return models.taxon.coordinates.display_coordinates(self)
 
     def write_coordinate_map(self, output_path: Path) -> Path:
-        from . import coordinates
-
-        return coordinates.write_map(self, output_path)
+        return models.taxon.coordinates.write_map(self, output_path)
 
     def plot_coordinates(self) -> Path | None:
-        from . import coordinates
-
-        return coordinates.plot_coordinates(self)
+        return models.taxon.coordinates.plot_coordinates(self)
 
     def _change_status(self) -> None:
         status = getinput.get_enum_member(Status, "to status> ")

@@ -22,6 +22,7 @@ from taxonomy.db.models import Article, CitationGroup, CitationGroupTag, Name, P
 from taxonomy.db.models.article import ArticleTag, api_data, batlit
 from taxonomy.db.models.article import lint as article_lint
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.person import VirtualPerson
 
 LOOKUP_MODES = ("off", "cached", "network")
 INDEX_PROGRESS_EVERY = 5000
@@ -223,7 +224,7 @@ _FUZZY_CITATION_GROUP_CACHE: dict[str, tuple[int, ...]] = {}
 
 
 @contextlib.contextmanager
-def lookup_mode(mode: str) -> Generator[None, None, None]:
+def lookup_mode(mode: str) -> Generator[None]:
     if mode != "cached":
         yield
         return
@@ -1308,7 +1309,7 @@ def infer_bhl_url(article: Article, mode: str) -> str:
                 article, cfg
             ):
                 return f"https://www.biodiversitylibrary.org/page/{page_id}"
-    except (Exception, FreshNetworkCall):
+    except Exception, FreshNetworkCall:
         return ""
     return ""
 
@@ -1484,7 +1485,7 @@ def infer_row_bhl_url(
                     ),
                     key=lambda page: page.sort_key(),
                 )
-        except (Exception, FreshNetworkCall):  # noqa: S112
+        except Exception, FreshNetworkCall:  # noqa: S112
             continue
         for page in possible_pages:
             if is_confident_row_bhl_page(page):
@@ -1500,7 +1501,7 @@ def infer_row_bhl_url(
                     contains_text=contains_text,
                 ):
                     candidate_pages[page.page_url] = page
-        except (Exception, FreshNetworkCall):  # noqa: S112
+        except Exception, FreshNetworkCall:  # noqa: S112
             continue
     if len(candidate_pages) == 1:
         return next(iter(candidate_pages))
@@ -1514,7 +1515,7 @@ def get_article_batlit(article: Article) -> tuple[str, str, str, str]:
         return (
             batlit_key(tag.zotero_id),
             batlit_url(tag.zotero_id),
-            getattr(tag, "zenodo_doi", ""),
+            tag.zenodo_doi or "",
             citation,
         )
     matches = [
@@ -1650,7 +1651,7 @@ def article_doi(article: Article, *, mode: str) -> tuple[str, str]:
                     article, doi, data, cfg
                 ):
                     return doi, f"Crossref inferred from taxonomy Article ({mode})"
-    except (Exception, FreshNetworkCall):
+    except Exception, FreshNetworkCall:
         return "", ""
     return "", ""
 
@@ -1721,7 +1722,7 @@ def row_doi_candidates_from_title_search(
                 data = api_data.get_crossref_search_by_journal(
                     json.dumps({"issn": issn, "params": params})
                 )
-        except (Exception, FreshNetworkCall):  # noqa: S112
+        except Exception, FreshNetworkCall:  # noqa: S112
             continue
         try:
             items = json.loads(data).get("message", {}).get("items", ())
@@ -1889,9 +1890,8 @@ def row_matches_doi_data(
     row_authors = row_author_aliases(row["authors"])
     doi_author_aliases: list[set[str]] = []
     for author in doi_authors if isinstance(doi_authors, Iterable) else ():
-        family_name = getattr(author, "family_name", "")
-        if family_name:
-            doi_author_aliases.append({compact_key(family_name)})
+        if isinstance(author, VirtualPerson):
+            doi_author_aliases.append({compact_key(author.family_name)})
     if row_authors and doi_author_aliases:
         overlap = 0
         for row_aliases in row_authors:
@@ -1948,7 +1948,7 @@ def row_doi_from_crossref(
                 try:
                     with lookup_mode(mode):
                         doi = api_data._try_query(query)
-                except (Exception, FreshNetworkCall):  # noqa: S112
+                except Exception, FreshNetworkCall:  # noqa: S112
                     continue
                 if not doi or doi in seen:
                     continue
@@ -1956,7 +1956,7 @@ def row_doi_from_crossref(
                 try:
                     with lookup_mode(mode):
                         data = api_data.expand_doi_json(doi)
-                except (Exception, FreshNetworkCall):  # noqa: S112
+                except Exception, FreshNetworkCall:  # noqa: S112
                     continue
                 if data and row_matches_doi_data(
                     row, data, citation_group_aliases=citation_group_aliases
@@ -1966,7 +1966,7 @@ def row_doi_from_crossref(
             try:
                 with lookup_mode(mode):
                     doi = api_data._try_query(query)
-            except (Exception, FreshNetworkCall):  # noqa: S112
+            except Exception, FreshNetworkCall:  # noqa: S112
                 continue
             if not doi or doi in seen:
                 continue
@@ -1974,7 +1974,7 @@ def row_doi_from_crossref(
             try:
                 with lookup_mode(mode):
                     data = api_data.expand_doi_json(doi)
-            except (Exception, FreshNetworkCall):  # noqa: S112
+            except Exception, FreshNetworkCall:  # noqa: S112
                 continue
             if data and row_matches_doi_data(
                 row, data, citation_group_aliases=citation_group_aliases
@@ -1989,7 +1989,7 @@ def row_doi_from_crossref(
             try:
                 with lookup_mode(mode):
                     data = api_data.expand_doi_json(doi)
-            except (Exception, FreshNetworkCall):  # noqa: S112
+            except Exception, FreshNetworkCall:  # noqa: S112
                 continue
             if data and row_matches_doi_data(
                 row, data, citation_group_aliases=citation_group_aliases
@@ -2002,7 +2002,7 @@ def row_doi_from_crossref(
         try:
             with lookup_mode(mode):
                 doi = api_data._try_query(query)
-        except (Exception, FreshNetworkCall):  # noqa: S112
+        except Exception, FreshNetworkCall:  # noqa: S112
             continue
         if not doi or doi in seen:
             continue
@@ -2010,7 +2010,7 @@ def row_doi_from_crossref(
         try:
             with lookup_mode(mode):
                 data = api_data.expand_doi_json(doi)
-        except (Exception, FreshNetworkCall):  # noqa: S112
+        except Exception, FreshNetworkCall:  # noqa: S112
             continue
         if data and row_matches_doi_data(
             row, data, citation_group_aliases=fallback_aliases
@@ -2240,7 +2240,7 @@ def build_learned_mappings(
         try:
             with lookup_mode(doi_mode):
                 data = api_data.expand_doi_json(doi)
-        except (Exception, FreshNetworkCall):  # noqa: S112
+        except Exception, FreshNetworkCall:  # noqa: S112
             continue
         if not data:
             continue

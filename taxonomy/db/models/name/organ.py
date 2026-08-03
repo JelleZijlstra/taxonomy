@@ -1,7 +1,5 @@
 """Code for parsing organ texts."""
 
-from __future__ import annotations
-
 import itertools
 import re
 from collections.abc import Iterable, Sequence

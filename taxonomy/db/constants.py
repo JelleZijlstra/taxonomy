@@ -1,7 +1,5 @@
 """Enums for various fields."""
 
-from __future__ import annotations
-
 import enum
 from functools import cache
 from typing import Annotated

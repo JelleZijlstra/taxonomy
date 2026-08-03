@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 import enum
 import re
 import sqlite3
@@ -9,7 +7,7 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from dataclasses import field as dataclass_field
-from typing import IO, TYPE_CHECKING, Any, ClassVar, NotRequired, Self
+from typing import IO, Any, ClassVar, NotRequired, Self, cast
 
 from clirm import Field
 
@@ -23,15 +21,10 @@ from taxonomy.db.models.period import Period, period_sort_key
 from taxonomy.db.models.region import Region
 from taxonomy.db.models.stratigraphic_unit import StratigraphicUnit
 
-if TYPE_CHECKING:
-    from taxonomy.db.models.name import Name
-
-    _CoordinatesFromNameTarget = Name
-else:
-    # Replaced with Name after all models have loaded; see models.__init__. This
-    # breaks the Location <-> Name import cycle while retaining the normal
-    # model-valued ADT behavior at runtime.
-    _CoordinatesFromNameTarget = Managed
+# Replaced with Name after all models have loaded; see models.__init__. This
+# breaks the Location <-> Name import cycle while retaining the normal model-valued
+# ADT behavior at runtime. The cast gives the generated constructor its final type.
+_CoordinatesFromNameTarget = cast("type[models.Name]", Managed)
 
 
 class LocationStatus(enum.IntEnum):
@@ -438,11 +431,6 @@ class Location(BaseModel):
 
     def coordinate_evidence(self) -> None:
         from taxonomy.apis import geonames, nominatim, plss
-        from taxonomy.db.models.name import TypeTag
-        from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
-        from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
-
-        from . import lint as location_lint
 
         print(f"Coordinate evidence for {self}:")
         location_parsed = None
@@ -470,7 +458,7 @@ class Location(BaseModel):
             plss_description = plss.parse_canonical(tag.text)
             if len(plss_tags) == 1 and plss_description is not None:
                 accepted_plss = plss_description
-            extent, issue = location_lint._get_plss_provenance_extent(
+            extent, issue = models.location.lint._get_plss_provenance_extent(
                 self, LocationTag.CoordinatesFromPLSS(tag.plss_id)
             )
             if extent is not None:
@@ -484,7 +472,7 @@ class Location(BaseModel):
                 )
             elif issue is not None:
                 print(f"      Resolution issue: {issue}")
-        linked_plss = location_lint._get_linked_plss_evidence(self)
+        linked_plss = models.location.lint._get_linked_plss_evidence(self)
         for item in linked_plss:
             if item.has_alternative_section:
                 status = "alternative sections"
@@ -502,8 +490,8 @@ class Location(BaseModel):
             print("    none")
 
         print("\n  Nominatim candidates:")
-        search_plan = location_lint.get_nominatim_search_plan(self)
-        query = location_lint.get_nominatim_query(self)
+        search_plan = models.location.lint.get_nominatim_search_plan(self)
+        query = models.location.lint.get_nominatim_query(self)
         print(f"    Query: {query}")
         nominatim_results = None
         if not search_plan.coordinates_can_be_inferred:
@@ -512,7 +500,10 @@ class Location(BaseModel):
                     "    Lookup skipped: rename noncanonical offset locality to "
                     f"{search_plan.standardized_name!r} first"
                 )
-            elif location_lint._get_coordinate_modifier_plan(self.name) is not None:
+            elif (
+                models.location.lint._get_coordinate_modifier_plan(self.name)
+                is not None
+            ):
                 print(
                     "    Lookup skipped: modifier supplies explicit locality "
                     "coordinates"
@@ -531,7 +522,7 @@ class Location(BaseModel):
             if not nominatim_results:
                 print("    none")
             for index, result in enumerate(nominatim_results, start=1):
-                assessment = location_lint.assess_nominatim_result(self, result)
+                assessment = models.location.lint.assess_nominatim_result(self, result)
                 status = "accepted" if assessment.is_accepted else "rejected"
                 print(
                     f"    {index}. [{status}] {result.category}/"
@@ -561,8 +552,10 @@ class Location(BaseModel):
                 if address:
                     print(f"       Address: {address}")
                 if search_plan.offset_description is not None:
-                    offset_coordinates = location_lint.get_nominatim_result_coordinates(
-                        result, offsets=search_plan.offsets
+                    offset_coordinates = (
+                        models.location.lint.get_nominatim_result_coordinates(
+                            result, offsets=search_plan.offsets
+                        )
                     )
                     if offset_coordinates is not None:
                         print(
@@ -575,23 +568,25 @@ class Location(BaseModel):
                         )
 
         print("\n  GeoNames candidates:")
-        geonames_country = location_lint._get_region_country_name(self.region)
+        geonames_country = models.location.lint._get_region_country_name(self.region)
         geonames_country_code = (
             None
             if geonames_country is None
-            else location_lint._get_geonames_country_code(geonames_country)
+            else models.location.lint._get_geonames_country_code(geonames_country)
         )
         print(
             f"    Exact-name query: {search_plan.locality_name!r}; "
             f"country={geonames_country_code or '(unresolved)'}"
         )
-        geonames_candidates = location_lint._get_geonames_coordinate_matches(self)
+        geonames_candidates = models.location.lint._get_geonames_coordinate_matches(
+            self
+        )
         if not geonames_candidates:
             print("    none")
         for index, candidate in enumerate(geonames_candidates, start=1):
             if not candidate.is_accepted:
                 status = "rejected by region checks"
-            elif location_lint._is_geonames_point_candidate(candidate):
+            elif models.location.lint._is_geonames_point_candidate(candidate):
                 status = "accepted for point-coordinate checks"
             else:
                 status = "evidence only; feature is not point-like"
@@ -644,9 +639,11 @@ class Location(BaseModel):
         print("\n  Type-locality Names:")
         found_type_locality_evidence = False
         for name in self.type_localities:
-            coordinates = list(name.get_tags(name.type_tags, TypeTag.Coordinates))
+            coordinates = list(
+                name.get_tags(name.type_tags, models.name.TypeTag.Coordinates)
+            )
             location_details = []
-            for tag in location_lint._get_applicable_location_detail_tags(name):
+            for tag in models.location.lint._get_applicable_location_detail_tags(name):
                 extracted = helpers.extract_coordinates(tag.text)
                 if extracted is not None:
                     location_details.append(tag)
@@ -673,14 +670,21 @@ class Location(BaseModel):
         found_occurrence_evidence = False
         for record in self.occurrence_records:
             coordinates = list(
-                record.get_tags(record.tags, OccurrenceRecordTag.Coordinates)
+                record.get_tags(
+                    record.tags,
+                    models.occurrence_record.OccurrenceRecordTag.Coordinates,
+                )
             )
             verbatim = list(
-                record.get_tags(record.tags, OccurrenceRecordTag.VerbatimCoordinates)
+                record.get_tags(
+                    record.tags,
+                    models.occurrence_record.OccurrenceRecordTag.VerbatimCoordinates,
+                )
             )
             uncertainties = list(
                 record.get_tags(
-                    record.tags, OccurrenceRecordTag.CoordinateUncertaintyFromSource
+                    record.tags,
+                    models.occurrence_record.OccurrenceRecordTag.CoordinateUncertaintyFromSource,
                 )
             )
             if not coordinates and not verbatim and not uncertainties:
@@ -695,7 +699,9 @@ class Location(BaseModel):
                     )
                 )
             for tag in verbatim:
-                verbatim_parsed = parse_verbatim_coordinates(tag.text)
+                verbatim_parsed = (
+                    models.occurrence_record.lint.parse_verbatim_coordinates(tag.text)
+                )
                 if verbatim_parsed is None:
                     print(f"      Verbatim coordinates: {tag.text!r} (unparsed)")
                 else:
@@ -711,11 +717,6 @@ class Location(BaseModel):
             print("    none")
 
     def _get_coordinate_choices(self) -> list[_CoordinateChoice]:
-        from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
-        from taxonomy.db.models.occurrence_record.lint import parse_verbatim_coordinates
-
-        from . import lint as location_lint
-
         choices: dict[tuple[str, str], _CoordinateChoice] = {}
 
         def add_choice(
@@ -745,7 +746,7 @@ class Location(BaseModel):
                     [] if provenance is None else [provenance],
                 )
 
-        for evidence in location_lint._get_linked_coordinate_evidence(self):
+        for evidence in models.location.lint._get_linked_coordinate_evidence(self):
             add_choice(
                 evidence.latitude,
                 evidence.longitude,
@@ -754,7 +755,7 @@ class Location(BaseModel):
             )
 
         for name in self.type_localities:
-            for tag in location_lint._get_applicable_location_detail_tags(name):
+            for tag in models.location.lint._get_applicable_location_detail_tags(name):
                 extracted = helpers.extract_coordinates(tag.text)
                 if extracted is not None:
                     add_choice(
@@ -765,9 +766,12 @@ class Location(BaseModel):
 
         for record in self.occurrence_records:
             for tag in record.get_tags(
-                record.tags, OccurrenceRecordTag.VerbatimCoordinates
+                record.tags,
+                models.occurrence_record.OccurrenceRecordTag.VerbatimCoordinates,
             ):
-                parsed = parse_verbatim_coordinates(tag.text)
+                parsed = models.occurrence_record.lint.parse_verbatim_coordinates(
+                    tag.text
+                )
                 if parsed is not None:
                     add_choice(
                         *parsed,
@@ -775,32 +779,32 @@ class Location(BaseModel):
                         LocationTag.CoordinatesFromOccurrenceRecord(record.id),
                     )
 
-        for candidate in location_lint._get_accepted_geonames_coordinate_candidates(
-            self
-        ):
+        for (
+            candidate
+        ) in models.location.lint._get_accepted_geonames_coordinate_candidates(self):
             add_choice(
                 candidate.latitude,
                 candidate.longitude,
-                location_lint._describe_geonames_match(candidate.match),
+                models.location.lint._describe_geonames_match(candidate.match),
                 LocationTag.CoordinatesFromGeoNames(candidate.match.record.geoname_id),
             )
 
         try:
             if self.is_general():
                 nominatim_candidates = (
-                    location_lint._get_nominatim_bounding_box_candidates(self)
+                    models.location.lint._get_nominatim_bounding_box_candidates(self)
                 )
                 nominatim_source_type = "bounding box"
             else:
                 nominatim_candidates = (
-                    location_lint._get_nominatim_coordinate_candidates(self)
+                    models.location.lint._get_nominatim_coordinate_candidates(self)
                 )
                 nominatim_source_type = "coordinates"
         except Exception as exc:
             print(f"Nominatim lookup failed: {exc}")
         else:
             for result, (latitude, longitude, _) in nominatim_candidates:
-                provenance = location_lint._nominatim_provenance_tag(
+                provenance = models.location.lint._nominatim_provenance_tag(
                     result, use_bounding_box=self.is_general()
                 )
                 add_choice(
@@ -864,13 +868,11 @@ class Location(BaseModel):
         if self.latitude is not None or self.longitude is not None:
             print(f"{self}: already has coordinates")
             return
-        from . import lint as location_lint
-
         cfg = LintConfig(autofix=True, interactive=True, manual_mode=True)
-        messages = list(location_lint.check_linked_coordinates(self, cfg))
+        messages = list(models.location.lint.check_linked_coordinates(self, cfg))
         if self.latitude is None and self.longitude is None:
             geonames_messages = list(
-                location_lint.check_geonames_coordinates(self, cfg)
+                models.location.lint.check_geonames_coordinates(self, cfg)
             )
             messages.extend(geonames_messages)
             if (
@@ -878,7 +880,9 @@ class Location(BaseModel):
                 and self.latitude is None
                 and self.longitude is None
             ):
-                messages.extend(location_lint.check_nominatim_coordinates(self, cfg))
+                messages.extend(
+                    models.location.lint.check_nominatim_coordinates(self, cfg)
+                )
         for message in messages:
             print(message)
 
@@ -895,7 +899,7 @@ class Location(BaseModel):
                 self.longitude = None
                 self.tags = tuple(  # type: ignore[assignment]
                     tag
-                    for tag in getattr(self, "tags", ()) or ()
+                    for tag in self.tags or ()
                     if not is_coordinate_provenance_tag(tag)
                 )
         self.format()
@@ -1007,15 +1011,11 @@ class Location(BaseModel):
             yield "alias location has no parent"
 
     def lint(self, cfg: LintConfig) -> Iterable[str]:
-        from . import lint as location_lint
-
-        yield from location_lint.LINT.run(self, cfg)
+        yield from models.location.lint.LINT.run(self, cfg)
 
     @classmethod
     def clear_lint_caches(cls) -> None:
-        from . import lint as location_lint
-
-        location_lint.LINT.clear_caches()
+        models.location.lint.LINT.clear_caches()
 
     def is_general(self) -> bool:
         if self.has_tag(LocationTag.General):
