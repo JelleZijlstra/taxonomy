@@ -19,6 +19,7 @@ class FakeObject:
     needs_ignore: bool
     tags: list[FakeIgnore] = field(default_factory=list)
     raises: bool = False
+    is_virtual: bool = False
 
     def __repr__(self) -> str:
         return f"FakeObject({self.id})"
@@ -145,3 +146,25 @@ def test_ignored_linter_does_not_receive_autofix() -> None:
 
     assert received_configs == [LintConfig(autofix=False, interactive=False)]
     assert obj.tags == [FakeIgnore("problem", "earlier review")]
+
+
+def test_linter_can_skip_virtual_objects_and_preserve_ignore() -> None:
+    obj = FakeObject(
+        1,
+        needs_ignore=True,
+        tags=[FakeIgnore("persisted_only", "requires database state")],
+        is_virtual=True,
+    )
+    lint = make_lint([obj])
+    calls: list[FakeObject] = []
+
+    @lint.add("persisted_only", skip_virtual=True)
+    def check_persisted_only(item: FakeObject, _cfg: Any) -> list[str]:
+        calls.append(item)
+        return ["has persisted-only problem"]
+
+    messages = list(lint.run(obj, LintConfig(autofix=True, interactive=False)))
+
+    assert messages == ["FakeObject(1): has problem [problem]"]
+    assert calls == []
+    assert obj.tags == [FakeIgnore("persisted_only", "requires database state")]

@@ -45,6 +45,7 @@ class LintWrapper(Generic[ModelT]):
     label: str
     lint: Lint[ModelT]
     requires_network: bool = False
+    skip_virtual: bool = False
 
     @staticmethod
     def _format_object(obj: ModelT) -> str:
@@ -57,6 +58,8 @@ class LintWrapper(Generic[ModelT]):
 
     def __call__(self, obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
         if self.requires_network and not is_network_available():
+            return {self.label}
+        if self.skip_virtual and obj.is_virtual:
             return {self.label}
         try:
             issues = list(self.linter(obj, cfg))
@@ -196,11 +199,19 @@ class Lint(Generic[ModelT]):
         *,
         disabled: bool = False,
         requires_network: bool = False,
+        skip_virtual: bool = False,
         clear_caches: Callable[[], None] | None = None,
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
 
         def decorator(linter: Linter[ModelT]) -> LintWrapper[ModelT]:
-            lint_wrapper = LintWrapper(linter, disabled, label, self, requires_network)
+            lint_wrapper = LintWrapper(
+                linter=linter,
+                disabled=disabled,
+                label=label,
+                lint=self,
+                requires_network=requires_network,
+                skip_virtual=skip_virtual,
+            )
             if disabled:
                 self.disabled_linters.append(lint_wrapper)
             else:

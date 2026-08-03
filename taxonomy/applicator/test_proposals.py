@@ -81,7 +81,7 @@ def test_print_lint_results_marks_output_as_best_effort(
     output = capsys.readouterr().out
     assert "BEST_EFFORT VIRTUAL LINT" in output
     assert "example issue" in output
-    assert "Database-wide queries may not include virtual objects" in output
+    assert "New virtual rows and changed scalar fields" in output
 
 
 def test_lint_proposals_contains_lint_failures_in_result() -> None:

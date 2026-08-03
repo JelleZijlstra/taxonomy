@@ -1445,6 +1445,7 @@ def test_coordinate_evidence_explains_accepted_spelling_variant(
 class _TaggedObject:
     id: int
     species_type_kind: object
+    is_virtual = False
 
 
 def _tagged_object(tags: tuple[object, ...], *, name_tags: bool) -> _TaggedObject:

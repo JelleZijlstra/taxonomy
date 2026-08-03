@@ -869,7 +869,7 @@ class BaseModel(Model):
 
     @classmethod
     def unserialize(cls, data: int) -> Self:
-        return cls(data)
+        return cls.resolve_reference(data)
 
     @classmethod
     def select_valid(cls) -> Query[Self]:

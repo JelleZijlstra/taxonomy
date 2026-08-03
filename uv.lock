@@ -395,14 +395,14 @@ wheels = [
 
 [[package]]
 name = "clirm"
-version = "0.2.0"
+version = "0.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/fd/32/6137bbe302baf878fe1b000bea15fd3cf225ba812f5cec202c15d16064af/clirm-0.2.0.tar.gz", hash = "sha256:676116fcec532ed95ba8b933b7beec507d981c9c1ef918f43f7eabcd8a85b96c", size = 12338, upload-time = "2026-08-03T14:53:33.147Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b7/61/440303cf73bc8ae7c8917cea400f8e6f79c81ad15425111ae7b6c2c2e4d8/clirm-0.3.1.tar.gz", hash = "sha256:5c00ea237a9d4c8bcb098e637332aeeb505332165b1a78e5446ea6c48ed2b9c2", size = 13526, upload-time = "2026-08-03T21:01:04.014Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/72/0e/3702159c31eb315ea91b52e3fe09b0f85802bc1eecbdd8bd43452fa2cdc7/clirm-0.2.0-py3-none-any.whl", hash = "sha256:465718c637a2a9bbe59cf2377b31be4a88ec868e6363459e4a2baef3c38b4953", size = 10399, upload-time = "2026-08-03T14:53:32.18Z" },
+    { url = "https://files.pythonhosted.org/packages/ae/a4/69eace1876070d49be64be982b1ae384d6cbcf2cc61d37ba5b0d861a1d62/clirm-0.3.1-py3-none-any.whl", hash = "sha256:fc7544dcb2285a24c90fb6740d8b1aab80d8ddd1c9d2d7aa7dac4d52ca8000dc", size = 11331, upload-time = "2026-08-03T21:01:02.866Z" },
 ]
 
 [[package]]
@@ -1976,7 +1976,7 @@ requires-dist = [
     { name = "boto3" },
     { name = "botocore" },
     { name = "bs4" },
-    { name = "clirm", specifier = ">=0.2.0" },
+    { name = "clirm", specifier = ">=0.3.1" },
     { name = "flake8" },
     { name = "graphene" },
     { name = "gspread" },

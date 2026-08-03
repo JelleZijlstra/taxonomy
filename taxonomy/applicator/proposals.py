@@ -5,6 +5,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, TypeVar
 
+from clirm import substitute_virtual_models
+
 from taxonomy import adt
 from taxonomy.db.models.base import BaseModel, LintConfig
 
@@ -139,7 +141,10 @@ def lint_proposals(
     for model_type in model_types:
         model_type.clear_lint_caches()
     try:
-        with BaseModel.clirm.readonly():
+        with (
+            BaseModel.clirm.readonly(),
+            substitute_virtual_models(proposal.model for proposal in proposals),
+        ):
             for proposal in proposals:
                 model = proposal.model
                 try:
@@ -178,6 +183,6 @@ def print_lint_results(results: tuple[ProposalLintResult, ...]) -> None:
             print(f"- {message}")
     print(
         f"Best-effort virtual lint: {len(results)} object(s) checked, "
-        f"{len(with_issues)} with issue(s). Database-wide queries may not include "
-        "virtual objects."
+        f"{len(with_issues)} with issue(s). New virtual rows and changed scalar "
+        "fields are not projected into database queries."
     )
