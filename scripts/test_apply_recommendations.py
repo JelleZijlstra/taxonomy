@@ -4,10 +4,12 @@ from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
+from typing import Any, Literal, cast
 
 import pytest
 
 from scripts import apply_recommendations
+from taxonomy import getinput
 from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
@@ -84,6 +86,68 @@ def test_reads_mixed_recommendation_file(tmp_path: Path) -> None:
     assert isinstance(
         recommendations.type_locality_rows[0], type_recommendations.Recommendation
     )
+
+
+def test_dispatcher_allows_rename_of_location_merge_target() -> None:
+    target_rename = location_recommendations.parse_recommendation(
+        {
+            "schema_version": 1,
+            "action": "rename_location",
+            "confidence": "high",
+            "reason": "Use the canonical target name.",
+            "evidence": [{"kind": "source", "text": "Canonical spelling."}],
+            "location": {
+                "location_id": 3,
+                "location_name": "Example Cave",
+                "region_id": 10,
+                "region_name": "Example Region",
+                "min_period_id": None,
+                "min_period_name": None,
+                "max_period_id": None,
+                "max_period_name": None,
+                "stratigraphic_unit_id": None,
+                "stratigraphic_unit_name": None,
+            },
+            "new_name": "Example Cavern",
+        },
+        1,
+    )
+    merge = location_recommendations.parse_recommendation(
+        {
+            "schema_version": 1,
+            "action": "merge_location",
+            "confidence": "high",
+            "reason": "Merge the duplicate.",
+            "evidence": [{"kind": "source", "text": "Same place."}],
+            "source": {
+                "location_id": 2,
+                "location_name": "Example-Cave",
+                "region_id": 10,
+                "region_name": "Example Region",
+                "min_period_id": None,
+                "min_period_name": None,
+                "max_period_id": None,
+                "max_period_name": None,
+                "stratigraphic_unit_id": None,
+                "stratigraphic_unit_name": None,
+            },
+            "target": {
+                "location_id": 3,
+                "location_name": "Example Cave",
+                "region_id": 10,
+                "region_name": "Example Region",
+                "min_period_id": None,
+                "min_period_name": None,
+                "max_period_id": None,
+                "max_period_name": None,
+                "stratigraphic_unit_id": None,
+                "stratigraphic_unit_name": None,
+            },
+        },
+        2,
+    )
+
+    apply_recommendations._validate_location_rows([merge, target_rename])
 
 
 def test_rejects_unknown_action(tmp_path: Path) -> None:
@@ -310,6 +374,190 @@ def _generic_manual_plan(
         ),
         Counter({generic_recommendations.MANUAL_REVIEW: 1}),
     )
+
+
+def test_individual_review_resolves_editors_in_file_order(tmp_path: Path) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_type_row(), _generic_manual_row(), _location_row()])
+    recommendations = apply_recommendations.read_recommendations(path)
+    events: list[str] = []
+    name = _Editable("name", events)
+    generic = _Editable("generic", events)
+    location = _Editable("location", events)
+    generic_plan = _generic_manual_plan(recommendations.generic_rows[0], generic)
+    location_plan = location_recommendations.RecommendationPlan(
+        (
+            location_recommendations.PlannedEdit(
+                recommendations.location_rows[0],
+                cast(Any, location),
+                already_applied=False,
+            ),
+        ),
+        Counter({location_recommendations.EDIT_LOCATION: 1}),
+    )
+
+    items = apply_recommendations._resolve_individual_review_items(
+        recommendations,
+        (
+            generic_plan,
+            location_plan,
+            cast(type_recommendations.RecommendationPlan, object()),
+        ),
+        get_name=lambda name_id: name,
+        label_name=lambda obj: "Example name",
+    )
+
+    assert [item.line_number for item in items] == [1, 2, 3]
+    assert [item.edit_object for item in items] == [name, generic, location]
+
+
+def test_individual_review_queues_yes_skips_no_and_edits_immediately(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row(), _location_row(), _type_row()])
+    recommendations = apply_recommendations.read_recommendations(path)
+    events: list[str] = []
+    editable = _Editable("name", events)
+    rows = apply_recommendations._all_recommendation_rows(recommendations)
+    items = tuple(
+        apply_recommendations.IndividualReviewItem(
+            row.line_number, row, family, editable if row.line_number == 3 else None
+        )
+        for family, row in rows
+    )
+    choices: Iterator[Literal["yes", "no", "edit"]] = iter(("yes", "no", "edit"))
+    editable_options: list[bool] = []
+
+    def choose(*, can_edit: bool) -> Literal["yes", "no", "edit"]:
+        editable_options.append(can_edit)
+        return next(choices)
+
+    selected = apply_recommendations.review_recommendations_individually(
+        items, choose=choose
+    )
+
+    output = capsys.readouterr().out
+    assert selected == {1}
+    assert editable_options == [False, False, True]
+    assert events == ["name"]
+    assert "Recommendation 1/3 (manifest line 1)" in output
+    assert "Recommendation 2/3 (manifest line 2)" in output
+    assert "Recommendation 3/3 (manifest line 3)" in output
+    assert "The coordinate history remains unresolved." in output
+    assert "Add a reviewed comment." in output
+    assert "The source is ambiguous." in output
+    assert output.index("Recommendation 1/3") < output.index("Recommendation 2/3")
+    assert output.index("Recommendation 2/3") < output.index("Recommendation 3/3")
+    assert output.index("Recommendation 3/3") < output.index("EDIT name")
+
+
+def test_individual_review_prompt_only_offers_edit_when_available(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompts: list[str] = []
+
+    def get_line(prompt: str, **kwargs: object) -> str:
+        prompts.append(prompt)
+        return "edit" if "[e]dit" in prompt else "no"
+
+    monkeypatch.setattr(getinput, "get_line", get_line)
+
+    assert (
+        apply_recommendations._prompt_individual_review_choice(can_edit=False) == "no"
+    )
+    assert (
+        apply_recommendations._prompt_individual_review_choice(can_edit=True) == "edit"
+    )
+    assert "[e]dit" not in prompts[0]
+    assert "[e]dit" in prompts[1]
+
+
+def test_review_each_replans_only_selected_rows_before_applying(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row(), _location_row()])
+    build_calls: list[list[int]] = []
+    events: list[str] = []
+    fake_plans = (object(), object(), object())
+
+    def build_plans(
+        recommendations: apply_recommendations.Recommendations,
+    ) -> tuple[object, object, object]:
+        build_calls.append(
+            [
+                row.line_number
+                for _, row in apply_recommendations._all_recommendation_rows(
+                    recommendations
+                )
+            ]
+        )
+        return fake_plans
+
+    monkeypatch.setattr(apply_recommendations, "build_plans", build_plans)
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_individual_review_items",
+        lambda recommendations, plans: (object(),),
+    )
+    monkeypatch.setattr(
+        apply_recommendations, "review_recommendations_individually", lambda items: {2}
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda plans, *, apply: events.append("apply" if apply else "dry-run"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "readonly",
+        lambda: pytest.fail("--review-each entered read-only context"),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--review-each"]
+    )
+
+    apply_recommendations.main()
+
+    assert build_calls == [[1, 2], [2]]
+    assert events == ["apply"]
+
+
+def test_review_each_abort_does_not_apply_queued_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object())
+    build_count = 0
+
+    def build_plans(recommendations: object) -> tuple[object, object, object]:
+        nonlocal build_count
+        build_count += 1
+        return fake_plans
+
+    monkeypatch.setattr(apply_recommendations, "build_plans", build_plans)
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_individual_review_items",
+        lambda recommendations, plans: (object(),),
+    )
+    monkeypatch.setattr(
+        apply_recommendations, "review_recommendations_individually", lambda items: None
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda *args, **kwargs: pytest.fail("aborted review applied rows"),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--review-each"]
+    )
+
+    apply_recommendations.main()
+
+    assert build_count == 1
 
 
 def test_edit_manual_reviews_prints_note_then_edits_in_file_order(
@@ -556,20 +804,172 @@ def test_apply_mode_does_not_enter_read_only_context(
     apply_recommendations.main()
 
 
-def test_virtual_lint_rejects_review_only_mode(
+def test_virtual_lint_combines_with_review_mode(
     tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
     _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object())
+    events: list[str] = []
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "run_virtual_lint",
+        lambda plans: events.append("virtual lint"),
+    )
     monkeypatch.setattr(
         sys,
         "argv",
         ["apply_recommendations.py", str(path), "--review", "--virtual-lint"],
     )
 
+    apply_recommendations.main()
+
+    assert "GENERIC RECOMMENDATIONS" in capsys.readouterr().out
+    assert events == ["virtual lint"]
+
+
+def test_review_each_combines_with_review_manual_and_edit_manual(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object())
+    manual_items = (object(),)
+    events: list[str] = []
+
+    def review_each(items: object) -> set[int]:
+        events.append("review each")
+        return {1}
+
+    monkeypatch.setattr(
+        apply_recommendations,
+        "print_manual_reviews",
+        lambda recommendations: events.append("review manual"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_individual_review_items",
+        lambda recommendations, plans: (object(),),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_manual_review_objects",
+        lambda recommendations, generic_plan: manual_items,
+    )
+    monkeypatch.setattr(
+        apply_recommendations, "review_recommendations_individually", review_each
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda plans, *, apply: events.append("apply" if apply else "dry-run"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_edit_manual_review_objects",
+        lambda items: events.append("edit manual"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "apply_recommendations.py",
+            str(path),
+            "--review-manual",
+            "--review-each",
+            "--edit-manual",
+        ],
+    )
+
+    apply_recommendations.main()
+
+    assert events == ["review manual", "review each", "apply", "edit manual"]
+
+
+def test_views_dry_run_lint_apply_and_edit_run_in_order(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object())
+    manual_items = (object(),)
+    events: list[str] = []
+    monkeypatch.setattr(
+        apply_recommendations,
+        "print_review",
+        lambda recommendations, *, actions=None: events.append("review"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "print_manual_reviews",
+        lambda recommendations: events.append("review manual"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_manual_review_objects",
+        lambda recommendations, generic_plan: manual_items,
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "run_virtual_lint",
+        lambda plans: events.append("virtual lint"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda plans, *, apply: events.append("apply" if apply else "dry-run"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_edit_manual_review_objects",
+        lambda items: events.append("edit manual"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "apply_recommendations.py",
+            str(path),
+            "--review",
+            "--review-manual",
+            "--virtual-lint",
+            "--dry-run",
+            "--apply",
+            "--edit-manual",
+        ],
+    )
+
+    apply_recommendations.main()
+
+    assert events == [
+        "review",
+        "review manual",
+        "virtual lint",
+        "dry-run",
+        "apply",
+        "edit manual",
+    ]
+
+
+def test_apply_remains_incompatible_with_review_each(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--apply", "--review-each"]
+    )
+
     with pytest.raises(SystemExit):
         apply_recommendations.main()
 
-    assert "--virtual-lint requires database-backed plan validation" in (
-        capsys.readouterr().err
-    )
+    assert "--review-each selects individual rows" in capsys.readouterr().err

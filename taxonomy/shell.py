@@ -13,7 +13,6 @@ Possible ones to add:
 """
 
 import collections
-import csv
 import datetime
 import functools
 import gc
@@ -24,7 +23,6 @@ import os
 import pprint
 import re
 import shutil
-import sqlite3
 import subprocess
 from collections import Counter, defaultdict
 from collections.abc import Callable, Hashable, Iterable, Iterator, Mapping, Sequence
@@ -243,32 +241,6 @@ def n(name: str) -> Iterable[Name]:
     return Name.select_valid().filter(
         (Name.root_name % name) | (Name.original_name % name)
     )
-
-
-@command
-def make_county_regions(
-    state: models.Region, name: str | None = None, *, dry_run: bool = True
-) -> None:
-    if name is None:
-        name = state.name
-    data_path = Path(__file__).parent.parent / "data_import/data/counties.csv"
-    counties = []
-    with data_path.open(encoding="latin1") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            county = row["GEO.display-label"]
-            if county.endswith(f", {name}"):
-                counties.append(county.replace(" city, Virginia", " City, Virginia"))
-    print("Creating counties", counties)
-    if dry_run:
-        return
-    for county in counties:
-        try:
-            models.Region.make(county, constants.RegionKind.county, state)
-        except sqlite3.IntegrityError:
-            print(f"{county} already exists")
-    _more_precise_by_county(state, counties)
-    more_precise(state)
 
 
 @command
@@ -1463,25 +1435,6 @@ def _more_precise(
         obj.fill_field(field)
 
 
-def _more_precise_by_county(state: models.Region, counties: Sequence[str]) -> None:
-    to_replace = f"unty, {state.name}"
-    if getinput.yes_no("Run county substring search for type localities?"):
-        for loc in state.get_general_localities():
-            getinput.print_header(loc.name)
-            for county in counties:
-                more_precise_type_localities(
-                    loc, substring=county.replace(to_replace, "")
-                )
-    if getinput.yes_no("Run county substring search for localities?"):
-        for county in counties:
-            _more_precise(
-                state,
-                state.sorted_locations(),
-                "region",
-                _make_loc_filterer(county.replace(to_replace, "")),
-            )
-
-
 def _make_loc_filterer(substring: str) -> Callable[[models.Location], bool]:
     def filterer(loc: models.Location) -> bool:
         for nam in loc.type_localities:
@@ -1514,10 +1467,12 @@ def _more_precise_by_subdivision(region: models.Region) -> None:
 
 @command
 def more_precise(region: models.Region) -> None:
-    loc = region.get_location()
     funcs = [
         ("by subdivision", lambda: _more_precise_by_subdivision(region)),
-        ("type localities", lambda: more_precise_type_localities(loc)),
+        (
+            "type localities",
+            lambda: more_precise_type_localities(region.get_location()),
+        ),
         ("collections", lambda: _more_precise(region, region.collections, "location")),
         (
             "citation groups",

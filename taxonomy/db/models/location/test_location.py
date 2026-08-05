@@ -628,6 +628,19 @@ def test_merge_combines_text_tags_and_compatible_partial_coordinates() -> None:
     assert target.tags == (LocationTag.General, LocationTag.Unplaced())
 
 
+def test_merge_sorts_and_deduplicates_tags() -> None:
+    source = _mergeable_location(
+        id=1, name="Old spelling", tags=(LocationTag.Unplaced(), LocationTag.General)
+    )
+    target = _mergeable_location(
+        id=2, name="Canonical spelling", tags=(LocationTag.Unplaced(),)
+    )
+
+    Location.merge(source, target)
+
+    assert target.tags == tuple(sorted((LocationTag.General, LocationTag.Unplaced())))
+
+
 def test_merge_keeps_conflicting_scalar_and_coordinate_metadata(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -1475,11 +1488,13 @@ def _location_without_coordinates(
     names: tuple[_TaggedObject, ...] = (),
     records: tuple[_TaggedObject, ...] = (),
     general: bool | None = None,
+    virtual_origin_id: int | None = None,
 ) -> Location:
     if region is None:
         region = _make_region(region_name, RegionKind.state)
     loc = SimpleNamespace(
         id=id,
+        virtual_origin_id=virtual_origin_id,
         name=name,
         region=region,
         latitude=None,
@@ -2130,6 +2145,109 @@ def _geonames_candidate(
     standardized_latitude, standardized_longitude, extent = parsed
     return location_lint.GeoNamesCoordinateCandidate(
         match, standardized_latitude, standardized_longitude, extent, region_issues
+    )
+
+
+def test_geonames_alternate_name_lint_preserves_name_structure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Calcutta (India): 2 km N")
+    loc.tags = (LocationTag.CoordinatesFromGeoNames(1275004),)  # type: ignore[assignment]
+    record = dataclasses.replace(
+        _geonames_candidate(geoname_id=1275004, name="Kolkata").match.record,
+        alternate_names="Calcutta,Kolkata",
+    )
+    monkeypatch.setattr(geonames, "get_by_id", Mock(return_value=record))
+
+    messages = list(
+        location_lint.check_geonames_alternate_name.linter(
+            loc, LintConfig(autofix=True)
+        )
+    )
+
+    assert messages == [
+        (
+            "base name 'Calcutta' is a GeoNames alternate name rather than the "
+            "primary name 'Kolkata' (ID 1275004); review possible modern name "
+            "'Kolkata (India): 2 km N'"
+        )
+    ]
+    assert loc.name == "Calcutta (India): 2 km N"
+
+
+def test_geonames_alternate_name_lint_flags_ascii_spelling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Valparaiso")
+    loc.tags = (LocationTag.CoordinatesFromGeoNames(3868626),)  # type: ignore[assignment]
+    record = dataclasses.replace(
+        _geonames_candidate(geoname_id=3868626, name="Valparaíso").match.record,
+        ascii_name="Valparaiso",
+        alternate_names="Valparaiso,Valparaíso",
+    )
+    monkeypatch.setattr(geonames, "get_by_id", Mock(return_value=record))
+
+    messages = list(
+        location_lint.check_geonames_alternate_name.linter(loc, LintConfig())
+    )
+
+    assert messages == [
+        (
+            "base name 'Valparaiso' is a GeoNames ASCII name rather than the primary "
+            "name 'Valparaíso' (ID 3868626); review possible modern name 'Valparaíso'"
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("location_name", "record_values"),
+    [
+        ("Kolkata", ("Kolkata", "Kolkata", "Calcutta,Kolkata", "PPL")),
+        ("Unrelated", ("Kolkata", "Kolkata", "Calcutta,Kolkata", "PPL")),
+        (
+            "Reese River",
+            (
+                "Jacobsville (historical)",
+                "Jacobsville (historical)",
+                "Reese River",
+                "PPLQ",
+            ),
+        ),
+    ],
+)
+def test_geonames_alternate_name_lint_skips_non_candidates(
+    monkeypatch: pytest.MonkeyPatch,
+    location_name: str,
+    record_values: tuple[str, str, str, str],
+) -> None:
+    record_name, ascii_name, alternate_names, feature_code = record_values
+    loc = _location_without_coordinates(name=location_name)
+    loc.tags = (LocationTag.CoordinatesFromGeoNames(1),)  # type: ignore[assignment]
+    record = dataclasses.replace(
+        _geonames_candidate(name=record_name, feature_code=feature_code).match.record,
+        ascii_name=ascii_name,
+        alternate_names=alternate_names,
+    )
+    monkeypatch.setattr(geonames, "get_by_id", Mock(return_value=record))
+
+    assert (
+        list(location_lint.check_geonames_alternate_name.linter(loc, LintConfig()))
+        == []
+    )
+
+
+def test_geonames_alternate_name_lint_skips_unavailable_database(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates(name="Calcutta")
+    loc.tags = (LocationTag.CoordinatesFromGeoNames(1275004),)  # type: ignore[assignment]
+    monkeypatch.setattr(
+        geonames, "get_by_id", Mock(side_effect=RuntimeError("not configured"))
+    )
+
+    assert (
+        list(location_lint.check_geonames_alternate_name.linter(loc, LintConfig()))
+        == []
     )
 
 
@@ -4840,6 +4958,27 @@ def test_location_modifier_keeps_disambiguator_when_required(
 
     assert len(messages) == 1
     assert "Castle Brace (Dominica): 2 mi SW" in messages[0]
+
+
+def test_virtual_copy_does_not_collide_with_its_persisted_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    region = _make_region("Sabah", RegionKind.state)
+    original = _location_without_coordinates(
+        id=10, name="Mount Kinabalu", region=region
+    )
+    virtual = _location_without_coordinates(
+        id=-1, name="Mount Kinabalu", region=region, virtual_origin_id=10
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_base_name_to_locations",
+        lambda: {"Mount Kinabalu": (original, virtual)},
+    )
+
+    assert (
+        list(location_lint.check_should_have_disambiguator(virtual, LintConfig())) == []
+    )
 
 
 def test_nearby_region_modifier_does_not_require_disambiguators(

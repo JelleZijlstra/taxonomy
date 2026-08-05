@@ -58,18 +58,6 @@ class Region(BaseModel):
     def get_search_dicts(self) -> list[dict[str, Any]]:
         return [{"name": self.name, "kind": self.kind.name}]
 
-    @classmethod
-    def make(
-        cls, name: str, kind: constants.RegionKind, parent: Region | None = None
-    ) -> Region:
-        region = cls.create(name=name, kind=kind, parent=parent)
-        models.Location.make(
-            name=name,
-            period=models.Period.filter(models.Period.name == "Recent").get(),
-            region=region,
-        )
-        return region
-
     def __repr__(self) -> str:
         out = self.name
         if self.parent:

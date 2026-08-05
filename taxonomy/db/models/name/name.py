@@ -1038,11 +1038,9 @@ class Name(BaseModel):
             self.tags = (*tags, tag)  # type: ignore[assignment]
 
     def add_type_tag(self, tag: TypeTag) -> None:
-        type_tags = self.type_tags
-        if type_tags is None:
-            self.type_tags = [tag]
-        elif tag not in type_tags:
-            self.type_tags = (*type_tags, tag)  # type: ignore[assignment]
+        type_tags = self.type_tags or ()
+        if tag not in type_tags:
+            self.type_tags = tuple(sorted((*type_tags, tag)))  # type: ignore[assignment]
 
     def remove_type_tag(self, tag: TypeTag) -> None:
         type_tags = self.type_tags

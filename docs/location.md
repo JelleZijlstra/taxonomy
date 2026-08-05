@@ -37,10 +37,15 @@ disambiguators, and modifiers follow a colon and a space.
 
 The name should preferably a geographic feature such as a town, river, mountain, cave,
 or collecting site. Use modern names, even when the source material uses obsolete names.
-In particular, avoid names now considered offensive. Expand abbreviations such as "Mt.",
-"Ft.", or "St.", unless the abbreviated form is actually part of the official name. Use
-concise names, ideally the name of a single geographical feature, even if the source may
-use a more elaborate description.
+An established fossil-site name may be retained when it remains the stable name of the
+site in paleontological literature, even if the corresponding modern place has been
+renamed. In particular, avoid names now considered offensive. Expand abbreviations such
+as "Mt.", "Ft.", or "St.", unless the abbreviated form is actually part of the official
+name. Use concise names, ideally the name of a single geographical feature, even if the
+source may use a more elaborate description. Preserve diacritics in the modern spelling
+of proper names (for example, `Valparaíso`); do not reduce a name to ASCII merely
+because a source or legacy database record omits the diacritics. Established English
+names for countries and broad regions may retain their conventional English spelling.
 
 Locations should preferably denote precise locations (at the scale of a few kilometers
 at most), but if necessary a general location can be used encompassing a larger area if
@@ -54,6 +59,9 @@ name: use `Bengal and Sri Lanka`, not `Sri Lanka and Bengal`, and
 `Carinthia, Carniola, Styria, and Tyrol`, not an order copied from one particular
 source. Alphabetize by the geographic component itself, ignoring relational words such
 as `near`.
+
+If a type locality is said to be "near" or in the "vicinity" of a place, just use the
+place as the locality; words like "near" add no precision.
 
 ### disambiguator
 

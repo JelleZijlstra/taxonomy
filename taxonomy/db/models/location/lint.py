@@ -1,6 +1,7 @@
 """Lint steps for Locations."""
 
 import re
+import unicodedata
 from collections import defaultdict
 from collections.abc import Collection, Iterable
 from dataclasses import dataclass
@@ -1406,6 +1407,14 @@ def _get_locations_by_region() -> dict[int, tuple[Location, ...]]:
     return _build_locations_by_region(Location.select_valid())
 
 
+def _same_location_identity(first: Location, second: Location) -> bool:
+    first_ids = {first.id, getattr(first, "virtual_origin_id", None)}
+    second_ids = {second.id, getattr(second, "virtual_origin_id", None)}
+    first_ids.discard(None)
+    second_ids.discard(None)
+    return bool(first_ids & second_ids)
+
+
 @LINT.add(
     "explicit_location_equivalence", clear_caches=_get_locations_by_region.cache_clear
 )
@@ -1426,7 +1435,7 @@ def check_explicit_location_equivalence(
                 ):
                     continue
                 for candidate in candidates:
-                    if candidate.id == location.id:
+                    if _same_location_identity(candidate, location):
                         continue
                     if not _locations_have_matching_context(location, candidate):
                         continue
@@ -1441,7 +1450,9 @@ def check_explicit_location_equivalence(
                     # The cached Region map is only a candidate index. Confirm that
                     # the record remains valid and still matches before reporting it.
                     candidate = candidate.reload()
-                    if candidate.is_invalid() or candidate.id == location.id:
+                    if candidate.is_invalid() or _same_location_identity(
+                        candidate, location
+                    ):
                         continue
                     if not _locations_have_matching_context(location, candidate):
                         continue
@@ -2364,6 +2375,54 @@ def _describe_geonames_match(match: geonames.GeoNamesMatch) -> str:
         f"GeoNames {record.feature_class}/{record.feature_code} "
         f"{record.name!r} (ID {record.geoname_id}{matched_as})"
     )
+
+
+def _normalize_geonames_name(name: str) -> str:
+    normalized = unicodedata.normalize("NFC", name).casefold().replace("’", "'")
+    return " ".join(normalized.split())
+
+
+def _get_geonames_alternate_name_kind(
+    base_name: str, record: geonames.GeoNamesRecord
+) -> str | None:
+    normalized_base = _normalize_geonames_name(base_name)
+    if normalized_base == _normalize_geonames_name(record.name):
+        return None
+    if record.ascii_name and normalized_base == _normalize_geonames_name(
+        record.ascii_name
+    ):
+        return "ASCII"
+    if any(
+        alternate_name and normalized_base == _normalize_geonames_name(alternate_name)
+        for alternate_name in record.alternate_names.split(",")
+    ):
+        return "alternate"
+    return None
+
+
+@LINT.add("geonames_alternate_name")
+def check_geonames_alternate_name(location: Location, cfg: LintConfig) -> Iterable[str]:
+    parsed_name = ParsedLocationName.parse(location.name)
+    for tag in location.get_tags(location.tags, LocationTag.CoordinatesFromGeoNames):
+        try:
+            record = geonames.get_by_id(tag.geoname_id)
+        except RuntimeError:
+            # GeoNames is an optional local data source. An unset, missing, or stale
+            # database should not make every Location lint fail.
+            return
+        if record is None or record.name.casefold().endswith("(historical)"):
+            continue
+        match_kind = _get_geonames_alternate_name_kind(parsed_name.base_name, record)
+        if match_kind is None:
+            continue
+        proposed_name = ParsedLocationName(
+            record.name, parsed_name.disambiguator, parsed_name.modifier
+        ).render()
+        yield (
+            f"base name {parsed_name.base_name!r} is a GeoNames {match_kind} name "
+            f"rather than the primary name {record.name!r} (ID "
+            f"{record.geoname_id}); review possible modern name {proposed_name!r}"
+        )
 
 
 @LINT.add(
@@ -4129,7 +4188,7 @@ def check_should_have_disambiguator(
     similar = [
         other
         for other in _get_base_name_to_locations().get(parsed_name.base_name, ())
-        if other.id != location.id
+        if not _same_location_identity(other, location)
         and (
             ParsedLocationName.parse(other.name).disambiguator is not None
             or not _locations_share_base_region(location, other)

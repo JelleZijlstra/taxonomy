@@ -1,4 +1,4 @@
-"""Backend for Location edit, rename, and merge recommendations.
+"""Backend for Location edit, rename, alias promotion, and merge recommendations.
 
 Every row snapshots the Location IDs, names, Regions, periods, and stratigraphic
 context used during review; any unexpected database change aborts the complete plan
@@ -13,6 +13,7 @@ changed explicitly through ``add_tags`` and ``remove_tags``.
 """
 
 import json
+import sqlite3
 import textwrap
 from collections import Counter
 from collections.abc import Callable, Iterable
@@ -32,7 +33,13 @@ SCHEMA_VERSION = 1
 RENAME_LOCATION = "rename_location"
 MERGE_LOCATION = "merge_location"
 EDIT_LOCATION = "edit_location"
-ALLOWED_ACTIONS = {RENAME_LOCATION, MERGE_LOCATION, EDIT_LOCATION}
+PROMOTE_LOCATION_ALIAS_NAME = "promote_location_alias_name"
+ALLOWED_ACTIONS = {
+    RENAME_LOCATION,
+    MERGE_LOCATION,
+    EDIT_LOCATION,
+    PROMOTE_LOCATION_ALIAS_NAME,
+}
 ALLOWED_CONFIDENCES = {"high", "medium", "low"}
 
 SCALAR_FIELDS: dict[str, tuple[type, ...]] = {
@@ -84,6 +91,8 @@ class LocationLike(Protocol):
     tags: Iterable[Any] | None
 
     def is_invalid(self) -> bool: ...
+
+    def is_empty(self) -> bool: ...
 
     def merge(self, other: LocationLike) -> None: ...
 
@@ -161,12 +170,82 @@ class PlannedEdit:
 
 
 @dataclass(frozen=True, slots=True)
+class PlannedAliasPromotion:
+    recommendation: Recommendation
+    source: LocationLike
+    target: LocationLike
+    already_applied: bool
+
+
+@dataclass(frozen=True, slots=True)
 class RecommendationPlan:
-    actions: tuple[PlannedRename | PlannedMerge | PlannedEdit, ...]
+    actions: tuple[
+        PlannedRename | PlannedMerge | PlannedEdit | PlannedAliasPromotion, ...
+    ]
     action_counts: Counter[str]
 
 
-PlannedAction = PlannedRename | PlannedMerge | PlannedEdit
+PlannedAction = PlannedRename | PlannedMerge | PlannedEdit | PlannedAliasPromotion
+
+
+def _swap_unique_location_names(
+    connection: sqlite3.Connection,
+    *,
+    source_id: int,
+    source_name: str,
+    target_id: int,
+    target_name: str,
+) -> None:
+    """Atomically swap two names despite the database uniqueness constraint."""
+    temporary_base = f"__taxonomy_location_name_swap_{source_id}_{target_id}__"
+    temporary_name = temporary_base
+    suffix = 0
+    with connection:
+        while connection.execute(
+            "SELECT 1 FROM location WHERE name = ?", (temporary_name,)
+        ).fetchone():
+            suffix += 1
+            temporary_name = f"{temporary_base}_{suffix}"
+
+        updates = (
+            (target_id, target_name, temporary_name),
+            (source_id, source_name, target_name),
+            (target_id, temporary_name, source_name),
+        )
+        for location_id, expected_name, new_name in updates:
+            cursor = connection.execute(
+                "UPDATE location SET name = ? WHERE id = ? AND name = ?",
+                (new_name, location_id, expected_name),
+            )
+            if cursor.rowcount != 1:
+                raise RecommendationError(
+                    f"Location {location_id} name changed while swapping "
+                    f"{source_name!r} and {target_name!r}"
+                )
+
+
+def _swap_location_names(source: LocationLike, target: LocationLike) -> None:
+    source_name = source.name
+    target_name = target.name
+    if not isinstance(source, Location) or not isinstance(target, Location):
+        source.name, target.name = target_name, source_name
+        return
+
+    Location.clirm.check_writable()
+    _swap_unique_location_names(
+        Location.clirm.conn,
+        source_id=source.id,
+        source_name=source_name,
+        target_id=target.id,
+        target_name=target_name,
+    )
+    # The SQL transaction bypasses the field descriptors so that neither half of
+    # the unique-name swap is committed on its own. Keep these loaded instances and
+    # save-event consumers synchronized with the committed rows.
+    source._clirm_data["name"] = target_name
+    target._clirm_data["name"] = source_name
+    Location.save_event.trigger(source)
+    Location.save_event.trigger(target)
 
 
 def _required_value(data: dict[str, Any], key: str, line_number: int) -> Any:
@@ -439,6 +518,29 @@ def parse_recommendation(data: Any, line_number: int) -> Recommendation:
             remove_tags=remove_tags,
             review_note=review_note,
         )
+    if action == PROMOTE_LOCATION_ALIAS_NAME:
+        return Recommendation(
+            line_number=line_number,
+            action=action,
+            confidence=confidence,
+            reason=reason,
+            evidence=evidence,
+            location=None,
+            new_name=None,
+            source=_parse_location_spec(data.get("source"), line_number, "source"),
+            target=_parse_location_spec(data.get("target"), line_number, "target"),
+            allow_temporal_context_conflicts=False,
+            review_note=review_note,
+        )
+    target_changes = _parse_changes(data.get("target_changes", []), line_number)
+    unsupported_target_changes = {
+        change.field for change in target_changes if change.field != "region"
+    }
+    if unsupported_target_changes:
+        raise RecommendationError(
+            f"line {line_number}: merge_location target_changes currently supports "
+            f"only 'region', not {sorted(unsupported_target_changes)!r}"
+        )
     return Recommendation(
         line_number=line_number,
         action=action,
@@ -452,13 +554,14 @@ def parse_recommendation(data: Any, line_number: int) -> Recommendation:
         allow_temporal_context_conflicts=_optional_bool(
             data, "allow_temporal_context_conflicts", line_number
         ),
+        changes=target_changes,
         review_note=review_note,
     )
 
 
 def read_recommendations(path: Path) -> list[Recommendation]:
     output: list[Recommendation] = []
-    mutated_ids: set[int] = set()
+    mutations: dict[int, str] = {}
     merge_target_ids: set[int] = set()
     with path.open() as file:
         for line_number, raw_line in enumerate(file, start=1):
@@ -471,24 +574,39 @@ def read_recommendations(path: Path) -> list[Recommendation]:
                     f"line {line_number}: invalid JSON: {exc.msg}"
                 ) from exc
             row = parse_recommendation(data, line_number)
+            if row.action == PROMOTE_LOCATION_ALIAS_NAME:
+                assert row.source is not None
+                assert row.target is not None
+                for spec in (row.source, row.target):
+                    location_id = spec.location_id
+                    if location_id in mutations or location_id in merge_target_ids:
+                        raise RecommendationError(
+                            f"line {line_number}: Location {location_id} is "
+                            "mutated by more than one recommendation"
+                        )
+                mutations[row.source.location_id] = row.action
+                mutations[row.target.location_id] = row.action
+                output.append(row)
+                continue
             mutated_spec = (
                 row.location
                 if row.action in {RENAME_LOCATION, EDIT_LOCATION}
                 else row.source
             )
             assert mutated_spec is not None
-            if (
-                mutated_spec.location_id in mutated_ids
-                or mutated_spec.location_id in merge_target_ids
+            location_id = mutated_spec.location_id
+            if location_id in mutations or (
+                location_id in merge_target_ids and row.action != RENAME_LOCATION
             ):
                 raise RecommendationError(
-                    f"line {line_number}: Location {mutated_spec.location_id} is "
+                    f"line {line_number}: Location {location_id} is "
                     "mutated by more than one recommendation"
                 )
-            mutated_ids.add(mutated_spec.location_id)
+            mutations[location_id] = row.action
             if row.action == MERGE_LOCATION:
                 assert row.target is not None
-                if row.target.location_id in mutated_ids:
+                target_mutation = mutations.get(row.target.location_id)
+                if target_mutation is not None and target_mutation != RENAME_LOCATION:
                     raise RecommendationError(
                         f"line {line_number}: merge target Location "
                         f"{row.target.location_id} is mutated by another recommendation"
@@ -572,12 +690,17 @@ def _validate_location_context(spec: LocationSpec, location: LocationLike) -> No
 
 
 def _contexts_match(first: LocationLike, second: LocationLike) -> bool:
+    return first.region.id == second.region.id and _temporal_contexts_match(
+        first, second
+    )
+
+
+def _temporal_contexts_match(first: LocationLike, second: LocationLike) -> bool:
     def compatible(first_id: int | None, second_id: int | None) -> bool:
         return first_id is None or second_id is None or first_id == second_id
 
     return (
-        first.region.id == second.region.id
-        and compatible(
+        compatible(
             first.min_period.id if first.min_period is not None else None,
             second.min_period.id if second.min_period is not None else None,
         )
@@ -754,16 +877,12 @@ def _validate_and_order_name_changes(
         visit(location_id)
 
     ordered_name_actions = [name_actions[item] for item in ordered_location_ids]
-    reordered: list[PlannedAction] = []
-    inserted_names = False
-    for action in actions:
-        if _planned_name(action) is not None:
-            if not inserted_names:
-                reordered.extend(ordered_name_actions)
-                inserted_names = True
-            continue
-        reordered.append(action)
-    return reordered
+    # Name changes run first. In particular, a merge target may be renamed by the
+    # same manifest, and every dependent merge must observe that final target name.
+    return [
+        *ordered_name_actions,
+        *(action for action in actions if _planned_name(action) is None),
+    ]
 
 
 def build_plan(
@@ -774,7 +893,17 @@ def build_plan(
         _find_location_by_name
     ),
 ) -> RecommendationPlan:
-    actions: list[PlannedRename | PlannedMerge | PlannedEdit] = []
+    recommendations = tuple(recommendations)
+    planned_names = {
+        row.location.location_id: row.new_name
+        for row in recommendations
+        if row.action == RENAME_LOCATION
+        and row.location is not None
+        and row.new_name is not None
+    }
+    actions: list[
+        PlannedRename | PlannedMerge | PlannedEdit | PlannedAliasPromotion
+    ] = []
     counts: Counter[str] = Counter()
     errors: list[str] = []
     for row in recommendations:
@@ -831,29 +960,121 @@ def build_plan(
                 actions.append(PlannedEdit(row, location, already_applied))
                 continue
 
+            if row.action == PROMOTE_LOCATION_ALIAS_NAME:
+                assert row.source is not None
+                assert row.target is not None
+                source = get_location(row.source.location_id)
+                target = get_location(row.target.location_id)
+                _validate_location_context(row.source, source)
+                _validate_location_context(row.target, target)
+                if source.id == target.id:
+                    raise RecommendationError(
+                        "alias-name source and canonical target are the same"
+                    )
+                if target.is_invalid():
+                    raise RecommendationError(
+                        f"canonical target Location {target.id} is no longer valid"
+                    )
+                if not source.is_invalid():
+                    raise RecommendationError(
+                        f"alias-name source Location {source.id} is still valid"
+                    )
+                if not source.is_empty():
+                    raise RecommendationError(
+                        f"alias-name source Location {source.id} is not empty"
+                    )
+                if source.region.id != target.region.id:
+                    raise RecommendationError(
+                        f"Locations {source.id} and {target.id} do not have the same "
+                        "Region"
+                    )
+                if source.parent is not None and source.parent.id != target.id:
+                    raise RecommendationError(
+                        f"alias-name source Location {source.id} redirects to "
+                        f"unexpected Location {source.parent.id}"
+                    )
+                pending_names = (
+                    source.name == row.source.location_name
+                    and target.name == row.target.location_name
+                )
+                applied_names = (
+                    source.name == row.target.location_name
+                    and target.name == row.source.location_name
+                )
+                applied_alias = (
+                    source.deleted is LocationStatus.alias
+                    and source.parent is not None
+                    and source.parent.id == target.id
+                )
+                if not pending_names and not (applied_names and applied_alias):
+                    raise RecommendationError(
+                        f"Locations {source.id} and {target.id} no longer have either "
+                        "the snapshotted or promoted names"
+                    )
+                actions.append(
+                    PlannedAliasPromotion(
+                        row,
+                        source,
+                        target,
+                        already_applied=applied_names and applied_alias,
+                    )
+                )
+                continue
+
             assert row.source is not None
             assert row.target is not None
             source = get_location(row.source.location_id)
             target = get_location(row.target.location_id)
             _validate_location_context(row.source, source)
-            _validate_location_context(row.target, target)
+            source_already_merged = (
+                source.deleted is LocationStatus.alias
+                and source.parent is not None
+                and source.parent.id == target.id
+            )
+            changed_target_fields = {change.field for change in row.changes}
+            if source_already_merged:
+                # A successful merge may have filled these target fields from the
+                # source. They can therefore differ from the pre-merge snapshot on
+                # a resumed run without indicating outside database drift.
+                changed_target_fields.update(
+                    {
+                        "min_period",
+                        "max_period",
+                        "stratigraphic_unit",
+                        "latitude",
+                        "longitude",
+                    }
+                )
+            planned_target_name = planned_names.get(target.id)
+            if planned_target_name is not None:
+                changed_target_fields.add("name")
+            _validate_edit_snapshot(row.target, target, changed_target_fields)
             if source.id == target.id:
                 raise RecommendationError("merge source and target are the same")
             if target.is_invalid():
                 raise RecommendationError(
                     f"merge target Location {target.id} is no longer valid"
                 )
-            if target.name != row.target.location_name:
+            expected_target_names = {row.target.location_name}
+            if planned_target_name is not None:
+                expected_target_names.add(planned_target_name)
+            if target.name not in expected_target_names:
+                expected = " or ".join(repr(name) for name in expected_target_names)
                 raise RecommendationError(
-                    f"target Location {target.id} name changed from "
-                    f"{row.target.location_name!r} to {target.name!r}"
+                    f"target Location {target.id} name changed from {expected} "
+                    f"to {target.name!r}"
                 )
-            already_applied = (
-                source.deleted is LocationStatus.alias
-                and source.parent is not None
-                and source.parent.id == target.id
-            )
-            if already_applied:
+            target_field_states: list[bool] = []
+            for change in row.changes:
+                actual = _current_field_value(target, change.field)
+                if actual not in {change.old_value, change.new_value}:
+                    raise RecommendationError(
+                        f"merge target Location {target.id} field {change.field!r} "
+                        f"changed from expected {change.old_value!r} to {actual!r}"
+                    )
+                target_field_states.append(actual == change.new_value)
+            already_applied = source_already_merged and all(target_field_states)
+            if source_already_merged:
                 if source.name != row.source.location_name:
                     raise RecommendationError(
                         f"alias Location {source.id} name changed from "
@@ -872,13 +1093,22 @@ def build_plan(
                         f"source Location {source.id} name changed from "
                         f"{row.source.location_name!r} to {source.name!r}"
                     )
-                if source.region.id != target.region.id:
+                target_region_id = next(
+                    (
+                        change.new_value
+                        for change in row.changes
+                        if change.field == "region"
+                    ),
+                    target.region.id,
+                )
+                if source.region.id != target_region_id:
                     raise RecommendationError(
                         f"Locations {source.id} and {target.id} do not have the "
-                        "same Region"
+                        "same Region after target changes"
                     )
-                if not row.allow_temporal_context_conflicts and not _contexts_match(
-                    source, target
+                if (
+                    not row.allow_temporal_context_conflicts
+                    and not _temporal_contexts_match(source, target)
                 ):
                     raise RecommendationError(
                         f"Locations {source.id} and {target.id} no longer have "
@@ -972,11 +1202,24 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
             parts.extend(f"add {tag!r}" for tag in row.add_tags)
             parts.extend(f"remove {tag!r}" for tag in row.remove_tags)
             target = "; ".join(parts)
+        elif row.action == PROMOTE_LOCATION_ALIAS_NAME:
+            assert row.source is not None
+            assert row.target is not None
+            current = (
+                f"L{row.target.location_id} {row.target.location_name} "
+                f"(alias L{row.source.location_id} {row.source.location_name})"
+            )
+            target = row.source.location_name
         else:
             assert row.source is not None
             assert row.target is not None
             current = f"L{row.source.location_id} {row.source.location_name}"
             target = f"L{row.target.location_id} {row.target.location_name}"
+            if row.changes:
+                target += "; " + "; ".join(
+                    f"target {change.field}={change.new_value!r}"
+                    for change in row.changes
+                )
         print(
             f"{row.action:<18} {row.confidence:<8} "
             f"{_shorten(current, 52):<52} {_shorten(target, 65)}"
@@ -1035,6 +1278,16 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             tags = tuple(tag for tag in tags if tag not in row.remove_tags)
             tags = (*tags, *(tag for tag in row.add_tags if tag not in tags))
             proposal.tags = tuple(sorted(set(tags)))  # type: ignore[assignment]
+        elif isinstance(action, PlannedAliasPromotion):
+            if not isinstance(action.source, Location) or not isinstance(
+                action.target, Location
+            ):
+                continue
+            source = builder.copy(action.source, context=context)
+            target = builder.copy(action.target, context=context)
+            source.name, target.name = target.name, source.name
+            source.deleted = LocationStatus.alias
+            source.parent = target
         else:
             if not isinstance(action.source, Location) or not isinstance(
                 action.target, Location
@@ -1042,6 +1295,12 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                 continue
             source = builder.copy(action.source, context=context)
             target = builder.copy(action.target, context=context)
+            for change in row.changes:
+                setattr(
+                    target,
+                    change.field,
+                    _resolve_new_field_value(change.field, change.new_value),
+                )
             # Merge only the two model states. Reassigning database backrefs belongs
             # exclusively to the real apply step.
             with redirect_stdout(StringIO()):
@@ -1118,12 +1377,32 @@ def execute_plan(
                 action.location.tags = tuple(sorted(set(action.location.tags or ())))
             continue
 
+        if isinstance(action, PlannedAliasPromotion):
+            print(
+                f"{'PROMOTE_LOCATION_ALIAS_NAME' if apply else 'WOULD_PROMOTE_LOCATION_ALIAS_NAME'} "
+                f"alias_id={action.source.id} alias_name={action.source.name!r} "
+                f"canonical_id={action.target.id} "
+                f"canonical_name={action.target.name!r} confidence={row.confidence!r}"
+            )
+            if apply:
+                _swap_location_names(action.source, action.target)
+                action.source.deleted = LocationStatus.alias
+                action.source.parent = action.target
+            continue
+
         print(
             f"{'MERGE_LOCATION' if apply else 'WOULD_MERGE_LOCATION'} "
             f"source_id={action.source.id} source_name={action.source.name!r} "
             f"target_id={action.target.id} target_name={action.target.name!r} "
             f"confidence={row.confidence!r}"
         )
+        if row.changes:
+            print(
+                "  TARGET_CHANGES "
+                + ", ".join(
+                    f"{change.field}={change.new_value!r}" for change in row.changes
+                )
+            )
         metadata = _metadata_summary(action.source, action.target)
         if (
             not apply
@@ -1141,7 +1420,23 @@ def execute_plan(
                 f"source_id={action.source.id} {metadata}"
             )
         if apply:
-            action.source.merge(action.target)
+            for change in row.changes:
+                if (
+                    _current_field_value(action.target, change.field)
+                    != change.new_value
+                ):
+                    setattr(
+                        action.target,
+                        change.field,
+                        _resolve_new_field_value(change.field, change.new_value),
+                    )
+            source_already_merged = (
+                action.source.deleted is LocationStatus.alias
+                and action.source.parent is not None
+                and action.source.parent.id == action.target.id
+            )
+            if not source_already_merged:
+                action.source.merge(action.target)
     if apply and pending:
         clear_caches()
     mode = "Applied" if apply else "Dry run"

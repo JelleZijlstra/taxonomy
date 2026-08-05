@@ -146,16 +146,18 @@ def merge_location_data(source: Location, target: Location) -> None:
         _merge_text_field(source, target, field)
 
     target_tags = tuple(target.tags or ())
-    merged_tags = (
-        *target_tags,
-        *(
-            tag
-            for tag in source.tags or ()
-            if tag not in target_tags
-            and (
-                coordinates_merged or not models.tags.is_coordinate_provenance_tag(tag)
-            )
-        ),
+    merged_tags = tuple(
+        sorted(
+            {
+                *target_tags,
+                *(
+                    tag
+                    for tag in source.tags or ()
+                    if coordinates_merged
+                    or not models.tags.is_coordinate_provenance_tag(tag)
+                ),
+            }
+        )
     )
     if merged_tags != target_tags:
         print(f"adding {len(merged_tags) - len(target_tags)} tag(s) from {source}")

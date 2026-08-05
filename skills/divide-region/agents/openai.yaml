@@ -1,0 +1,6 @@
+interface:
+  display_name: "Divide a Region"
+  short_description:
+    "Divide a Region into child regions, and redistribute associated data"
+  default_prompt:
+    "Use $divide-region on this region to introduce more precise geographical data."

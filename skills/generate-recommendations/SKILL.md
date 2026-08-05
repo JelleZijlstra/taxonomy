@@ -61,6 +61,26 @@ entry point.
    python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --review-manual
    ```
 
+   To make an explicit decision on every row, use the interactive review mode:
+
+   ```bash
+   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --review-each
+   ```
+
+   It visits rows in manifest order. `yes` queues the row for application, `no` skips
+   it, and `edit` opens the affected existing object and skips the automated row. Direct
+   editing is unavailable for `create_object` rows. After the final choice, the selected
+   rows are rebuilt and validated together before any automated write; this preserves
+   object-reference dependencies and accounts for changes made in editors.
+
+   Operation flags may be combined. Static `--review` and `--review-manual` output runs
+   first, followed by requested virtual lint and `--dry-run`, then `--apply` or
+   `--review-each`, and finally `--edit-manual`. For example,
+   `--review-manual --review-each --edit-manual` prints the complete unresolved notes,
+   reviews every row interactively, applies the accepted subset, and then opens all
+   manual-review objects. Only `--apply` and `--review-each` are incompatible because
+   they respectively mean applying every row and selecting individual rows.
+
    To work through unresolved rows interactively after validating the complete manifest,
    print each full manual-review note and open its database object editor:
 
@@ -214,3 +234,12 @@ safer; generic actions are not a reason to discard those guardrails.
   label.
 - Make the complete file validate before any write and keep all actions idempotent.
 - Run focused tests, Ruff, formatting, and mypy before handoff.
+
+## Standard of work
+
+When asked to generate recommendations for a category of issues, do not stop halfway,
+but review all issues in the category and attempt to generate recommendations. You have
+the option to leave some issues for manual review, but use this option sparingly. If
+there is a large number of issues for which you'd like to ask for manual review,
+consider if there is any general policy that could resolve many of the issues, and ask
+the user for a decision on that policy.

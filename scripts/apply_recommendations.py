@@ -7,9 +7,14 @@ for a database-independent summary, ``--review-manual`` for the complete text of
 manual-review rows and actionable rows carrying ``review_note``, and ``--edit-manual``
 to open every manual-review object in the database editor after printing its complete
 note. Combine ``--apply --edit-manual`` to apply actionable rows first and then work
-through the unresolved objects interactively. Add ``--virtual-lint`` to construct the
-final proposed model states in memory and run advisory lint before the dry run or
-apply step.
+through the unresolved objects interactively. Use ``--review-each`` to review every
+row in file order and choose yes (queue it for application), no (skip it), or edit
+(open its affected database object and skip the automated recommendation). Add
+``--virtual-lint`` to construct the final proposed model states in memory and run
+advisory lint before the dry run or apply step. Flags compose: static review views run
+first, followed by requested lint and dry-run output, application or per-row review,
+and finally manual editing. The only incompatible pair is ``--apply`` with
+``--review-each``, because one applies every row while the other selects a subset.
 """
 
 import argparse
@@ -18,7 +23,7 @@ from collections.abc import Callable
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from clirm import readonly
 
@@ -57,12 +62,45 @@ class ManualReviewObject:
     family: str
 
 
+Recommendation = (
+    generic_recommendations.Recommendation
+    | location_recommendations.Recommendation
+    | type_recommendations.Recommendation
+)
+RecommendationPlans = tuple[
+    generic_recommendations.RecommendationPlan,
+    location_recommendations.RecommendationPlan,
+    type_recommendations.RecommendationPlan,
+]
+
+
+@dataclass(frozen=True, slots=True)
+class IndividualReviewItem:
+    line_number: int
+    recommendation: Recommendation
+    family: Literal["generic", "location", "type_locality"]
+    edit_object: Any | None
+
+
 def _validate_location_rows(
     rows: list[location_recommendations.Recommendation],
 ) -> None:
-    mutated_ids: set[int] = set()
+    mutations: dict[int, str] = {}
     merge_target_ids: set[int] = set()
     for row in rows:
+        if row.action == location_recommendations.PROMOTE_LOCATION_ALIAS_NAME:
+            assert row.source is not None
+            assert row.target is not None
+            for spec in (row.source, row.target):
+                location_id = spec.location_id
+                if location_id in mutations or location_id in merge_target_ids:
+                    raise RecommendationError(
+                        f"line {row.line_number}: Location {location_id} is mutated by "
+                        "more than one recommendation"
+                    )
+            mutations[row.source.location_id] = row.action
+            mutations[row.target.location_id] = row.action
+            continue
         mutated_spec = (
             row.location
             if row.action
@@ -74,16 +112,23 @@ def _validate_location_rows(
         )
         assert mutated_spec is not None
         location_id = mutated_spec.location_id
-        if location_id in mutated_ids or location_id in merge_target_ids:
+        if location_id in mutations or (
+            location_id in merge_target_ids
+            and row.action != location_recommendations.RENAME_LOCATION
+        ):
             raise RecommendationError(
                 f"line {row.line_number}: Location {location_id} is mutated by more "
                 "than one recommendation"
             )
-        mutated_ids.add(location_id)
+        mutations[location_id] = row.action
         if row.action == location_recommendations.MERGE_LOCATION:
             assert row.target is not None
             target_id = row.target.location_id
-            if target_id in mutated_ids:
+            target_mutation = mutations.get(target_id)
+            if (
+                target_mutation is not None
+                and target_mutation != location_recommendations.RENAME_LOCATION
+            ):
                 raise RecommendationError(
                     f"line {row.line_number}: merge target Location {target_id} is "
                     "mutated by another recommendation"
@@ -317,6 +362,219 @@ def _edit_manual_review_objects(items: tuple[ManualReviewObject, ...]) -> None:
         item.object.edit()
 
 
+def _all_recommendation_rows(
+    recommendations: Recommendations,
+) -> tuple[tuple[Literal["generic", "location", "type_locality"], Recommendation], ...]:
+    rows: list[
+        tuple[Literal["generic", "location", "type_locality"], Recommendation]
+    ] = [
+        *(("generic", row) for row in recommendations.generic_rows),
+        *(("location", row) for row in recommendations.location_rows),
+        *(("type_locality", row) for row in recommendations.type_locality_rows),
+    ]
+    return tuple(sorted(rows, key=lambda item: item[1].line_number))
+
+
+def _location_edit_object(action: location_recommendations.PlannedAction) -> Any:
+    if isinstance(
+        action,
+        (location_recommendations.PlannedRename, location_recommendations.PlannedEdit),
+    ):
+        return action.location
+    if isinstance(action, location_recommendations.PlannedMerge):
+        return action.source
+    # The canonical target remains valid and receives the promoted name.
+    return action.target
+
+
+def _resolve_individual_review_items(
+    recommendations: Recommendations,
+    plans: RecommendationPlans,
+    *,
+    get_name: Callable[[int], Any] = _get_name_for_manual_review,
+    label_name: Callable[[Any], str] = _name_label,
+) -> tuple[IndividualReviewItem, ...]:
+    """Resolve every possible editor target before opening the first editor."""
+    generic_plan, location_plan, _ = plans
+    generic_objects = {
+        action.recommendation.line_number: action.object
+        for action in generic_plan.actions
+        if action.recommendation.object.object_id is not None
+    }
+    location_objects = {
+        action.recommendation.line_number: _location_edit_object(action)
+        for action in location_plan.actions
+    }
+    type_objects: dict[int, Any] = {}
+    errors: list[str] = []
+    for type_row in recommendations.type_locality_rows:
+        try:
+            name = get_name(type_row.name_id)
+            actual_name = label_name(name)
+            if actual_name != type_row.name:
+                raise RecommendationError(
+                    f"Name {type_row.name_id} changed from {type_row.name!r} "
+                    f"to {actual_name!r}"
+                )
+            type_objects[type_row.line_number] = name
+        except RecommendationError as exc:
+            errors.append(f"line {type_row.line_number}: {exc}")
+    if errors:
+        raise RecommendationError(
+            "refusing to start individual review because editor-target validation "
+            "failed:\n- " + "\n- ".join(errors)
+        )
+
+    items: list[IndividualReviewItem] = []
+    for family, row in _all_recommendation_rows(recommendations):
+        if family == "generic":
+            edit_object = generic_objects.get(row.line_number)
+        elif family == "location":
+            edit_object = location_objects[row.line_number]
+        else:
+            edit_object = type_objects[row.line_number]
+        if edit_object is not None and not callable(getattr(edit_object, "edit", None)):
+            edit_object = None
+        items.append(IndividualReviewItem(row.line_number, row, family, edit_object))
+    return tuple(items)
+
+
+def _print_individual_recommendation(
+    item: IndividualReviewItem, *, index: int, total: int
+) -> None:
+    getinput.print_header(
+        f"Recommendation {index}/{total} (manifest line {item.line_number})"
+    )
+    row = item.recommendation
+    if item.family == "generic":
+        assert isinstance(row, generic_recommendations.Recommendation)
+        generic_recommendations.print_review_table((row,))
+    elif item.family == "location":
+        assert isinstance(row, location_recommendations.Recommendation)
+        location_recommendations.print_review_table((row,))
+    else:
+        assert isinstance(row, type_recommendations.Recommendation)
+        type_recommendations.print_review_table((row,))
+
+    print()
+    print(getinput.blue("Evidence"))
+    if not row.evidence:
+        print("(none)")
+    if isinstance(row, type_recommendations.Recommendation):
+        for evidence_index, type_evidence in enumerate(row.evidence, start=1):
+            source = f"A{type_evidence.source_id} {type_evidence.source_name}"
+            print(f"{evidence_index}. {getinput.italicize(source)}")
+            print(type_evidence.text)
+    elif isinstance(row, location_recommendations.Recommendation):
+        for evidence_index, location_evidence in enumerate(row.evidence, start=1):
+            print(f"{evidence_index}. {getinput.italicize(location_evidence.kind)}")
+            print(location_evidence.text)
+    else:
+        for evidence_index, generic_evidence in enumerate(row.evidence, start=1):
+            print(f"{evidence_index}. {getinput.italicize(generic_evidence.kind)}")
+            print(generic_evidence.text)
+    tag_comment = getattr(row, "tag_comment", None)
+    if tag_comment is not None:
+        print()
+        print(getinput.blue("Tag comment"))
+        print(tag_comment)
+    review_note = getattr(row, "review_note", None)
+    if review_note is not None:
+        print()
+        print(getinput.yellow("Review note"))
+        print(review_note)
+    print()
+    print(getinput.yellow("Reason"))
+    print(row.reason)
+    if item.edit_object is None:
+        print()
+        print("Direct editing is not available for this recommendation.")
+
+
+def _prompt_individual_review_choice(*, can_edit: bool) -> Literal["yes", "no", "edit"]:
+    choices: dict[str, Literal["yes", "no", "edit"]] = {
+        "y": "yes",
+        "yes": "yes",
+        "n": "no",
+        "no": "no",
+    }
+    prompt = "Apply? [y]es / [n]o"
+    if can_edit:
+        choices.update({"e": "edit", "edit": "edit"})
+        prompt += " / [e]dit"
+    result = getinput.get_line(
+        prompt + "> ",
+        validate=lambda value: value.lower() in choices,
+        allow_none=False,
+        default="n",
+        history_key=("apply_recommendations", "review_each", can_edit),
+    )
+    assert result is not None
+    return choices[result.lower()]
+
+
+def review_recommendations_individually(
+    items: tuple[IndividualReviewItem, ...],
+    *,
+    choose: Callable[..., Literal["yes", "no", "edit"]] = (
+        _prompt_individual_review_choice
+    ),
+) -> set[int] | None:
+    """Collect apply choices, opening editors immediately when requested."""
+    selected_lines: set[int] = set()
+    print(
+        "Reviewing recommendations in file order. Yes queues a recommendation for "
+        "application; no skips it; edit opens the affected object and skips the "
+        "automated recommendation. Queued rows are revalidated and applied together "
+        "after the final choice."
+    )
+    for index, item in enumerate(items, start=1):
+        print()
+        _print_individual_recommendation(item, index=index, total=len(items))
+        print()
+        try:
+            choice = choose(can_edit=item.edit_object is not None)
+        except getinput.StopException:
+            print()
+            print(
+                getinput.yellow(
+                    "Individual review aborted. Queued recommendations were not "
+                    "applied; edits already completed in an object editor are not "
+                    "rolled back."
+                )
+            )
+            return None
+        if choice == "yes":
+            selected_lines.add(item.line_number)
+        elif choice == "edit":
+            assert item.edit_object is not None
+            print(getinput.green(f"Opening editor for {item.edit_object}..."))
+            item.edit_object.edit()
+    return selected_lines
+
+
+def _filter_recommendations(
+    recommendations: Recommendations, selected_lines: set[int]
+) -> Recommendations:
+    return Recommendations(
+        tuple(
+            row
+            for row in recommendations.generic_rows
+            if row.line_number in selected_lines
+        ),
+        tuple(
+            row
+            for row in recommendations.location_rows
+            if row.line_number in selected_lines
+        ),
+        tuple(
+            row
+            for row in recommendations.type_locality_rows
+            if row.line_number in selected_lines
+        ),
+    )
+
+
 def _confidence_text(confidence: str) -> str:
     color = {
         "high": getinput.green,
@@ -376,13 +634,7 @@ def _print_type_locality_manual_review_for_edit(
     print(row.reason)
 
 
-def build_plans(
-    recommendations: Recommendations,
-) -> tuple[
-    generic_recommendations.RecommendationPlan,
-    location_recommendations.RecommendationPlan,
-    type_recommendations.RecommendationPlan,
-]:
+def build_plans(recommendations: Recommendations) -> RecommendationPlans:
     # Validate every family before any executor is allowed to write.
     try:
         generic_plan = generic_recommendations.build_plan(recommendations.generic_rows)
@@ -415,11 +667,7 @@ def build_generic_manual_review_plan(
 
 
 def build_virtual_proposals(
-    plans: tuple[
-        generic_recommendations.RecommendationPlan,
-        location_recommendations.RecommendationPlan,
-        type_recommendations.RecommendationPlan,
-    ],
+    plans: RecommendationPlans,
 ) -> tuple[virtual_proposals.ProposedModel, ...]:
     """Build the final in-memory state represented by all actionable plans."""
     generic_plan, location_plan, type_plan = plans
@@ -431,26 +679,12 @@ def build_virtual_proposals(
     return builder.build()
 
 
-def run_virtual_lint(
-    plans: tuple[
-        generic_recommendations.RecommendationPlan,
-        location_recommendations.RecommendationPlan,
-        type_recommendations.RecommendationPlan,
-    ],
-) -> None:
+def run_virtual_lint(plans: RecommendationPlans) -> None:
     proposals = build_virtual_proposals(plans)
     virtual_proposals.print_lint_results(virtual_proposals.lint_proposals(proposals))
 
 
-def execute_plans(
-    plans: tuple[
-        generic_recommendations.RecommendationPlan,
-        location_recommendations.RecommendationPlan,
-        type_recommendations.RecommendationPlan,
-    ],
-    *,
-    apply: bool,
-) -> None:
+def execute_plans(plans: RecommendationPlans, *, apply: bool) -> None:
     generic_plan, location_plan, type_plan = plans
     if type_plan.action_counts:
         print("TYPE-LOCALITY PLAN")
@@ -469,28 +703,54 @@ def execute_plans(
 
 def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     manual_items: tuple[ManualReviewObject, ...] | None = None
-    plans: (
-        tuple[
-            generic_recommendations.RecommendationPlan,
-            location_recommendations.RecommendationPlan,
-            type_recommendations.RecommendationPlan,
-        ]
-        | None
-    ) = None
+    individual_items: tuple[IndividualReviewItem, ...] | None = None
+    plans: RecommendationPlans | None = None
+    printed_output = False
+
+    def begin_output() -> None:
+        nonlocal printed_output
+        if printed_output:
+            print()
+        printed_output = True
+
     try:
         recommendations = read_recommendations(args.recommendations)
-        if args.review:
-            actions = set(args.review_action) if args.review_action else None
-            print_review(recommendations, actions=actions)
-            return
-        if args.review_manual:
-            print_manual_reviews(recommendations)
-            return
-        if args.edit_manual and not args.apply:
+    except RecommendationError as exc:
+        parser.error(str(exc))
+
+    if args.review:
+        begin_output()
+        actions = set(args.review_action) if args.review_action else None
+        print_review(recommendations, actions=actions)
+    if args.review_manual:
+        begin_output()
+        print_manual_reviews(recommendations)
+
+    run_dry_run = args.dry_run or not any(
+        (
+            args.review,
+            args.review_manual,
+            args.apply,
+            args.review_each,
+            args.edit_manual,
+        )
+    )
+    needs_complete_plan = bool(
+        run_dry_run or args.apply or args.review_each or args.virtual_lint
+    )
+    if not needs_complete_plan and not args.edit_manual:
+        return
+
+    try:
+        if needs_complete_plan:
+            plans = build_plans(recommendations)
+        else:
+            assert args.edit_manual
             try:
                 plans = build_plans(recommendations)
                 generic_plan = plans[0]
             except RecommendationError as exc:
+                begin_output()
                 print(
                     getinput.yellow(
                         "Warning: the complete manifest no longer matches the "
@@ -502,49 +762,84 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                 print(exc)
                 print()
                 generic_plan = build_generic_manual_review_plan(recommendations)
-            manual_items = _resolve_manual_review_objects(
-                recommendations, generic_plan, allow_name_label_changes=plans is None
-            )
-        else:
-            plans = build_plans(recommendations)
-        if args.edit_manual and args.apply:
-            # Resolve every editor target before --apply is allowed to write. This
-            # avoids discovering a stale later manual-review row after a partial run.
+
+        if args.review_each:
             assert plans is not None
-            manual_items = _resolve_manual_review_objects(recommendations, plans[0])
+            individual_items = _resolve_individual_review_items(recommendations, plans)
+        if args.edit_manual:
+            # Resolve every editor target before any automatic operation can write.
+            # This avoids discovering a stale later manual-review row after a partial
+            # run. Edit-only mode retains its tolerant stale-manifest behavior.
+            if plans is None:
+                manual_items = _resolve_manual_review_objects(
+                    recommendations, generic_plan, allow_name_label_changes=True
+                )
+            else:
+                manual_items = _resolve_manual_review_objects(recommendations, plans[0])
     except RecommendationError as exc:
         parser.error(str(exc))
-    if args.virtual_lint:
-        if plans is None:
-            parser.error("--virtual-lint requires a complete actionable plan")
+
+    if args.virtual_lint and (not args.review_each or run_dry_run):
+        assert plans is not None
+        begin_output()
         run_virtual_lint(plans)
-        print()
+
+    if run_dry_run:
+        assert plans is not None
+        begin_output()
+        execute_plans(plans, apply=False)
+
     if args.apply:
         assert plans is not None
+        begin_output()
         execute_plans(plans, apply=True)
-        if manual_items is not None:
-            print()
-            _edit_manual_review_objects(manual_items)
-    elif manual_items is not None:
+
+    if individual_items is not None:
+        begin_output()
+        selected_lines = review_recommendations_individually(individual_items)
+        if selected_lines is None:
+            return
+        selected = _filter_recommendations(recommendations, selected_lines)
+        if selected.count == 0:
+            begin_output()
+            print("No recommendations selected; no automated changes made.")
+        else:
+            try:
+                # An editor may have changed database state, and omitted
+                # create_object rows may invalidate selected ref-dependent rows.
+                # Rebuild the selected plan as a single unit before any write.
+                selected_plans = build_plans(selected)
+            except RecommendationError as exc:
+                parser.error(
+                    "selected recommendations failed final database validation; no "
+                    f"automated changes were made: {exc}"
+                )
+            if args.virtual_lint:
+                begin_output()
+                run_virtual_lint(selected_plans)
+            begin_output()
+            execute_plans(selected_plans, apply=True)
+
+    if manual_items is not None:
+        begin_output()
         _edit_manual_review_objects(manual_items)
-    else:
-        assert plans is not None
-        execute_plans(plans, apply=False)
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("recommendations", type=Path)
-    mode = parser.add_mutually_exclusive_group()
-    mode.add_argument(
+    parser.add_argument(
         "--dry-run",
         action="store_true",
-        help="validate current database state and print the plan (default)",
+        help=(
+            "validate current database state and print the complete plan; may be "
+            "combined with later write or edit operations"
+        ),
     )
     parser.add_argument(
         "--apply", action="store_true", help="write all validated recommendations"
     )
-    mode.add_argument(
+    parser.add_argument(
         "--review",
         action="store_true",
         help="print compact tables without consulting the database",
@@ -559,13 +854,23 @@ def main() -> None:
         ),
         help="with --review, include only this action (repeatable)",
     )
-    mode.add_argument(
+    parser.add_argument(
         "--review-manual",
         action="store_true",
         help=(
             "print manual_review actions and actionable rows carrying review_note, "
             "including complete notes, reasons, and evidence, without consulting "
             "the database"
+        ),
+    )
+    parser.add_argument(
+        "--review-each",
+        action="store_true",
+        help=(
+            "validate the complete manifest, then review each row in file order "
+            "with yes (apply after all choices), no (skip), or edit (open the "
+            "affected object and skip); accepted rows are revalidated together "
+            "before writing"
         ),
     )
     parser.add_argument(
@@ -589,16 +894,16 @@ def main() -> None:
     args = parser.parse_args()
     if args.review_action and not args.review:
         parser.error("--review-action requires --review")
-    if args.virtual_lint and (args.review or args.review_manual):
-        parser.error("--virtual-lint requires database-backed plan validation")
-    if (args.apply or args.edit_manual) and (
-        args.dry_run or args.review or args.review_manual
-    ):
+    if args.review_each and args.apply:
         parser.error(
-            "--apply and --edit-manual may be combined with each other, but not with "
-            "--dry-run, --review, or --review-manual"
+            "--review-each selects individual rows, so it cannot be combined with "
+            "--apply, which applies every row"
         )
-    context = nullcontext() if args.apply or args.edit_manual else readonly()
+    context = (
+        nullcontext()
+        if args.apply or args.edit_manual or args.review_each
+        else readonly()
+    )
     with context:
         _run(args, parser)
 

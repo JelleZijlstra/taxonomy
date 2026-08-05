@@ -1,4 +1,5 @@
 import json
+import sqlite3
 from collections import Counter
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -44,9 +45,13 @@ class FakeLocation:
     age_detail: str | None = None
     tags: tuple[object, ...] = ()
     merge_calls: list[int] = field(default_factory=list)
+    empty: bool = True
 
     def is_invalid(self) -> bool:
         return self.deleted is not LocationStatus.valid
+
+    def is_empty(self) -> bool:
+        return self.empty
 
     def merge(self, other: recommendations.LocationLike) -> None:
         self.merge_calls.append(other.id)
@@ -97,6 +102,18 @@ def merge_row() -> dict[str, object]:
         "evidence": [{"kind": "source", "text": "The source uses both spellings."}],
         "source": location_spec(2, "Example-Cave"),
         "target": location_spec(3, "Example Cave"),
+    }
+
+
+def alias_promotion_row() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "action": "promote_location_alias_name",
+        "confidence": "high",
+        "reason": "Use the modern alias as the canonical name.",
+        "evidence": [{"kind": "gazetteer", "text": "The modern name is preferred."}],
+        "source": location_spec(2, "Modern name"),
+        "target": location_spec(3, "Historical name"),
     }
 
 
@@ -155,6 +172,19 @@ def test_read_edit_recommendation(tmp_path: Path) -> None:
     )
 
 
+def test_read_alias_promotion_recommendation(tmp_path: Path) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    write_rows(path, [alias_promotion_row()])
+
+    rows = recommendations.read_recommendations(path)
+
+    assert rows[0].action == recommendations.PROMOTE_LOCATION_ALIAS_NAME
+    assert rows[0].source is not None
+    assert rows[0].source.location_name == "Modern name"
+    assert rows[0].target is not None
+    assert rows[0].target.location_name == "Historical name"
+
+
 def test_reads_location_review_note(tmp_path: Path) -> None:
     path = tmp_path / "recommendations.jsonl"
     row = edit_row()
@@ -190,6 +220,38 @@ def test_allows_multiple_merges_into_same_target(tmp_path: Path) -> None:
 
     assert len(rows) == 2
     assert rows[0].target == rows[1].target
+
+
+@pytest.mark.parametrize("rename_first", [False, True])
+def test_allows_rename_of_merge_target(tmp_path: Path, *, rename_first: bool) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    target_rename = rename_row()
+    target_rename["location"] = location_spec(3, "Example Cave")
+    target_rename["new_name"] = "Example Cavern"
+    rows = (
+        [target_rename, merge_row()] if rename_first else [merge_row(), target_rename]
+    )
+    write_rows(path, rows)
+
+    parsed = recommendations.read_recommendations(path)
+
+    assert {row.action for row in parsed} == {
+        recommendations.RENAME_LOCATION,
+        recommendations.MERGE_LOCATION,
+    }
+
+
+def test_rejects_edit_of_merge_target(tmp_path: Path) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    target_edit = edit_row()
+    target_edit["location"] = location_spec(3, "Example Cave")
+    write_rows(path, [merge_row(), target_edit])
+
+    with pytest.raises(
+        recommendations.RecommendationError,
+        match="mutated by more than one recommendation",
+    ):
+        recommendations.read_recommendations(path)
 
 
 def test_build_plan_rejects_stale_name() -> None:
@@ -456,6 +518,175 @@ def test_apply_is_idempotent(capsys: pytest.CaptureFixture[str]) -> None:
     assert source.deleted is LocationStatus.alias
     assert source.parent is target
     assert source.merge_calls == [3]
+
+    second_plan = recommendations.build_plan(
+        rows, get_location=locations.__getitem__, find_location_by_name=find_by_name
+    )
+    assert all(action.already_applied for action in second_plan.actions)
+    recommendations.execute_plan(second_plan, apply=False, clear_caches=lambda: None)
+    assert capsys.readouterr().out.count("SKIP_ALREADY_APPLIED") == 2
+
+
+def test_applied_merge_accepts_metadata_copied_to_target() -> None:
+    row = recommendations.parse_recommendation(merge_row(), 1)
+    source = FakeLocation(2, "Example-Cave", latitude="1°N", longitude="2°E")
+    target = FakeLocation(3, "Example Cave")
+    locations = {2: as_location(source), 3: as_location(target)}
+
+    first_plan = recommendations.build_plan(
+        [row], get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+    recommendations.execute_plan(first_plan, apply=True, clear_caches=lambda: None)
+    target.latitude = source.latitude
+    target.longitude = source.longitude
+
+    resumed_plan = recommendations.build_plan(
+        [row], get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+
+    assert resumed_plan.actions[0].already_applied
+
+
+def test_promote_alias_name_is_idempotent(capsys: pytest.CaptureFixture[str]) -> None:
+    row = recommendations.parse_recommendation(alias_promotion_row(), 1)
+    target = FakeLocation(3, "Historical name")
+    source = FakeLocation(2, "Modern name", deleted=LocationStatus.alias, parent=target)
+    locations = {2: as_location(source), 3: as_location(target)}
+
+    plan = recommendations.build_plan(
+        [row], get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+    recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
+
+    assert target.name == "Modern name"
+    assert source.name == "Historical name"
+    assert source.deleted is LocationStatus.alias
+    assert source.parent is target
+
+    second_plan = recommendations.build_plan(
+        [row], get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+    assert second_plan.actions[0].already_applied
+    recommendations.execute_plan(second_plan, apply=False, clear_caches=lambda: None)
+    assert "SKIP_ALREADY_APPLIED action=promote_location_alias_name" in (
+        capsys.readouterr().out
+    )
+
+
+def test_swap_unique_location_names_handles_unique_constraint() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE location (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)"
+    )
+    connection.executemany(
+        "INSERT INTO location (id, name) VALUES (?, ?)",
+        [(2, "Modern name"), (3, "Historical name")],
+    )
+
+    recommendations._swap_unique_location_names(
+        connection,
+        source_id=2,
+        source_name="Modern name",
+        target_id=3,
+        target_name="Historical name",
+    )
+
+    assert connection.execute(
+        "SELECT id, name FROM location ORDER BY id"
+    ).fetchall() == [(2, "Historical name"), (3, "Modern name")]
+
+
+def test_swap_unique_location_names_rolls_back_incomplete_swap() -> None:
+    connection = sqlite3.connect(":memory:")
+    connection.execute(
+        "CREATE TABLE location (id INTEGER PRIMARY KEY, name TEXT NOT NULL UNIQUE)"
+    )
+    connection.execute(
+        "INSERT INTO location (id, name) VALUES (?, ?)", (3, "Historical name")
+    )
+    connection.commit()
+
+    with pytest.raises(recommendations.RecommendationError, match="Location 2"):
+        recommendations._swap_unique_location_names(
+            connection,
+            source_id=2,
+            source_name="Modern name",
+            target_id=3,
+            target_name="Historical name",
+        )
+
+    assert connection.execute(
+        "SELECT id, name FROM location ORDER BY id"
+    ).fetchall() == [(3, "Historical name")]
+
+
+def test_merge_can_change_target_region(monkeypatch: pytest.MonkeyPatch) -> None:
+    old_region = FakeNamed(10, "Broad Region")
+    new_region = FakeNamed(11, "Precise Region")
+    data = merge_row()
+    source_spec = cast(dict[str, object], data["source"])
+    source_spec["region_id"] = new_region.id
+    source_spec["region_name"] = new_region.name
+    target_spec = cast(dict[str, object], data["target"])
+    target_spec["region_id"] = old_region.id
+    target_spec["region_name"] = old_region.name
+    data["target_changes"] = [
+        {"field": "region", "old_value": old_region.id, "new_value": new_region.id}
+    ]
+    row = recommendations.parse_recommendation(data, 1)
+    source = FakeLocation(2, "Example-Cave", region=new_region)
+    target = FakeLocation(3, "Example Cave", region=old_region)
+    locations = {2: as_location(source), 3: as_location(target)}
+    monkeypatch.setattr(
+        recommendations,
+        "_resolve_new_field_value",
+        lambda field, value: new_region if field == "region" else value,
+    )
+
+    plan = recommendations.build_plan(
+        [row], get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+    recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
+
+    assert target.region is new_region
+    assert source.parent is target
+    assert source.merge_calls == [target.id]
+
+    second_plan = recommendations.build_plan(
+        [row], get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+    assert second_plan.actions[0].already_applied
+
+
+def test_apply_rename_of_merge_target_is_ordered_and_idempotent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target_rename = rename_row()
+    target_rename["location"] = location_spec(3, "Example Cave")
+    target_rename["new_name"] = "Example Cavern"
+    rows = [
+        recommendations.parse_recommendation(merge_row(), 1),
+        recommendations.parse_recommendation(target_rename, 2),
+    ]
+    source = FakeLocation(2, "Example-Cave")
+    target = FakeLocation(3, "Example Cave")
+    locations = {2: as_location(source), 3: as_location(target)}
+
+    def find_by_name(name: str) -> recommendations.LocationLike | None:
+        return next((item for item in locations.values() if item.name == name), None)
+
+    plan = recommendations.build_plan(
+        rows, get_location=locations.__getitem__, find_location_by_name=find_by_name
+    )
+
+    assert [type(action) for action in plan.actions] == [
+        recommendations.PlannedRename,
+        recommendations.PlannedMerge,
+    ]
+    recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
+    assert target.name == "Example Cavern"
+    assert source.deleted is LocationStatus.alias
+    assert source.parent is target
 
     second_plan = recommendations.build_plan(
         rows, get_location=locations.__getitem__, find_location_by_name=find_by_name

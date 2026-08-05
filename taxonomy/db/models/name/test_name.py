@@ -21,6 +21,16 @@ def _get_expected(value: str) -> str:
     return f"- _{value.replace('_', ' ')}_:"
 
 
+def test_add_type_tag_sorts_tags() -> None:
+    existing = TypeTag.TextualOriginalRank("species")
+    name = SimpleNamespace(type_tags=(existing,))
+    tag = TypeTag.ImpreciseLocality(comment="Only the country is known.")
+
+    Name.add_type_tag(name, tag)  # type: ignore[arg-type]
+
+    assert name.type_tags == tuple(sorted((existing, tag)))
+
+
 EXCLUDED = {
     # NameTag
     "MappedClassificationEntry",
