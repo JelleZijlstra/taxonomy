@@ -324,8 +324,7 @@ Code (for example, "names whose gender is explicitly specified as masculine").
 - _verbatim type_: Textual description of the type. Should be replaced by data in a
   column with a more specific format (e.g., type or type_specimen).
 - _type locality_: Reference to the locality object that encompasses the type locality
-  of the name. This tends to be a specific fossil site for fossils and a larger
-  political region for extant names.
+  of the name. See the [type locality](/docs/type-locality) documentation.
 - _type specimen_: The type specimen of the name. Normally, this should be in the form
   of a standard specimen reference, e.g. "AMNH 108371". Otherwise, it should be whatever
   information is known that will unambiguously indicate the specimen involved. See below
