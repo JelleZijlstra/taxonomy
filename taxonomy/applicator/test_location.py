@@ -241,17 +241,20 @@ def test_allows_rename_of_merge_target(tmp_path: Path, *, rename_first: bool) ->
     }
 
 
-def test_rejects_edit_of_merge_target(tmp_path: Path) -> None:
+@pytest.mark.parametrize("edit_first", [False, True])
+def test_allows_edit_of_merge_target(tmp_path: Path, *, edit_first: bool) -> None:
     path = tmp_path / "recommendations.jsonl"
     target_edit = edit_row()
     target_edit["location"] = location_spec(3, "Example Cave")
-    write_rows(path, [merge_row(), target_edit])
+    rows = [target_edit, merge_row()] if edit_first else [merge_row(), target_edit]
+    write_rows(path, rows)
 
-    with pytest.raises(
-        recommendations.RecommendationError,
-        match="mutated by more than one recommendation",
-    ):
-        recommendations.read_recommendations(path)
+    parsed = recommendations.read_recommendations(path)
+
+    assert {row.action for row in parsed} == {
+        recommendations.EDIT_LOCATION,
+        recommendations.MERGE_LOCATION,
+    }
 
 
 def test_build_plan_rejects_stale_name() -> None:
@@ -658,6 +661,43 @@ def test_merge_can_change_target_region(monkeypatch: pytest.MonkeyPatch) -> None
     assert second_plan.actions[0].already_applied
 
 
+def test_separate_target_region_edit_composes_with_merge(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    old_region = FakeNamed(10, "Example Region")
+    new_region = FakeNamed(11, "Precise Region")
+    target_edit = edit_row()
+    target_edit["location"] = location_spec(3, "Example Cave")
+    target_edit["changes"] = [
+        {"field": "region", "old_value": old_region.id, "new_value": new_region.id}
+    ]
+    target_edit["add_tags"] = []
+    rows = [
+        recommendations.parse_recommendation(target_edit, 1),
+        recommendations.parse_recommendation(merge_row(), 2),
+    ]
+    source = FakeLocation(2, "Example-Cave", region=old_region)
+    target = FakeLocation(3, "Example Cave", region=old_region)
+    locations = {2: as_location(source), 3: as_location(target)}
+    monkeypatch.setattr(
+        recommendations,
+        "_resolve_new_field_value",
+        lambda field, value: new_region if field == "region" else value,
+    )
+
+    plan = recommendations.build_plan(
+        rows, get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+
+    assert [type(action) for action in plan.actions] == [
+        recommendations.PlannedEdit,
+        recommendations.PlannedMerge,
+    ]
+    recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
+    assert target.region is new_region
+    assert source.parent is target
+
+
 def test_apply_rename_of_merge_target_is_ordered_and_idempotent(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -690,6 +730,46 @@ def test_apply_rename_of_merge_target_is_ordered_and_idempotent(
 
     second_plan = recommendations.build_plan(
         rows, get_location=locations.__getitem__, find_location_by_name=find_by_name
+    )
+    assert all(action.already_applied for action in second_plan.actions)
+    recommendations.execute_plan(second_plan, apply=False, clear_caches=lambda: None)
+    assert capsys.readouterr().out.count("SKIP_ALREADY_APPLIED") == 2
+
+
+def test_apply_edit_of_merge_target_is_ordered_and_idempotent(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    target_edit = edit_row()
+    target_edit["location"] = location_spec(3, "Example Cave")
+    target_edit["changes"] = [
+        {"field": "latitude", "old_value": None, "new_value": "1°N-2°N"},
+        {"field": "longitude", "old_value": None, "new_value": "3°E-4°E"},
+    ]
+    target_edit["add_tags"] = [LocationTag.General.serialize()]
+    rows = [
+        recommendations.parse_recommendation(merge_row(), 1),
+        recommendations.parse_recommendation(target_edit, 2),
+    ]
+    source = FakeLocation(2, "Example-Cave")
+    target = FakeLocation(3, "Example Cave")
+    locations = {2: as_location(source), 3: as_location(target)}
+
+    plan = recommendations.build_plan(
+        rows, get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+
+    assert [type(action) for action in plan.actions] == [
+        recommendations.PlannedEdit,
+        recommendations.PlannedMerge,
+    ]
+    recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
+    assert (target.latitude, target.longitude) == ("1°N-2°N", "3°E-4°E")
+    assert target.tags == (LocationTag.General,)
+    assert source.deleted is LocationStatus.alias
+    assert source.parent is target
+
+    second_plan = recommendations.build_plan(
+        rows, get_location=locations.__getitem__, find_location_by_name=lambda _: None
     )
     assert all(action.already_applied for action in second_plan.actions)
     recommendations.execute_plan(second_plan, apply=False, clear_caches=lambda: None)
@@ -811,3 +891,66 @@ def test_virtual_merge_proposal_combines_models_without_database_backrefs() -> N
     assert proposed_target.location_detail == "Source evidence."
     assert source.deleted is LocationStatus.valid
     assert target.latitude is None
+
+
+def test_virtual_target_edit_and_merge_share_one_final_proposal() -> None:
+    region = Region.virtual(name="Example Region", kind=RegionKind.country, tags=())
+    source = Location.virtual(
+        name="Example-Cave",
+        region=region,
+        location_detail="Source evidence.",
+        age_detail="",
+        tags=(),
+        deleted=LocationStatus.valid,
+    )
+    target = Location.virtual(
+        name="Example Cave",
+        region=region,
+        location_detail="",
+        age_detail="",
+        tags=(),
+        deleted=LocationStatus.valid,
+    )
+    target_edit = edit_row()
+    target_edit["location"] = location_spec(3, "Example Cave")
+    target_edit["changes"] = [
+        {"field": "latitude", "old_value": None, "new_value": "1°N-2°N"},
+        {"field": "longitude", "old_value": None, "new_value": "3°E-4°E"},
+    ]
+    target_edit["add_tags"] = [LocationTag.General.serialize()]
+    edit_recommendation = recommendations.parse_recommendation(target_edit, 1)
+    merge_recommendation = recommendations.parse_recommendation(merge_row(), 2)
+    plan = recommendations.RecommendationPlan(
+        (
+            recommendations.PlannedEdit(
+                edit_recommendation,
+                cast(recommendations.LocationLike, target),
+                already_applied=False,
+            ),
+            recommendations.PlannedMerge(
+                merge_recommendation,
+                cast(recommendations.LocationLike, source),
+                cast(recommendations.LocationLike, target),
+                already_applied=False,
+            ),
+        ),
+        Counter({recommendations.EDIT_LOCATION: 1, recommendations.MERGE_LOCATION: 1}),
+    )
+    builder = ProposalBuilder()
+
+    recommendations.add_virtual_models(plan, builder)
+
+    proposals = builder.build()
+    assert len(proposals) == 2
+    proposed_target = proposals[0].model
+    proposed_source = proposals[1].model
+    assert isinstance(proposed_target, Location)
+    assert isinstance(proposed_source, Location)
+    assert (proposed_target.latitude, proposed_target.longitude) == (
+        "1°N-2°N",
+        "3°E-4°E",
+    )
+    assert proposed_target.tags == (LocationTag.General,)
+    assert proposed_target.location_detail == "Source evidence."
+    assert proposed_source.deleted is LocationStatus.alias
+    assert proposed_source.parent is proposed_target

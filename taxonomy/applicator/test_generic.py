@@ -212,6 +212,19 @@ def test_review_renders_adt_constructor_instead_of_numeric_tag(
     assert f"tags: [{tag._tag}," not in output
 
 
+def test_review_renders_argumentless_adt_tag_name(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    data = _common(recommendations.ADD_TAG, "tags")
+    data["tag"] = LocationTag.General.serialize()
+    row = recommendations.parse_recommendation(data, 1)
+
+    recommendations.print_review_table([row])
+
+    output = capsys.readouterr().out
+    assert "tags: General" in output
+
+
 def test_review_renders_enum_names_in_adt_tags(
     capsys: pytest.CaptureFixture[str],
 ) -> None:

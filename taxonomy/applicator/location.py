@@ -596,7 +596,8 @@ def read_recommendations(path: Path) -> list[Recommendation]:
             assert mutated_spec is not None
             location_id = mutated_spec.location_id
             if location_id in mutations or (
-                location_id in merge_target_ids and row.action != RENAME_LOCATION
+                location_id in merge_target_ids
+                and row.action not in {RENAME_LOCATION, EDIT_LOCATION}
             ):
                 raise RecommendationError(
                     f"line {line_number}: Location {location_id} is "
@@ -606,7 +607,10 @@ def read_recommendations(path: Path) -> list[Recommendation]:
             if row.action == MERGE_LOCATION:
                 assert row.target is not None
                 target_mutation = mutations.get(row.target.location_id)
-                if target_mutation is not None and target_mutation != RENAME_LOCATION:
+                if target_mutation is not None and target_mutation not in {
+                    RENAME_LOCATION,
+                    EDIT_LOCATION,
+                }:
                     raise RecommendationError(
                         f"line {line_number}: merge target Location "
                         f"{row.target.location_id} is mutated by another recommendation"
@@ -885,6 +889,47 @@ def _validate_and_order_name_changes(
     ]
 
 
+def _order_merge_target_mutations(actions: list[PlannedAction]) -> list[PlannedAction]:
+    """Place a target's independent edit or rename before its dependent merges."""
+    target_mutations = {
+        action.location.id: action
+        for action in actions
+        if isinstance(action, (PlannedRename, PlannedEdit))
+    }
+    emitted: set[int] = set()
+    ordered: list[PlannedAction] = []
+
+    def emit(action: PlannedAction) -> None:
+        key = id(action)
+        if key in emitted:
+            return
+        emitted.add(key)
+        ordered.append(action)
+
+    for action in actions:
+        if isinstance(action, PlannedMerge):
+            target_mutation = target_mutations.get(action.target.id)
+            if target_mutation is not None:
+                emit(target_mutation)
+        emit(action)
+    return ordered
+
+
+def _temporal_contexts_match_after_changes(
+    source: LocationLike, target: LocationLike, changes: dict[str, str | int | None]
+) -> bool:
+    def compatible(source_id: int | None, target_id: int | None) -> bool:
+        return source_id is None or target_id is None or source_id == target_id
+
+    return all(
+        compatible(
+            cast(int | None, _current_field_value(source, field)),
+            cast(int | None, changes.get(field, _current_field_value(target, field))),
+        )
+        for field in ("min_period", "max_period", "stratigraphic_unit")
+    )
+
+
 def build_plan(
     recommendations: Iterable[Recommendation],
     *,
@@ -894,13 +939,17 @@ def build_plan(
     ),
 ) -> RecommendationPlan:
     recommendations = tuple(recommendations)
-    planned_names = {
-        row.location.location_id: row.new_name
-        for row in recommendations
-        if row.action == RENAME_LOCATION
-        and row.location is not None
-        and row.new_name is not None
-    }
+    planned_target_changes: dict[int, dict[str, str | int | None]] = {}
+    for row in recommendations:
+        if row.action == RENAME_LOCATION:
+            assert row.location is not None
+            assert row.new_name is not None
+            planned_target_changes[row.location.location_id] = {"name": row.new_name}
+        elif row.action == EDIT_LOCATION:
+            assert row.location is not None
+            planned_target_changes[row.location.location_id] = {
+                change.field: change.new_value for change in row.changes
+            }
     actions: list[
         PlannedRename | PlannedMerge | PlannedEdit | PlannedAliasPromotion
     ] = []
@@ -1031,7 +1080,17 @@ def build_plan(
                 and source.parent is not None
                 and source.parent.id == target.id
             )
+            separate_target_changes = planned_target_changes.get(target.id, {})
+            overlapping_target_fields = separate_target_changes.keys() & {
+                change.field for change in row.changes
+            }
+            if overlapping_target_fields:
+                raise RecommendationError(
+                    "merge and separate target mutation both change fields "
+                    f"{sorted(overlapping_target_fields)!r} on Location {target.id}"
+                )
             changed_target_fields = {change.field for change in row.changes}
+            changed_target_fields.update(separate_target_changes)
             if source_already_merged:
                 # A successful merge may have filled these target fields from the
                 # source. They can therefore differ from the pre-merge snapshot on
@@ -1045,7 +1104,9 @@ def build_plan(
                         "longitude",
                     }
                 )
-            planned_target_name = planned_names.get(target.id)
+            planned_target_name = separate_target_changes.get("name")
+            if planned_target_name is not None:
+                assert isinstance(planned_target_name, str)
             if planned_target_name is not None:
                 changed_target_fields.add("name")
             _validate_edit_snapshot(row.target, target, changed_target_fields)
@@ -1093,22 +1154,21 @@ def build_plan(
                         f"source Location {source.id} name changed from "
                         f"{row.source.location_name!r} to {source.name!r}"
                     )
-                target_region_id = next(
-                    (
-                        change.new_value
-                        for change in row.changes
-                        if change.field == "region"
-                    ),
-                    target.region.id,
-                )
-                if source.region.id != target_region_id:
+                final_target_changes = {
+                    **separate_target_changes,
+                    **{change.field: change.new_value for change in row.changes},
+                }
+                target_region_id = final_target_changes.get("region", target.region.id)
+                if source.region.id not in {target.region.id, target_region_id}:
                     raise RecommendationError(
                         f"Locations {source.id} and {target.id} do not have the "
-                        "same Region after target changes"
+                        "same Region before or after target changes"
                     )
                 if (
                     not row.allow_temporal_context_conflicts
-                    and not _temporal_contexts_match(source, target)
+                    and not _temporal_contexts_match_after_changes(
+                        source, target, final_target_changes
+                    )
                 ):
                     raise RecommendationError(
                         f"Locations {source.id} and {target.id} no longer have "
@@ -1119,6 +1179,7 @@ def build_plan(
             errors.append(f"line {row.line_number}: {exc}")
     if not errors:
         try:
+            actions = _order_merge_target_mutations(actions)
             actions = _validate_and_order_name_changes(actions, find_location_by_name)
         except RecommendationError as exc:
             errors.append(str(exc))

@@ -7,7 +7,7 @@ The public review, validation, and application CLI lives in
 import json
 import textwrap
 from collections import Counter
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
@@ -731,8 +731,10 @@ def _make_location_tag(spec: LocationTagSpec) -> LocationTag:
     return cast(LocationTag, LocationTag.Unplaced(comment=spec.comment))
 
 
-def _validate_target_location(target: Target, location: LocationLike) -> None:
-    if location.name != target.location_name:
+def _validate_target_location(
+    target: Target, location: LocationLike, *, allowed_names: Collection[str] = ()
+) -> None:
+    if location.name != target.location_name and location.name not in allowed_names:
         raise RecommendationError(
             f"Location {location.id} name changed from {target.location_name!r} "
             f"to {location.name!r}"
@@ -800,6 +802,7 @@ def build_plan(
     get_stratigraphic_unit: Callable[[int], NamedLike] = _get_stratigraphic_unit,
     find_location: Callable[[str], LocationLike | None] = _find_location,
     label_name: Callable[[NameLike], str] | None = None,
+    allowed_target_names: Mapping[int, Collection[str]] = {},
 ) -> RecommendationPlan:
     rows = list(recommendations)
     action_counts = Counter(row.action for row in rows)
@@ -923,7 +926,11 @@ def build_plan(
             if row.action == MOVE_EXISTING_LOCATION:
                 assert row.target.location_id is not None
                 target_location = get_location(row.target.location_id)
-                _validate_target_location(row.target, target_location)
+                _validate_target_location(
+                    row.target,
+                    target_location,
+                    allowed_names=allowed_target_names.get(target_location.id, ()),
+                )
                 add_location_tags(
                     target_location,
                     row.target.location_tags,
@@ -1263,7 +1270,7 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             location_detail="None",
             age_detail="None",
             deleted=LocationStatus.valid,
-            tags=tags,
+            tags=tuple(sorted(set(tags))),
         )
         new_locations[target.location_name] = new_location
 

@@ -286,6 +286,26 @@ def test_dry_run_adds_tag_and_moves_without_mutating(
     assert "No database changes made" in output
 
 
+def test_move_accepts_separately_planned_target_name() -> None:
+    row = recommendations.parse_recommendation(
+        _row(action=recommendations.MOVE_EXISTING_LOCATION, target=_existing_target()),
+        1,
+    )
+    africa = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    western = FakeLocation(3684, "West Africa", FakeRegion(795, "Western Africa"))
+    name = FakeName(1, "Name 1", western)
+
+    plan = recommendations.build_plan(
+        [row],
+        get_name=lambda _: name,
+        get_location={1176: africa, 3684: western}.__getitem__,
+        label_name=lambda item: item.label,  # type: ignore[attr-defined]
+        allowed_target_names={3684: {"West Africa"}},
+    )
+
+    assert plan.updates[0].already_applied
+
+
 def test_apply_adds_tag_and_moves(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

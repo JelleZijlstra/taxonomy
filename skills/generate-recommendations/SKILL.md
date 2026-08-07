@@ -178,6 +178,11 @@ object with different data is a validation error rather than an implicit reuse.
 - `merge_location`: merge a source Location into a target and reconcile compatible data;
   use `allow_temporal_context_conflicts` only after reviewing the conflict.
 
+When a merge target also needs fields or tags changed, emit a separate `edit_location`
+mutation for the target. The applicator validates the complete manifest and orders that
+independent target edit before every dependent merge, so both mutations remain
+separately guarded and idempotent.
+
 Use the snapshot shape emitted by existing Location generators: Location and Region IDs
 and names, minimum and maximum Period IDs and names, and stratigraphic-unit ID and name.
 An `edit_location` row uses `changes` entries with `field`, `old_value`, and

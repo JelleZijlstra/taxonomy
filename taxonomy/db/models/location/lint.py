@@ -1480,6 +1480,14 @@ def _coordinate_collision_key(
 ) -> tuple[float, float, float, float] | None:
     if (
         not is_recent_location(location)
+        # An Unplaced Location's range is a reviewed uncertainty envelope, not
+        # an assertion that the named locality has the envelope's geometry. It
+        # may therefore deliberately reuse the extent of a containing island,
+        # mountain range, or expedition corridor.
+        or any(
+            isinstance(tag, LocationTag.Unplaced)
+            for tag in getattr(location, "tags", ()) or ()
+        )
         or location.latitude is None
         or location.longitude is None
     ):

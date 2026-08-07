@@ -114,7 +114,11 @@ def _validate_location_rows(
         location_id = mutated_spec.location_id
         if location_id in mutations or (
             location_id in merge_target_ids
-            and row.action != location_recommendations.RENAME_LOCATION
+            and row.action
+            not in {
+                location_recommendations.RENAME_LOCATION,
+                location_recommendations.EDIT_LOCATION,
+            }
         ):
             raise RecommendationError(
                 f"line {row.line_number}: Location {location_id} is mutated by more "
@@ -125,10 +129,10 @@ def _validate_location_rows(
             assert row.target is not None
             target_id = row.target.location_id
             target_mutation = mutations.get(target_id)
-            if (
-                target_mutation is not None
-                and target_mutation != location_recommendations.RENAME_LOCATION
-            ):
+            if target_mutation is not None and target_mutation not in {
+                location_recommendations.RENAME_LOCATION,
+                location_recommendations.EDIT_LOCATION,
+            }:
                 raise RecommendationError(
                     f"line {row.line_number}: merge target Location {target_id} is "
                     "mutated by another recommendation"
@@ -641,7 +645,26 @@ def build_plans(recommendations: Recommendations) -> RecommendationPlans:
         location_plan = location_recommendations.build_plan(
             recommendations.location_rows
         )
-        type_plan = type_recommendations.build_plan(recommendations.type_locality_rows)
+        allowed_target_names: dict[int, set[str]] = {}
+        for row in recommendations.location_rows:
+            if row.location is None:
+                continue
+            final_names = allowed_target_names.setdefault(
+                row.location.location_id, set()
+            )
+            if row.action == location_recommendations.RENAME_LOCATION:
+                assert row.new_name is not None
+                final_names.add(row.new_name)
+            elif row.action == location_recommendations.EDIT_LOCATION:
+                final_names.update(
+                    change.new_value
+                    for change in row.changes
+                    if change.field == "name" and isinstance(change.new_value, str)
+                )
+        type_plan = type_recommendations.build_plan(
+            recommendations.type_locality_rows,
+            allowed_target_names=allowed_target_names,
+        )
     except (
         generic_recommendations.RecommendationError,
         location_recommendations.RecommendationError,

@@ -150,6 +150,102 @@ def test_dispatcher_allows_rename_of_location_merge_target() -> None:
     apply_recommendations._validate_location_rows([merge, target_rename])
 
 
+def test_dispatcher_allows_edit_of_location_merge_target() -> None:
+    target_edit = location_recommendations.parse_recommendation(
+        {
+            "schema_version": 1,
+            "action": "edit_location",
+            "confidence": "high",
+            "reason": "Add reviewed coordinate bounds.",
+            "evidence": [{"kind": "source", "text": "Mapped extent."}],
+            "location": {
+                "location_id": 3,
+                "location_name": "Example Cave",
+                "region_id": 10,
+                "region_name": "Example Region",
+                "min_period_id": None,
+                "min_period_name": None,
+                "max_period_id": None,
+                "max_period_name": None,
+                "stratigraphic_unit_id": None,
+                "stratigraphic_unit_name": None,
+            },
+            "changes": [
+                {"field": "latitude", "old_value": None, "new_value": "1°N-2°N"}
+            ],
+        },
+        1,
+    )
+    merge = location_recommendations.parse_recommendation(
+        {
+            "schema_version": 1,
+            "action": "merge_location",
+            "confidence": "high",
+            "reason": "Merge the duplicate.",
+            "evidence": [{"kind": "source", "text": "Same place."}],
+            "source": {
+                "location_id": 2,
+                "location_name": "Example-Cave",
+                "region_id": 10,
+                "region_name": "Example Region",
+                "min_period_id": None,
+                "min_period_name": None,
+                "max_period_id": None,
+                "max_period_name": None,
+                "stratigraphic_unit_id": None,
+                "stratigraphic_unit_name": None,
+            },
+            "target": {
+                "location_id": 3,
+                "location_name": "Example Cave",
+                "region_id": 10,
+                "region_name": "Example Region",
+                "min_period_id": None,
+                "min_period_name": None,
+                "max_period_id": None,
+                "max_period_name": None,
+                "stratigraphic_unit_id": None,
+                "stratigraphic_unit_name": None,
+            },
+        },
+        2,
+    )
+
+    apply_recommendations._validate_location_rows([merge, target_edit])
+
+
+def test_build_plans_passes_separately_planned_target_name(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    row_data = _location_row()
+    row_data["changes"] = [
+        {"field": "name", "old_value": "Example", "new_value": "Modern Example"}
+    ]
+    location_row = location_recommendations.parse_recommendation(row_data, 1)
+    expected_plans = (object(), object(), object())
+
+    monkeypatch.setattr(
+        generic_recommendations, "build_plan", lambda rows: expected_plans[0]
+    )
+    monkeypatch.setattr(
+        location_recommendations, "build_plan", lambda rows: expected_plans[1]
+    )
+
+    def build_type_plan(
+        rows: object, *, allowed_target_names: dict[int, set[str]]
+    ) -> object:
+        assert allowed_target_names == {1: {"Modern Example"}}
+        return expected_plans[2]
+
+    monkeypatch.setattr(type_recommendations, "build_plan", build_type_plan)
+
+    plans = apply_recommendations.build_plans(
+        apply_recommendations.Recommendations((), (location_row,), ())
+    )
+
+    assert plans == expected_plans
+
+
 def test_rejects_unknown_action(tmp_path: Path) -> None:
     path = tmp_path / "recommendations.jsonl"
     _write(path, [{"schema_version": 1, "action": "unknown"}])

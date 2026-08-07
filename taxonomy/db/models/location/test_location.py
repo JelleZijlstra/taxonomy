@@ -1116,6 +1116,40 @@ def test_coordinate_collision_map_normalizes_equivalent_coordinates() -> None:
     assert mapping == {10: (decimal, degrees_minutes), 20: (decimal, degrees_minutes)}
 
 
+def test_coordinate_collision_map_ignores_unplaced_uncertainty_extent() -> None:
+    recent = SimpleNamespace(name="Recent")
+    region = SimpleNamespace(id=1, name="Buru")
+
+    def make_location(
+        location_id: int, name: str, tags: tuple[object, ...]
+    ) -> Location:
+        return cast(
+            Location,
+            SimpleNamespace(
+                id=location_id,
+                name=name,
+                latitude="3.8617578°S-3.056363°S",
+                longitude="125.9953536°E-127.2688383°E",
+                region=region,
+                min_period=recent,
+                max_period=recent,
+                tags=tags,
+            ),
+        )
+
+    containing_island = make_location(10, "Buru", (LocationTag.General,))
+    unresolved_site = make_location(
+        20, "En-Biloro", (LocationTag.Unplaced(comment="Known only to be on Buru"),)
+    )
+
+    assert (
+        location_lint._build_coordinate_collision_map(
+            [containing_island, unresolved_site]
+        )
+        == {}
+    )
+
+
 def test_coordinate_collision_reports_different_regions(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

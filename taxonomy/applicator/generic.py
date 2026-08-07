@@ -393,7 +393,7 @@ def _format_serialized_adt(adt_type: type[adt.ADT], data: Any) -> str:
     if member is None:
         return repr(data)
     if not member._has_args:
-        return member.__name__
+        return member.__name__ if isinstance(member, type) else type(member).__name__
     arguments = [
         f"{name}={_format_serialized_adt_argument(argument_type, value)}"
         for (name, argument_type), value in zip(
