@@ -344,3 +344,6 @@ class Region(BaseModel):
 class RegionTag(adt.ADT):
     # The Region's children cover only part of its geographic extent.
     IncompletelyDivided(tag=1)  # type: ignore[name-defined]
+    # Names with a general type locality in this Region or one of its descendants
+    # should be migrated to a more precise Location where possible.
+    MustHavePreciseTypeLocality(tag=2)  # type: ignore[name-defined]

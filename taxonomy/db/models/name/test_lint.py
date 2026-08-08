@@ -21,6 +21,7 @@ from taxonomy.db.models.location import Location
 from .lint import (
     check_collector_lifespan,
     check_coordinates,
+    check_general_type_locality,
     check_location_detail_coordinates,
     check_location_detail_plss,
     check_type_locality_age,
@@ -564,6 +565,69 @@ def test_name_fossil_taxon_allows_pre_pleistocene_type_locality() -> None:
     name = _name_with_age(AgeClass.fossil, _location_with_age("Pliocene", 2_590_000))
 
     assert list(check_type_locality_age(name, LintConfig())) == []
+
+
+def _name_with_general_type_locality(
+    *,
+    location_name: str = "Example Region",
+    region_tagged: bool = False,
+    parent_tagged: bool = False,
+    imprecise: bool = False,
+) -> Name:
+    parent = SimpleNamespace(name="Parent Region", has_tag=lambda tag: parent_tagged)
+    region = SimpleNamespace(
+        name="Example Region",
+        has_tag=lambda tag: region_tagged,
+        all_parents=lambda: iter((parent,)),
+    )
+    return cast(
+        Name,
+        SimpleNamespace(
+            type_locality=SimpleNamespace(name=location_name, region=region),
+            has_type_tag=lambda tag: imprecise,
+        ),
+    )
+
+
+def test_general_type_locality_lint_reports_tagged_region() -> None:
+    name = _name_with_general_type_locality(region_tagged=True)
+
+    assert list(check_general_type_locality.linter(name, LintConfig())) == [
+        (
+            "type locality 'Example Region' matches its Region name, and Region "
+            "'Example Region' is tagged MustHavePreciseTypeLocality; use a more "
+            "precise Location or add the ImpreciseLocality tag"
+        )
+    ]
+
+
+def test_general_type_locality_lint_inherits_tag_from_parent() -> None:
+    name = _name_with_general_type_locality(parent_tagged=True)
+
+    messages = list(check_general_type_locality.linter(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert "Region 'Parent Region' is tagged MustHavePreciseTypeLocality" in messages[0]
+
+
+def test_general_type_locality_lint_allows_more_precise_location() -> None:
+    name = _name_with_general_type_locality(
+        location_name="Precise site", region_tagged=True
+    )
+
+    assert list(check_general_type_locality.linter(name, LintConfig())) == []
+
+
+def test_general_type_locality_lint_requires_region_tag() -> None:
+    name = _name_with_general_type_locality()
+
+    assert list(check_general_type_locality.linter(name, LintConfig())) == []
+
+
+def test_general_type_locality_lint_allows_imprecise_locality_tag() -> None:
+    name = _name_with_general_type_locality(region_tagged=True, imprecise=True)
+
+    assert list(check_general_type_locality.linter(name, LintConfig())) == []
 
 
 def _tagged_name(tags: tuple[object, ...]) -> Name:

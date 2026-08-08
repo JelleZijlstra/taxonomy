@@ -7511,6 +7511,30 @@ def check_unique_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield message
 
 
+@LINT.add("general_type_locality")
+def check_general_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    location = nam.type_locality
+    if location is None or location.name != location.region.name:
+        return
+    if nam.has_type_tag(TypeTag.ImpreciseLocality):
+        return
+    tagged_region = next(
+        (
+            region
+            for region in (location.region, *location.region.all_parents())
+            if region.has_tag(models.RegionTag.MustHavePreciseTypeLocality)
+        ),
+        None,
+    )
+    if tagged_region is None:
+        return
+    yield (
+        f"type locality {location.name!r} matches its Region name, and Region "
+        f"{tagged_region.name!r} is tagged MustHavePreciseTypeLocality; use a more "
+        "precise Location or add the ImpreciseLocality tag"
+    )
+
+
 @LINT.add("type_locality_validity")
 def check_type_locality_validity(nam: Name, cfg: LintConfig) -> Iterable[str]:
     tags = list(nam.get_tags(nam.type_tags, TypeTag.TypeLocalityValidity))

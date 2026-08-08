@@ -23,3 +23,8 @@ the parent must be _General_ (spanning multiple children) or _Unplaced_ (its chi
 Region is unknown). A Region whose children cover only part of it instead has the
 `IncompletelyDivided` Region tag; specific Locations may remain directly assigned to the
 uncovered part of such a Region.
+
+The `MustHavePreciseTypeLocality` Region tag marks a Region as a migration scope in
+which Names should not use a same-name, Region-wide Location as their type locality.
+This requirement is inherited by child Regions. Names whose locality evidence cannot
+support a more precise placement may be exempted with `TypeTag.ImpreciseLocality`.

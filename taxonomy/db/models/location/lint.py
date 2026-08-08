@@ -466,7 +466,7 @@ _DIRECTIONAL_COORDINATE_LIKE = re.compile(
 _EDITORIAL_LOCATION_EQUIVALENCE = re.compile(
     r"\[(?P<bracketed>[^\[\]]+)\](?![\[(])|\(\s*=\s*(?P<parenthetical>[^()]+?)\s*\)"
 )
-_ALWAYS_ALLOWED_DISAMBIGUATORS = {"island", "region", "historical region"}
+_ALWAYS_ALLOWED_DISAMBIGUATORS = {"island", "region", "historical region", "city"}
 
 
 @dataclass(frozen=True, slots=True)

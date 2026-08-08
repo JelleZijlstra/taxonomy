@@ -47,6 +47,12 @@ def test_display_type_localities_is_adt_callback() -> None:
 
 
 def test_region_has_tag() -> None:
-    region = cast(Region, SimpleNamespace(tags=(RegionTag.IncompletelyDivided,)))
+    region = cast(
+        Region,
+        SimpleNamespace(
+            tags=(RegionTag.IncompletelyDivided, RegionTag.MustHavePreciseTypeLocality)
+        ),
+    )
 
     assert Region.has_tag(region, RegionTag.IncompletelyDivided)
+    assert Region.has_tag(region, RegionTag.MustHavePreciseTypeLocality)
