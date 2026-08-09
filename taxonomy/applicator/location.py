@@ -127,6 +127,8 @@ class FieldChange:
     field: str
     old_value: str | int | None
     new_value: str | int | None
+    old_label: str | None = None
+    new_label: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -385,6 +387,35 @@ def _parse_field_value(
     return cast(str | int | None, value)
 
 
+def _parse_change_value(
+    value: Any, field: str, line_number: int, *, label: str
+) -> tuple[str | int | None, str | None]:
+    """Parse a change value, retaining an optional related-object label."""
+    if field not in RELATED_FIELDS or not isinstance(value, dict):
+        return _parse_field_value(value, field, line_number, label=label), None
+
+    model_cls = RELATED_FIELDS[field]
+    model_name = value.get("model")
+    if model_name != model_cls.__name__:
+        raise RecommendationError(
+            f"line {line_number}: {label} for related field {field!r} must refer "
+            f"to model {model_cls.__name__!r}, not {model_name!r}"
+        )
+    object_id = value.get("id")
+    if not isinstance(object_id, int) or isinstance(object_id, bool):
+        raise RecommendationError(
+            f"line {line_number}: {label} for related field {field!r} must contain "
+            "an integer id"
+        )
+    object_label = value.get("label")
+    if not isinstance(object_label, str) or not object_label:
+        raise RecommendationError(
+            f"line {line_number}: {label} for related field {field!r} must contain "
+            "a nonempty label"
+        )
+    return object_id, object_label
+
+
 def _parse_changes(data: Any, line_number: int) -> tuple[FieldChange, ...]:
     if not isinstance(data, list):
         raise RecommendationError(f"line {line_number}: changes must be a list")
@@ -411,17 +442,17 @@ def _parse_changes(data: Any, line_number: int) -> tuple[FieldChange, ...]:
                 f"line {line_number}: change for {field!r} requires old_value and "
                 "new_value"
             )
-        old_value = _parse_field_value(
+        old_value, old_label = _parse_change_value(
             item["old_value"], field, line_number, label="old_value"
         )
-        new_value = _parse_field_value(
+        new_value, new_label = _parse_change_value(
             item["new_value"], field, line_number, label="new_value"
         )
         if old_value == new_value:
             raise RecommendationError(
                 f"line {line_number}: change for {field!r} has identical values"
             )
-        output.append(FieldChange(field, old_value, new_value))
+        output.append(FieldChange(field, old_value, new_value, old_label, new_label))
     return tuple(output)
 
 
@@ -562,6 +593,7 @@ def parse_recommendation(data: Any, line_number: int) -> Recommendation:
 def read_recommendations(path: Path) -> list[Recommendation]:
     output: list[Recommendation] = []
     mutations: dict[int, str] = {}
+    merge_source_ids: set[int] = set()
     merge_target_ids: set[int] = set()
     with path.open() as file:
         for line_number, raw_line in enumerate(file, start=1):
@@ -595,17 +627,33 @@ def read_recommendations(path: Path) -> list[Recommendation]:
             )
             assert mutated_spec is not None
             location_id = mutated_spec.location_id
-            if location_id in mutations or (
-                location_id in merge_target_ids
-                and row.action not in {RENAME_LOCATION, EDIT_LOCATION}
+            existing_mutation = mutations.get(location_id)
+            composable_merge_source = (
+                row.action == MERGE_LOCATION and existing_mutation == EDIT_LOCATION
+            )
+            composable_source_edit = (
+                row.action == EDIT_LOCATION and location_id in merge_source_ids
+            )
+            if (
+                (
+                    existing_mutation is not None
+                    and not (composable_merge_source or composable_source_edit)
+                )
+                or (location_id in merge_source_ids and not composable_source_edit)
+                or (
+                    location_id in merge_target_ids
+                    and row.action not in {RENAME_LOCATION, EDIT_LOCATION}
+                )
             ):
                 raise RecommendationError(
                     f"line {line_number}: Location {location_id} is "
                     "mutated by more than one recommendation"
                 )
-            mutations[location_id] = row.action
+            if not composable_merge_source:
+                mutations[location_id] = row.action
             if row.action == MERGE_LOCATION:
                 assert row.target is not None
+                merge_source_ids.add(location_id)
                 target_mutation = mutations.get(row.target.location_id)
                 if target_mutation is not None and target_mutation not in {
                     RENAME_LOCATION,
@@ -779,17 +827,27 @@ def _validate_edit_snapshot(
                 )
 
 
-def _resolve_new_field_value(field: str, value: str | int | None) -> Any:
+def _resolve_new_field_value(
+    field: str, value: str | int | None, *, expected_label: str | None = None
+) -> Any:
     model_cls = RELATED_FIELDS.get(field)
     if model_cls is None or value is None:
         return value
     assert isinstance(value, int)
     try:
-        return model_cls.get(id=value)
+        obj = model_cls.get(id=value)
     except model_cls.DoesNotExist as exc:
         raise RecommendationError(
             f"new value for {field!r} refers to missing {model_cls.__name__} {value}"
         ) from exc
+    if expected_label is not None:
+        actual_label = str(getattr(obj, model_cls.label_field))
+        if actual_label != expected_label:
+            raise RecommendationError(
+                f"new value for {field!r} refers to {model_cls.__name__} {value}, "
+                f"whose label changed from {expected_label!r} to {actual_label!r}"
+            )
+    return obj
 
 
 def _planned_name(action: PlannedAction) -> str | None:
@@ -889,9 +947,9 @@ def _validate_and_order_name_changes(
     ]
 
 
-def _order_merge_target_mutations(actions: list[PlannedAction]) -> list[PlannedAction]:
-    """Place a target's independent edit or rename before its dependent merges."""
-    target_mutations = {
+def _order_merge_mutations(actions: list[PlannedAction]) -> list[PlannedAction]:
+    """Place independent source/target edits before their dependent merges."""
+    independent_mutations = {
         action.location.id: action
         for action in actions
         if isinstance(action, (PlannedRename, PlannedEdit))
@@ -908,7 +966,10 @@ def _order_merge_target_mutations(actions: list[PlannedAction]) -> list[PlannedA
 
     for action in actions:
         if isinstance(action, PlannedMerge):
-            target_mutation = target_mutations.get(action.target.id)
+            source_mutation = independent_mutations.get(action.source.id)
+            if source_mutation is not None:
+                emit(source_mutation)
+            target_mutation = independent_mutations.get(action.target.id)
             if target_mutation is not None:
                 emit(target_mutation)
         emit(action)
@@ -939,6 +1000,11 @@ def build_plan(
     ),
 ) -> RecommendationPlan:
     recommendations = tuple(recommendations)
+    merge_source_ids = {
+        row.source.location_id
+        for row in recommendations
+        if row.action == MERGE_LOCATION and row.source is not None
+    }
     planned_target_changes: dict[int, dict[str, str | int | None]] = {}
     for row in recommendations:
         if row.action == RENAME_LOCATION:
@@ -979,7 +1045,7 @@ def build_plan(
             if row.action == EDIT_LOCATION:
                 assert row.location is not None
                 location = get_location(row.location.location_id)
-                if location.is_invalid():
+                if location.is_invalid() and location.id not in merge_source_ids:
                     raise RecommendationError(
                         f"Location {location.id} is no longer valid"
                     )
@@ -987,6 +1053,12 @@ def build_plan(
                 _validate_edit_snapshot(row.location, location, changed_fields)
                 field_states: list[bool] = []
                 for change in row.changes:
+                    if change.new_label is not None:
+                        _resolve_new_field_value(
+                            change.field,
+                            change.new_value,
+                            expected_label=change.new_label,
+                        )
                     actual = _current_field_value(location, change.field)
                     if actual not in {change.old_value, change.new_value}:
                         raise RecommendationError(
@@ -1074,13 +1146,14 @@ def build_plan(
             assert row.target is not None
             source = get_location(row.source.location_id)
             target = get_location(row.target.location_id)
-            _validate_location_context(row.source, source)
             source_already_merged = (
                 source.deleted is LocationStatus.alias
                 and source.parent is not None
                 and source.parent.id == target.id
             )
             separate_target_changes = planned_target_changes.get(target.id, {})
+            separate_source_changes = planned_target_changes.get(source.id, {})
+            _validate_edit_snapshot(row.source, source, set(separate_source_changes))
             overlapping_target_fields = separate_target_changes.keys() & {
                 change.field for change in row.changes
             }
@@ -1127,6 +1200,10 @@ def build_plan(
                 )
             target_field_states: list[bool] = []
             for change in row.changes:
+                if change.new_label is not None:
+                    _resolve_new_field_value(
+                        change.field, change.new_value, expected_label=change.new_label
+                    )
                 actual = _current_field_value(target, change.field)
                 if actual not in {change.old_value, change.new_value}:
                     raise RecommendationError(
@@ -1136,10 +1213,15 @@ def build_plan(
                 target_field_states.append(actual == change.new_value)
             already_applied = source_already_merged and all(target_field_states)
             if source_already_merged:
-                if source.name != row.source.location_name:
+                planned_source_name = separate_source_changes.get("name")
+                expected_source_names = {row.source.location_name}
+                if isinstance(planned_source_name, str):
+                    expected_source_names.add(planned_source_name)
+                if source.name not in expected_source_names:
+                    expected = " or ".join(repr(name) for name in expected_source_names)
                     raise RecommendationError(
                         f"alias Location {source.id} name changed from "
-                        f"{row.source.location_name!r} to {source.name!r}"
+                        f"{expected} to {source.name!r}"
                     )
             else:
                 if source.is_invalid():
@@ -1149,17 +1231,25 @@ def build_plan(
                     raise RecommendationError(
                         f"merge source Location {source.id} is invalid{redirect}"
                     )
-                if source.name != row.source.location_name:
+                planned_source_name = separate_source_changes.get("name")
+                expected_source_names = {row.source.location_name}
+                if isinstance(planned_source_name, str):
+                    expected_source_names.add(planned_source_name)
+                if source.name not in expected_source_names:
+                    expected = " or ".join(repr(name) for name in expected_source_names)
                     raise RecommendationError(
                         f"source Location {source.id} name changed from "
-                        f"{row.source.location_name!r} to {source.name!r}"
+                        f"{expected} to {source.name!r}"
                     )
                 final_target_changes = {
                     **separate_target_changes,
                     **{change.field: change.new_value for change in row.changes},
                 }
                 target_region_id = final_target_changes.get("region", target.region.id)
-                if source.region.id not in {target.region.id, target_region_id}:
+                source_region_id = separate_source_changes.get(
+                    "region", source.region.id
+                )
+                if source_region_id not in {target.region.id, target_region_id}:
                     raise RecommendationError(
                         f"Locations {source.id} and {target.id} do not have the "
                         "same Region before or after target changes"
@@ -1179,7 +1269,7 @@ def build_plan(
             errors.append(f"line {row.line_number}: {exc}")
     if not errors:
         try:
-            actions = _order_merge_target_mutations(actions)
+            actions = _order_merge_mutations(actions)
             actions = _validate_and_order_name_changes(actions, find_location_by_name)
         except RecommendationError as exc:
             errors.append(str(exc))
@@ -1245,6 +1335,16 @@ def _shorten(value: str, width: int) -> str:
     return textwrap.shorten(" ".join(value.split()), width=width, placeholder="…")
 
 
+def _format_field_change(change: FieldChange, *, target: bool = True) -> str:
+    value = change.new_value if target else change.old_value
+    label = change.new_label if target else change.old_label
+    if change.field in RELATED_FIELDS and value is not None and label is not None:
+        rendered_value = f"{label!r} (#{value})"
+    else:
+        rendered_value = repr(value)
+    return f"{change.field}={rendered_value}"
+
+
 def print_review_table(recommendations: Iterable[Recommendation]) -> None:
     print(f"{'ACTION':<18} {'CONF':<8} {'CURRENT':<52} TARGET")
     print("-" * 150)
@@ -1259,7 +1359,7 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
         elif row.action == EDIT_LOCATION:
             assert row.location is not None
             current = f"L{row.location.location_id} {row.location.location_name}"
-            parts = [f"{change.field}={change.new_value!r}" for change in row.changes]
+            parts = [_format_field_change(change) for change in row.changes]
             parts.extend(f"add {tag!r}" for tag in row.add_tags)
             parts.extend(f"remove {tag!r}" for tag in row.remove_tags)
             target = "; ".join(parts)
@@ -1278,8 +1378,7 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
             target = f"L{row.target.location_id} {row.target.location_name}"
             if row.changes:
                 target += "; " + "; ".join(
-                    f"target {change.field}={change.new_value!r}"
-                    for change in row.changes
+                    f"target {_format_field_change(change)}" for change in row.changes
                 )
         print(
             f"{row.action:<18} {row.confidence:<8} "
@@ -1333,7 +1432,9 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                 setattr(
                     proposal,
                     change.field,
-                    _resolve_new_field_value(change.field, change.new_value),
+                    _resolve_new_field_value(
+                        change.field, change.new_value, expected_label=change.new_label
+                    ),
                 )
             tags = tuple(proposal.tags or ())
             tags = tuple(tag for tag in tags if tag not in row.remove_tags)
@@ -1360,7 +1461,9 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                 setattr(
                     target,
                     change.field,
-                    _resolve_new_field_value(change.field, change.new_value),
+                    _resolve_new_field_value(
+                        change.field, change.new_value, expected_label=change.new_label
+                    ),
                 )
             # Merge only the two model states. Reassigning database backrefs belongs
             # exclusively to the real apply step.
@@ -1402,9 +1505,7 @@ def execute_plan(
             continue
 
         if isinstance(action, PlannedEdit):
-            changes = ", ".join(
-                f"{change.field}={change.new_value!r}" for change in row.changes
-            )
+            changes = ", ".join(_format_field_change(change) for change in row.changes)
             tag_changes = ", ".join(
                 [
                     *(f"add {tag!r}" for tag in row.add_tags),
@@ -1426,7 +1527,11 @@ def execute_plan(
                         setattr(
                             action.location,
                             change.field,
-                            _resolve_new_field_value(change.field, change.new_value),
+                            _resolve_new_field_value(
+                                change.field,
+                                change.new_value,
+                                expected_label=change.new_label,
+                            ),
                         )
                 tags = tuple(action.location.tags or ())
                 if row.remove_tags:
@@ -1460,9 +1565,7 @@ def execute_plan(
         if row.changes:
             print(
                 "  TARGET_CHANGES "
-                + ", ".join(
-                    f"{change.field}={change.new_value!r}" for change in row.changes
-                )
+                + ", ".join(_format_field_change(change) for change in row.changes)
             )
         metadata = _metadata_summary(action.source, action.target)
         if (
@@ -1489,7 +1592,11 @@ def execute_plan(
                     setattr(
                         action.target,
                         change.field,
-                        _resolve_new_field_value(change.field, change.new_value),
+                        _resolve_new_field_value(
+                            change.field,
+                            change.new_value,
+                            expected_label=change.new_label,
+                        ),
                     )
             source_already_merged = (
                 action.source.deleted is LocationStatus.alias

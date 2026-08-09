@@ -172,6 +172,39 @@ def test_read_edit_recommendation(tmp_path: Path) -> None:
     )
 
 
+def test_review_edit_formats_related_field_labels(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    row = edit_row()
+    row["changes"] = [
+        {
+            "field": "region",
+            "old_value": {"model": "Region", "id": 10, "label": "Example Region"},
+            "new_value": {"model": "Region", "id": 11, "label": "Readable Region"},
+        },
+        {
+            "field": "source",
+            "old_value": None,
+            "new_value": {"model": "Article", "id": 123, "label": "Readable source"},
+        },
+    ]
+    write_rows(path, [row])
+
+    parsed = recommendations.read_recommendations(path)
+    recommendations.print_review_table(parsed)
+
+    assert parsed[0].changes == (
+        recommendations.FieldChange(
+            "region", 10, 11, "Example Region", "Readable Region"
+        ),
+        recommendations.FieldChange("source", None, 123, None, "Readable source"),
+    )
+    output = capsys.readouterr().out
+    assert "region='Readable Region' (#11)" in output
+    assert "source='Readable source' (#123)" in output
+
+
 def test_read_alias_promotion_recommendation(tmp_path: Path) -> None:
     path = tmp_path / "recommendations.jsonl"
     write_rows(path, [alias_promotion_row()])
@@ -247,6 +280,22 @@ def test_allows_edit_of_merge_target(tmp_path: Path, *, edit_first: bool) -> Non
     target_edit = edit_row()
     target_edit["location"] = location_spec(3, "Example Cave")
     rows = [target_edit, merge_row()] if edit_first else [merge_row(), target_edit]
+    write_rows(path, rows)
+
+    parsed = recommendations.read_recommendations(path)
+
+    assert {row.action for row in parsed} == {
+        recommendations.EDIT_LOCATION,
+        recommendations.MERGE_LOCATION,
+    }
+
+
+@pytest.mark.parametrize("edit_first", [False, True])
+def test_allows_edit_of_merge_source(tmp_path: Path, *, edit_first: bool) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    source_edit = edit_row()
+    source_edit["location"] = location_spec(2, "Example-Cave")
+    rows = [source_edit, merge_row()] if edit_first else [merge_row(), source_edit]
     write_rows(path, rows)
 
     parsed = recommendations.read_recommendations(path)
@@ -643,7 +692,9 @@ def test_merge_can_change_target_region(monkeypatch: pytest.MonkeyPatch) -> None
     monkeypatch.setattr(
         recommendations,
         "_resolve_new_field_value",
-        lambda field, value: new_region if field == "region" else value,
+        lambda field, value, *, expected_label=None: (
+            new_region if field == "region" else value
+        ),
     )
 
     plan = recommendations.build_plan(
@@ -682,7 +733,9 @@ def test_separate_target_region_edit_composes_with_merge(
     monkeypatch.setattr(
         recommendations,
         "_resolve_new_field_value",
-        lambda field, value: new_region if field == "region" else value,
+        lambda field, value, *, expected_label=None: (
+            new_region if field == "region" else value
+        ),
     )
 
     plan = recommendations.build_plan(
@@ -765,6 +818,55 @@ def test_apply_edit_of_merge_target_is_ordered_and_idempotent(
     recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
     assert (target.latitude, target.longitude) == ("1°N-2°N", "3°E-4°E")
     assert target.tags == (LocationTag.General,)
+    assert source.deleted is LocationStatus.alias
+    assert source.parent is target
+
+    second_plan = recommendations.build_plan(
+        rows, get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+    assert all(action.already_applied for action in second_plan.actions)
+    recommendations.execute_plan(second_plan, apply=False, clear_caches=lambda: None)
+    assert capsys.readouterr().out.count("SKIP_ALREADY_APPLIED") == 2
+
+
+def test_apply_edit_of_merge_source_is_ordered_and_idempotent(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    old_region = FakeNamed(10, "Example Region")
+    new_region = FakeNamed(11, "New Region")
+    source_edit = edit_row()
+    source_edit["location"] = location_spec(2, "Example-Cave")
+    source_edit["changes"] = [{"field": "region", "old_value": 10, "new_value": 11}]
+    source_edit["add_tags"] = []
+    merge = merge_row()
+    assert isinstance(merge["target"], dict)
+    merge["target"]["region_id"] = 11
+    merge["target"]["region_name"] = "New Region"
+    rows = [
+        recommendations.parse_recommendation(merge, 1),
+        recommendations.parse_recommendation(source_edit, 2),
+    ]
+    source = FakeLocation(2, "Example-Cave", region=old_region)
+    target = FakeLocation(3, "Example Cave", region=new_region)
+    locations = {2: as_location(source), 3: as_location(target)}
+    monkeypatch.setattr(
+        recommendations,
+        "_resolve_new_field_value",
+        lambda field, value, *, expected_label=None: (
+            new_region if field == "region" else value
+        ),
+    )
+
+    plan = recommendations.build_plan(
+        rows, get_location=locations.__getitem__, find_location_by_name=lambda _: None
+    )
+
+    assert [type(action) for action in plan.actions] == [
+        recommendations.PlannedEdit,
+        recommendations.PlannedMerge,
+    ]
+    recommendations.execute_plan(plan, apply=True, clear_caches=lambda: None)
+    assert source.region is new_region
     assert source.deleted is LocationStatus.alias
     assert source.parent is target
 

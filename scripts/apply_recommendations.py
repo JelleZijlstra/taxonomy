@@ -86,6 +86,7 @@ def _validate_location_rows(
     rows: list[location_recommendations.Recommendation],
 ) -> None:
     mutations: dict[int, str] = {}
+    merge_source_ids: set[int] = set()
     merge_target_ids: set[int] = set()
     for row in rows:
         if row.action == location_recommendations.PROMOTE_LOCATION_ALIAS_NAME:
@@ -112,21 +113,39 @@ def _validate_location_rows(
         )
         assert mutated_spec is not None
         location_id = mutated_spec.location_id
-        if location_id in mutations or (
-            location_id in merge_target_ids
-            and row.action
-            not in {
-                location_recommendations.RENAME_LOCATION,
-                location_recommendations.EDIT_LOCATION,
-            }
+        existing_mutation = mutations.get(location_id)
+        composable_merge_source = (
+            row.action == location_recommendations.MERGE_LOCATION
+            and existing_mutation == location_recommendations.EDIT_LOCATION
+        )
+        composable_source_edit = (
+            row.action == location_recommendations.EDIT_LOCATION
+            and location_id in merge_source_ids
+        )
+        if (
+            (
+                existing_mutation is not None
+                and not (composable_merge_source or composable_source_edit)
+            )
+            or (location_id in merge_source_ids and not composable_source_edit)
+            or (
+                location_id in merge_target_ids
+                and row.action
+                not in {
+                    location_recommendations.RENAME_LOCATION,
+                    location_recommendations.EDIT_LOCATION,
+                }
+            )
         ):
             raise RecommendationError(
                 f"line {row.line_number}: Location {location_id} is mutated by more "
                 "than one recommendation"
             )
-        mutations[location_id] = row.action
+        if not composable_merge_source:
+            mutations[location_id] = row.action
         if row.action == location_recommendations.MERGE_LOCATION:
             assert row.target is not None
+            merge_source_ids.add(location_id)
             target_id = row.target.location_id
             target_mutation = mutations.get(target_id)
             if target_mutation is not None and target_mutation not in {
