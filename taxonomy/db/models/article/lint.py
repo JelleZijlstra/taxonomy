@@ -617,6 +617,10 @@ def text_contains_date(art: Article) -> bool:
 
 @LINT.add("add_internal_publication_date")
 def add_internal_publication_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+    # A newly proposed electronic Article still points at its future catalog path;
+    # the staged PDF is deliberately not installed during virtual lint.
+    if art.is_virtual and art.virtual_origin is None:
+        return
     if art.year is None or not has_unsupported_publication_date(art):
         return
     if text_contains_date(art):

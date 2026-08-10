@@ -10,6 +10,7 @@ import pytest
 
 from scripts import apply_recommendations
 from taxonomy import getinput
+from taxonomy.applicator import article as article_recommendations
 from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
@@ -68,6 +69,29 @@ def _generic_manual_row() -> dict[str, object]:
     }
 
 
+def _article_row() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "action": "create_article",
+        "confidence": "high",
+        "reason": "The PDF and DOI identify the work.",
+        "evidence": [
+            {"kind": "landing_page", "text": "https://doi.org/10.1234/example"}
+        ],
+        "article": {
+            "name": "Endodontidae.pdf",
+            "doi": "10.1234/example",
+            "citation_group": {"id": 12, "name": "Journal of Mollusks"},
+        },
+        "file": {
+            "source_path": "download.pdf",
+            "destination_folder": "Mollusca",
+            "sha256": "0" * 64,
+            "size": 123,
+        },
+    }
+
+
 def _write(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
@@ -86,6 +110,23 @@ def test_reads_mixed_recommendation_file(tmp_path: Path) -> None:
     assert isinstance(
         recommendations.type_locality_rows[0], type_recommendations.Recommendation
     )
+
+
+def test_article_static_review_does_not_plan_or_access_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_article_row()])
+
+    recommendations = apply_recommendations.read_recommendations(path)
+    apply_recommendations.print_review(recommendations)
+
+    assert isinstance(
+        recommendations.article_rows[0], article_recommendations.Recommendation
+    )
+    output = capsys.readouterr().out
+    assert "ARTICLE RECOMMENDATIONS" in output
+    assert "Endodontidae.pdf" in output
 
 
 def test_dispatcher_allows_rename_of_location_merge_target() -> None:
@@ -222,25 +263,29 @@ def test_build_plans_passes_separately_planned_target_name(
         {"field": "name", "old_value": "Example", "new_value": "Modern Example"}
     ]
     location_row = location_recommendations.parse_recommendation(row_data, 1)
-    expected_plans = (object(), object(), object())
+    expected_plans = (object(), object(), object(), object())
 
     monkeypatch.setattr(
-        generic_recommendations, "build_plan", lambda rows: expected_plans[0]
+        article_recommendations, "build_plan", lambda rows: expected_plans[0]
+    )
+
+    monkeypatch.setattr(
+        generic_recommendations, "build_plan", lambda rows: expected_plans[1]
     )
     monkeypatch.setattr(
-        location_recommendations, "build_plan", lambda rows: expected_plans[1]
+        location_recommendations, "build_plan", lambda rows: expected_plans[2]
     )
 
     def build_type_plan(
         rows: object, *, allowed_target_names: dict[int, set[str]]
     ) -> object:
         assert allowed_target_names == {1: {"Modern Example"}}
-        return expected_plans[2]
+        return expected_plans[3]
 
     monkeypatch.setattr(type_recommendations, "build_plan", build_type_plan)
 
     plans = apply_recommendations.build_plans(
-        apply_recommendations.Recommendations((), (location_row,), ())
+        apply_recommendations.Recommendations((), (), (location_row,), ())
     )
 
     assert plans == expected_plans
@@ -495,6 +540,7 @@ def test_individual_review_resolves_editors_in_file_order(tmp_path: Path) -> Non
     items = apply_recommendations._resolve_individual_review_items(
         recommendations,
         (
+            cast(article_recommendations.RecommendationPlan, object()),
             generic_plan,
             location_plan,
             cast(type_recommendations.RecommendationPlan, object()),
@@ -730,7 +776,7 @@ def test_edit_manual_cli_mode(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         apply_recommendations,
         "build_plans",
-        lambda recommendations: (fake_generic_plan, object(), object()),
+        lambda recommendations: (object(), fake_generic_plan, object(), object()),
     )
     monkeypatch.setattr(
         apply_recommendations, "_resolve_manual_review_objects", resolve_manual_reviews

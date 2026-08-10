@@ -921,6 +921,7 @@ class Location(BaseModel):
             print(f"{self}: no type-locality Names to edit")
             return
         print(f"{self}: editing {len(nams)} type-locality Names")
+        nams = sorted(nams, key=lambda nam: -nam.numeric_year())
         for nam in nams:
             if nam.type_locality != self or nam.has_type_tag(
                 models.name.TypeTag.ImpreciseLocality

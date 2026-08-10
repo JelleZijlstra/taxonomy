@@ -171,6 +171,19 @@ Creation is restart-safe when the model's label identifies exactly one existing 
 and every supplied field already has the recommended value. An existing same-label
 object with different data is a validation error rather than an implicit reuse.
 
+### Article actions, schema version 1
+
+- `create_article`: create one electronic Article, optionally create its ordinary
+  CitationGroup, create unchecked Persons for its authors, install a staged PDF, and run
+  PDF text extraction and search indexing.
+
+Use the dedicated `add-article` skill to research and generate this action. It owns a
+checksum- and size-guarded file move, so do not emulate it with generic `create_object`.
+Static review does not access the database or network; planning expands DOI metadata and
+validates the database, CitationGroup, existing library folder, staged PDF, and final
+destination. Explicit Article metadata overrides CrossRef. The user must authorize
+`--apply`; generators and skills must not apply the row themselves.
+
 ### Location actions, schema version 1
 
 - `edit_location`: atomically change multiple Location fields and/or tags.

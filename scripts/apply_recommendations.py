@@ -1,8 +1,8 @@
 """Review or apply heterogeneous taxonomy recommendations from JSONL.
 
 The default mode validates the complete file against the current database and prints
-a dry run. Rows are dispatched by ``action`` to the Location or type-locality
-recommendation implementations, so one file may contain both families. Use ``--review``
+a dry run. Rows are dispatched by ``action`` to the Article, generic, Location, or
+type-locality recommendation implementations, so one file may contain all families. Use ``--review``
 for a database-independent summary, ``--review-manual`` for the complete text of
 manual-review rows and actionable rows carrying ``review_note``, and ``--edit-manual``
 to open every manual-review object in the database editor after printing its complete
@@ -28,6 +28,7 @@ from typing import Any, Literal
 from clirm import readonly
 
 from taxonomy import getinput
+from taxonomy.applicator import article as article_recommendations
 from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import proposals as virtual_proposals
@@ -41,6 +42,7 @@ class RecommendationError(Exception):
 
 @dataclass(frozen=True, slots=True)
 class Recommendations:
+    article_rows: tuple[article_recommendations.Recommendation, ...]
     generic_rows: tuple[generic_recommendations.Recommendation, ...]
     location_rows: tuple[location_recommendations.Recommendation, ...]
     type_locality_rows: tuple[type_recommendations.Recommendation, ...]
@@ -48,7 +50,8 @@ class Recommendations:
     @property
     def count(self) -> int:
         return (
-            len(self.generic_rows)
+            len(self.article_rows)
+            + len(self.generic_rows)
             + len(self.location_rows)
             + len(self.type_locality_rows)
         )
@@ -63,11 +66,13 @@ class ManualReviewObject:
 
 
 Recommendation = (
-    generic_recommendations.Recommendation
+    article_recommendations.Recommendation
+    | generic_recommendations.Recommendation
     | location_recommendations.Recommendation
     | type_recommendations.Recommendation
 )
 RecommendationPlans = tuple[
+    article_recommendations.RecommendationPlan,
     generic_recommendations.RecommendationPlan,
     location_recommendations.RecommendationPlan,
     type_recommendations.RecommendationPlan,
@@ -78,7 +83,7 @@ RecommendationPlans = tuple[
 class IndividualReviewItem:
     line_number: int
     recommendation: Recommendation
-    family: Literal["generic", "location", "type_locality"]
+    family: Literal["article", "generic", "location", "type_locality"]
     edit_object: Any | None
 
 
@@ -173,6 +178,7 @@ def _validate_type_locality_rows(
 
 
 def read_recommendations(path: Path) -> Recommendations:
+    article_rows: list[article_recommendations.Recommendation] = []
     generic_rows: list[generic_recommendations.Recommendation] = []
     location_rows: list[location_recommendations.Recommendation] = []
     type_rows: list[type_recommendations.Recommendation] = []
@@ -193,7 +199,11 @@ def read_recommendations(path: Path) -> Recommendations:
             raise RecommendationError(f"line {line_number}: row must be an object")
         action = data.get("action")
         try:
-            if action == generic_recommendations.MANUAL_REVIEW and "object" in data:
+            if action in article_recommendations.ALLOWED_ACTIONS:
+                article_rows.append(
+                    article_recommendations.parse_recommendation(data, line_number)
+                )
+            elif action == generic_recommendations.MANUAL_REVIEW and "object" in data:
                 generic_rows.append(
                     generic_recommendations.parse_recommendation(data, line_number)
                 )
@@ -219,20 +229,28 @@ def read_recommendations(path: Path) -> Recommendations:
                 )
         except (
             generic_recommendations.RecommendationError,
+            article_recommendations.RecommendationError,
             location_recommendations.RecommendationError,
             type_recommendations.RecommendationError,
         ) as exc:
             raise RecommendationError(str(exc)) from exc
-    if not generic_rows and not location_rows and not type_rows:
+    if not article_rows and not generic_rows and not location_rows and not type_rows:
         raise RecommendationError("recommendation file contains no rows")
     _validate_location_rows(location_rows)
     _validate_type_locality_rows(type_rows)
-    return Recommendations(tuple(generic_rows), tuple(location_rows), tuple(type_rows))
+    return Recommendations(
+        tuple(article_rows), tuple(generic_rows), tuple(location_rows), tuple(type_rows)
+    )
 
 
 def print_review(
     recommendations: Recommendations, *, actions: set[str] | None = None
 ) -> None:
+    article_rows = tuple(
+        row
+        for row in recommendations.article_rows
+        if actions is None or row.action in actions
+    )
     generic_rows = tuple(
         row
         for row in recommendations.generic_rows
@@ -248,20 +266,25 @@ def print_review(
         for row in recommendations.type_locality_rows
         if actions is None or row.action in actions
     )
+    if article_rows:
+        print("ARTICLE RECOMMENDATIONS")
+        article_recommendations.print_review_table(article_rows)
     if generic_rows:
+        if article_rows:
+            print()
         print("GENERIC RECOMMENDATIONS")
         generic_recommendations.print_review_table(generic_rows)
     if location_rows:
-        if generic_rows:
+        if article_rows or generic_rows:
             print()
         print("LOCATION RECOMMENDATIONS")
         location_recommendations.print_review_table(location_rows)
     if type_rows:
-        if generic_rows or location_rows:
+        if article_rows or generic_rows or location_rows:
             print()
         print("TYPE-LOCALITY RECOMMENDATIONS")
         type_recommendations.print_review_table(type_rows)
-    if not generic_rows and not location_rows and not type_rows:
+    if not article_rows and not generic_rows and not location_rows and not type_rows:
         print("No recommendations match the requested actions.")
 
 
@@ -387,10 +410,16 @@ def _edit_manual_review_objects(items: tuple[ManualReviewObject, ...]) -> None:
 
 def _all_recommendation_rows(
     recommendations: Recommendations,
-) -> tuple[tuple[Literal["generic", "location", "type_locality"], Recommendation], ...]:
+) -> tuple[
+    tuple[Literal["article", "generic", "location", "type_locality"], Recommendation],
+    ...,
+]:
     rows: list[
-        tuple[Literal["generic", "location", "type_locality"], Recommendation]
+        tuple[
+            Literal["article", "generic", "location", "type_locality"], Recommendation
+        ]
     ] = [
+        *(("article", row) for row in recommendations.article_rows),
         *(("generic", row) for row in recommendations.generic_rows),
         *(("location", row) for row in recommendations.location_rows),
         *(("type_locality", row) for row in recommendations.type_locality_rows),
@@ -418,7 +447,7 @@ def _resolve_individual_review_items(
     label_name: Callable[[Any], str] = _name_label,
 ) -> tuple[IndividualReviewItem, ...]:
     """Resolve every possible editor target before opening the first editor."""
-    generic_plan, location_plan, _ = plans
+    _, generic_plan, location_plan, _ = plans
     generic_objects = {
         action.recommendation.line_number: action.object
         for action in generic_plan.actions
@@ -450,7 +479,9 @@ def _resolve_individual_review_items(
 
     items: list[IndividualReviewItem] = []
     for family, row in _all_recommendation_rows(recommendations):
-        if family == "generic":
+        if family == "article":
+            edit_object = None
+        elif family == "generic":
             edit_object = generic_objects.get(row.line_number)
         elif family == "location":
             edit_object = location_objects[row.line_number]
@@ -469,7 +500,10 @@ def _print_individual_recommendation(
         f"Recommendation {index}/{total} (manifest line {item.line_number})"
     )
     row = item.recommendation
-    if item.family == "generic":
+    if item.family == "article":
+        assert isinstance(row, article_recommendations.Recommendation)
+        article_recommendations.print_review_table((row,))
+    elif item.family == "generic":
         assert isinstance(row, generic_recommendations.Recommendation)
         generic_recommendations.print_review_table((row,))
     elif item.family == "location":
@@ -492,10 +526,15 @@ def _print_individual_recommendation(
         for evidence_index, location_evidence in enumerate(row.evidence, start=1):
             print(f"{evidence_index}. {getinput.italicize(location_evidence.kind)}")
             print(location_evidence.text)
+    elif isinstance(row, generic_recommendations.Recommendation):
+        for evidence_index, evidence in enumerate(row.evidence, start=1):
+            print(f"{evidence_index}. {getinput.italicize(evidence.kind)}")
+            print(evidence.text)
     else:
-        for evidence_index, generic_evidence in enumerate(row.evidence, start=1):
-            print(f"{evidence_index}. {getinput.italicize(generic_evidence.kind)}")
-            print(generic_evidence.text)
+        assert isinstance(row, article_recommendations.Recommendation)
+        for evidence_index, article_evidence in enumerate(row.evidence, start=1):
+            print(f"{evidence_index}. {getinput.italicize(article_evidence.kind)}")
+            print(article_evidence.text)
     tag_comment = getattr(row, "tag_comment", None)
     if tag_comment is not None:
         print()
@@ -582,6 +621,11 @@ def _filter_recommendations(
     return Recommendations(
         tuple(
             row
+            for row in recommendations.article_rows
+            if row.line_number in selected_lines
+        ),
+        tuple(
+            row
             for row in recommendations.generic_rows
             if row.line_number in selected_lines
         ),
@@ -660,6 +704,7 @@ def _print_type_locality_manual_review_for_edit(
 def build_plans(recommendations: Recommendations) -> RecommendationPlans:
     # Validate every family before any executor is allowed to write.
     try:
+        article_plan = article_recommendations.build_plan(recommendations.article_rows)
         generic_plan = generic_recommendations.build_plan(recommendations.generic_rows)
         location_plan = location_recommendations.build_plan(
             recommendations.location_rows
@@ -686,11 +731,12 @@ def build_plans(recommendations: Recommendations) -> RecommendationPlans:
         )
     except (
         generic_recommendations.RecommendationError,
+        article_recommendations.RecommendationError,
         location_recommendations.RecommendationError,
         type_recommendations.RecommendationError,
     ) as exc:
         raise RecommendationError(str(exc)) from exc
-    return generic_plan, location_plan, type_plan
+    return article_plan, generic_plan, location_plan, type_plan
 
 
 def build_generic_manual_review_plan(
@@ -712,9 +758,10 @@ def build_virtual_proposals(
     plans: RecommendationPlans,
 ) -> tuple[virtual_proposals.ProposedModel, ...]:
     """Build the final in-memory state represented by all actionable plans."""
-    generic_plan, location_plan, type_plan = plans
+    article_plan, generic_plan, location_plan, type_plan = plans
     builder = virtual_proposals.ProposalBuilder()
     # Match execute_plans() ordering so actions that touch the same model compose.
+    article_recommendations.add_virtual_models(article_plan, builder)
     type_recommendations.add_virtual_models(type_plan, builder)
     location_recommendations.add_virtual_models(location_plan, builder)
     generic_recommendations.add_virtual_models(generic_plan, builder)
@@ -727,17 +774,26 @@ def run_virtual_lint(plans: RecommendationPlans) -> None:
 
 
 def execute_plans(plans: RecommendationPlans, *, apply: bool) -> None:
-    generic_plan, location_plan, type_plan = plans
+    article_plan, generic_plan, location_plan, type_plan = plans
+    if article_plan.action_counts:
+        print("ARTICLE PLAN")
+        article_recommendations.execute_plan(article_plan, apply=apply)
     if type_plan.action_counts:
+        if article_plan.action_counts:
+            print()
         print("TYPE-LOCALITY PLAN")
         type_recommendations.execute_plan(type_plan, apply=apply)
     if location_plan.action_counts:
-        if type_plan.action_counts:
+        if article_plan.action_counts or type_plan.action_counts:
             print()
         print("LOCATION PLAN")
         location_recommendations.execute_plan(location_plan, apply=apply)
     if generic_plan.action_counts:
-        if type_plan.action_counts or location_plan.action_counts:
+        if (
+            article_plan.action_counts
+            or type_plan.action_counts
+            or location_plan.action_counts
+        ):
             print()
         print("GENERIC PLAN")
         generic_recommendations.execute_plan(generic_plan, apply=apply)
@@ -790,7 +846,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
             assert args.edit_manual
             try:
                 plans = build_plans(recommendations)
-                generic_plan = plans[0]
+                generic_plan = plans[1]
             except RecommendationError as exc:
                 begin_output()
                 print(
@@ -817,7 +873,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                     recommendations, generic_plan, allow_name_label_changes=True
                 )
             else:
-                manual_items = _resolve_manual_review_objects(recommendations, plans[0])
+                manual_items = _resolve_manual_review_objects(recommendations, plans[1])
     except RecommendationError as exc:
         parser.error(str(exc))
 
@@ -891,6 +947,7 @@ def main() -> None:
         action="append",
         choices=sorted(
             generic_recommendations.ALLOWED_ACTIONS
+            | article_recommendations.ALLOWED_ACTIONS
             | location_recommendations.ALLOWED_ACTIONS
             | type_recommendations.ALLOWED_ACTIONS
         ),

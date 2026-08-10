@@ -1,0 +1,6 @@
+interface:
+  display_name: "Add an Article"
+  short_description: "Add sourced PDFs and edited-volume chapters"
+  default_prompt:
+    "Use $add-article to prepare reviewed Article recommendations for sourced PDFs,
+    including any edited-volume parent needed by a chapter."
