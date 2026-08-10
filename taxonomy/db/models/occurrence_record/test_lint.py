@@ -61,6 +61,7 @@ def _record(**kwargs: object) -> OccurrenceRecord:
 
 
 def _duplicate_record(id: int, **kwargs: object) -> OccurrenceRecord:
+    kwargs.setdefault("status", OccurrenceRecordStatus.valid)
     return _record(
         id=id,
         classification_entry=object(),
@@ -137,7 +138,7 @@ def test_taxon_lint_does_not_infer_genus_for_unmapped_species() -> None:
     messages = list(check_missing_taxon(record, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "cannot infer taxon" in messages[0]
+    assert "cannot infer taxon" in str(messages[0])
     assert record.taxon is None
 
 
@@ -194,7 +195,7 @@ def test_taxon_mapping_reports_implicit_nominate_subspecies_without_autofix() ->
     messages = list(check_taxon_mapping(record, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "change taxon from" in messages[0]
+    assert "change taxon from" in str(messages[0])
     assert record.taxon is subspecies
 
 
@@ -215,7 +216,7 @@ def test_observation_kind_requires_observation_basis() -> None:
     messages = list(check_basis_tags(record, LintConfig()))
 
     assert len(messages) == 1
-    assert messages[0].endswith(
+    assert str(messages[0]).endswith(
         "ObservationKind requires observation basis [basis_tags]"
     )
 
@@ -260,8 +261,8 @@ def test_occurrence_recent_location_requires_recent_taxon() -> None:
     messages = list(check_location_age(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "is Recent" in messages[0]
-    assert "has age holocene" in messages[0]
+    assert "is Recent" in str(messages[0])
+    assert "has age holocene" in str(messages[0])
 
 
 def test_occurrence_recent_location_allows_recently_extinct_taxon() -> None:
@@ -284,8 +285,8 @@ def test_observation_requires_recent_location() -> None:
     messages = list(check_location_age(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "observation" in messages[0]
-    assert "expected to be Recent" in messages[0]
+    assert "observation" in str(messages[0])
+    assert "expected to be Recent" in str(messages[0])
 
 
 def test_extant_voucher_may_come_from_pleistocene_location() -> None:
@@ -308,8 +309,8 @@ def test_extant_occurrence_conflicts_with_pre_pleistocene_location() -> None:
     messages = list(check_location_age(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "is pre-Pleistocene" in messages[0]
-    assert "extant taxon" in messages[0]
+    assert "is pre-Pleistocene" in str(messages[0])
+    assert "extant taxon" in str(messages[0])
 
 
 @pytest.mark.parametrize(
@@ -407,7 +408,7 @@ def test_source_data_lint_reports_approximate_elevation_without_autofix() -> Non
     messages = list(check_source_data_tags(record, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "preserve source elevation precision" in messages[0]
+    assert "preserve source elevation precision" in str(messages[0])
     assert exact in record.tags
 
 
@@ -455,7 +456,7 @@ def test_source_data_lint_reports_source_format_replacement_without_autofix() ->
     messages = list(check_source_data_tags(record, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "preserve source coordinate format" in messages[0]
+    assert "preserve source coordinate format" in str(messages[0])
     assert decimal in record.tags
 
 
@@ -480,7 +481,7 @@ def test_source_data_lint_reports_coordinates_beyond_shared_tolerance() -> None:
     messages = list(check_source_data_tags(record, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "km from closest normalized coordinates" in messages[0]
+    assert "km from closest normalized coordinates" in str(messages[0])
 
 
 def test_source_data_lint_standardizes_coordinate_ranges() -> None:
@@ -501,7 +502,7 @@ def test_normalized_source_data_requires_verbatim_tag() -> None:
     messages = list(check_source_data_tags(record, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "Date requires VerbatimDate" in messages[0]
+    assert "Date requires VerbatimDate" in str(messages[0])
 
 
 def test_coordinate_consistency_allows_five_kilometres() -> None:
@@ -524,8 +525,8 @@ def test_coordinate_consistency_flags_distant_location() -> None:
     messages = list(check_coordinate_consistency(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "55.6 km from Location" in messages[0]
-    assert messages[0].endswith("[coordinate_location]")
+    assert "55.6 km from Location" in str(messages[0])
+    assert str(messages[0]).endswith("[coordinate_location]")
 
 
 def test_coordinate_consistency_allows_point_inside_range() -> None:
@@ -569,7 +570,7 @@ def test_status_lint_flags_duplicate_status() -> None:
     messages = list(check_status_tags(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "duplicate PresenceFromSource for vagrant" in messages[0]
+    assert "duplicate PresenceFromSource for vagrant" in str(messages[0])
 
 
 def _region(name: str, parent: Any = None) -> models.Region:
@@ -626,7 +627,7 @@ def test_reassess_rule_requires_review_for_old_record() -> None:
     messages = list(check_distribution_rules(record, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "requires ReviewedInLightOf" in messages[0]
+    assert "requires ReviewedInLightOf" in str(messages[0])
 
 
 def test_reassess_rule_exempts_new_record() -> None:
@@ -660,7 +661,7 @@ def test_reassess_rule_requires_review_in_cutoff_year() -> None:
     messages = list(check_distribution_rules(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "requires ReviewedInLightOf" in messages[0]
+    assert "requires ReviewedInLightOf" in str(messages[0])
 
 
 def test_redirect_rule_moves_old_record() -> None:
@@ -726,7 +727,7 @@ def test_redirect_rule_requires_review_for_later_record() -> None:
     messages = list(check_distribution_rules(record, LintConfig()))
 
     assert len(messages) == 1
-    assert "requires ReviewedInLightOf" in messages[0]
+    assert "requires ReviewedInLightOf" in str(messages[0])
     assert record.taxon is source
 
 
@@ -779,7 +780,7 @@ def test_duplicate_lint_reports_ids_without_autofix(
     messages = list(check_duplicate(record, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "OR#2 duplicates primary record OR#1" in messages[0]
+    assert "OR#2 duplicates primary record OR#1" in str(messages[0])
 
 
 def test_duplicate_lint_redirects_exact_higher_id_record(

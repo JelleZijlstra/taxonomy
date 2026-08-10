@@ -22,6 +22,7 @@ from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.classification_entry import ClassificationEntry
 from taxonomy.db.models.collection import Collection
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.taxon import Taxon
 
@@ -194,7 +195,7 @@ class OccurrenceRecord(BaseModel):
             "split_for_taxon": self.split_for_taxon,
         }
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         if self.has_tag(OccurrenceRecordTag.RedirectTarget):
             yield "valid record has RedirectTarget tag"
         yield from models.occurrence_record.lint.LINT.run(self, cfg)

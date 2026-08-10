@@ -18,6 +18,8 @@ from taxonomy.db.constants import (
 from taxonomy.db.derived_data import DerivedField
 
 from .base import BaseModel, LintConfig
+from .lint import field_issue
+from .lint_types import LintResult
 from .region import Region
 
 T = TypeVar("T")
@@ -106,7 +108,7 @@ class Period(BaseModel):
             return None
         return self.parent
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         if self.rank not in SYSTEM_TO_ALLOWED_RANKS[self.system]:
             yield (
                 f"{self}: is of rank {self.rank}, which is not allowed for"
@@ -124,32 +126,35 @@ class Period(BaseModel):
             and self.next.max_age is not None
             and self.min_age != self.next.max_age
         ):
-            yield (
-                f"{self}: min_age is {self.min_age}, but {self.next}'s max_age is"
-                f" {self.next.max_age}"
+            yield field_issue(
+                f"{self}: min_age is {self.min_age}, but {self.next}'s max_age is "
+                f"{self.next.max_age}",
+                self,
+                "min_age",
+                self.next.max_age,
             )
-            if cfg.autofix:
-                self.min_age = self.next.max_age
         child_max_ages = [child.max_age for child in self.children]
         if child_max_ages and all(age is not None for age in child_max_ages):
             expected = max(child_max_ages)
             if expected != self.max_age:
-                yield (
-                    f"{self}: max_age is {self.max_age}, but max age among children is"
-                    f" {expected}"
+                yield field_issue(
+                    f"{self}: max_age is {self.max_age}, but max age among children "
+                    f"is {expected}",
+                    self,
+                    "max_age",
+                    expected,
                 )
-                if cfg.autofix:
-                    self.max_age = expected
         child_min_ages = [child.min_age for child in self.children]
         if child_min_ages and all(age is not None for age in child_min_ages):
             expected = min(child_min_ages)
             if expected != self.min_age:
-                yield (
-                    f"{self}: min_age is {self.min_age}, but min age among children is"
-                    f" {expected}"
+                yield field_issue(
+                    f"{self}: min_age is {self.min_age}, but min age among children "
+                    f"is {expected}",
+                    self,
+                    "min_age",
+                    expected,
                 )
-                if cfg.autofix:
-                    self.min_age = expected
 
     def merge(self, other: Period) -> None:
         if other == self:

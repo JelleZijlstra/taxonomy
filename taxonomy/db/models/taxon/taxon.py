@@ -28,6 +28,7 @@ from taxonomy.db.derived_data import DerivedField, SetLater
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.fill_data import fill_data_for_names
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import LocationStatus
 from taxonomy.svg_map import MapPoint
 
@@ -122,7 +123,7 @@ class Taxon(BaseModel):
     def should_skip(self) -> bool:
         return self.age in (AgeClass.removed, AgeClass.redirect)
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         yield from models.taxon.lint.LINT.run(self, cfg)
 
     @classmethod

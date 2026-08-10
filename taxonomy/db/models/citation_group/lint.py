@@ -15,7 +15,8 @@ from taxonomy.apis import bhl
 from taxonomy.apis.util import RateLimiter
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import IgnoreLint, Lint, append_to_field_issue, field_issue
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.url_cache import CacheDomain, cached
 
 from .cg import CitationGroup, CitationGroupStatus, CitationGroupTag
@@ -156,7 +157,7 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("format_tags")
-def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[LintResult]:
     tags = sorted(set(cg.tags))
     counts = Counter(type(tag) for tag in tags)
     for tag_type, count in counts.items():
@@ -175,11 +176,7 @@ def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     if tuple(tags) != tuple(cg.tags):
         message = "changing tags"
         getinput.print_diff(sorted(cg.tags), tags)
-        if cfg.autofix:
-            print(f"{cg}: {message}")
-            cg.tags = tags  # type: ignore[assignment]
-        else:
-            yield message
+        yield field_issue(message, cg, "tags", tuple(tags))
 
 
 @LINT.add("too_many_bhl")
@@ -192,7 +189,9 @@ def check_too_many_bhl_bibliographies(
 
 
 @LINT.add("infer_bhl_from_children")
-def infer_bhl_biblio_from_children(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+def infer_bhl_biblio_from_children(
+    cg: CitationGroup, cfg: LintConfig
+) -> Iterable[LintResult]:
     if cg.has_tag(CitationGroupTag.SkipExtraBHLBibliographies):
         return
     if cg.type is not constants.ArticleType.JOURNAL:
@@ -214,16 +213,18 @@ def infer_bhl_biblio_from_children(cg: CitationGroup, cfg: LintConfig) -> Iterab
     if not bibliographies:
         return
     message = f"inferred BHL tags {bibliographies} from child articles and names"
-    if cfg.autofix:
-        print(f"{cg}: {message}")
-        for biblio in bibliographies:
-            cg.add_tag(CitationGroupTag.BHLBibliography(text=str(biblio)))
-    else:
-        yield message
+    new_tags = (
+        *cg.tags,
+        *(
+            CitationGroupTag.BHLBibliography(text=str(biblio))
+            for biblio in bibliographies
+        ),
+    )
+    yield field_issue(message, cg, "tags", new_tags)
 
 
 @LINT.add("infer_bhl_biblio")
-def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[LintResult]:
     if cg.get_bhl_title_ids():
         return
     if cg.type is not constants.ArticleType.JOURNAL:
@@ -285,15 +286,15 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
             )
             return
     message = f"inferred BHL tag {data['TitleID']}"
-    if cfg.autofix:
-        print(f"{cg}: {message}")
-        cg.add_tag(CitationGroupTag.BHLBibliography(text=str(data["TitleID"])))
-    else:
-        yield message
+    yield append_to_field_issue(
+        message, cg, "tags", CitationGroupTag.BHLBibliography(text=str(data["TitleID"]))
+    )
 
 
 @LINT.add("abbreviated_title", requires_network=True)
-def populate_abbreviated_title(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+def populate_abbreviated_title(
+    cg: CitationGroup, cfg: LintConfig
+) -> Iterable[LintResult]:
     """Populate AbbreviatedTitle for journals from NLM Catalog (PubMed) if missing.
 
     Uses the MedlineTA field via E-utilities. Best-effort: picks the first match.
@@ -321,11 +322,9 @@ def populate_abbreviated_title(cg: CitationGroup, cfg: LintConfig) -> Iterable[s
     if not abbr:
         return
     msg = f"add AbbreviatedTitle: {abbr}"
-    if cfg.autofix:
-        print(f"{cg}: {msg}")
-        cg.add_tag(CitationGroupTag.AbbreviatedTitle(abbr))
-    else:
-        yield msg
+    yield append_to_field_issue(
+        msg, cg, "tags", CitationGroupTag.AbbreviatedTitle(abbr)
+    )
 
 
 @cached(CacheDomain.pubmed_nlmcatalog_abbrev)
@@ -411,7 +410,7 @@ _PUBMED_RL = RateLimiter(min_interval=0.34)
 
 
 @LINT.add("bhl_year_range")
-def infer_bhl_year_range(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+def infer_bhl_year_range(cg: CitationGroup, cfg: LintConfig) -> Iterable[LintResult]:
     title_ids = cg.get_bhl_title_ids()
     if not title_ids:
         return
@@ -442,15 +441,13 @@ def infer_bhl_year_range(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         start=str(min(years) - 1), end=str(max(years) + 1)
     )
     message = f"add tag {tag}"
-    if cfg.autofix:
-        print(f"{cg}: {message}")
-        cg.add_tag(tag)
-    else:
-        yield message
+    yield append_to_field_issue(message, cg, "tags", tag)
 
 
 @LINT.add("have_identifier")
-def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
+def add_have_identifier_tags(
+    cg: CitationGroup, cfg: LintConfig
+) -> Iterable[LintResult]:
     if cg.type is not constants.ArticleType.JOURNAL:
         return
     # Gather article years present in this citation group
@@ -470,7 +467,7 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
         ident: constants.ArticleIdentifier,
         desired_min: int | None,
         desired_max: int | None,
-    ) -> Iterable[str]:
+    ) -> Iterable[LintResult]:
         # Find existing tags of this class for the identifier
         existing: CitationGroupTag | None = None
         for tag in cg.get_tags(cg.tags, tag_cls):
@@ -483,11 +480,7 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
             # static analysis: ignore[incompatible_call]
             new_tag = tag_cls(ident, min_year=desired_min, max_year=desired_max)
             message = f"add tag {new_tag}"
-            if cfg.autofix:
-                print(f"{cg}: {message}")
-                cg.add_tag(new_tag)
-            else:
-                yield message
+            yield append_to_field_issue(message, cg, "tags", new_tag)
             return
         # Expand existing tag if possible
         # static analysis: ignore[attribute_is_never_set]
@@ -513,14 +506,8 @@ def add_have_identifier_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str
         # static analysis: ignore[incompatible_call]
         updated = tag_cls(ident, min_year=new_min, max_year=new_max)
         message = f"expand tag {existing} -> {updated}"
-        if cfg.autofix:
-            print(f"{cg}: {message}")
-            tags = list(cg.tags or [])
-            tags = [t for t in tags if t != existing]
-            tags.append(updated)
-            cg.tags = tags  # type: ignore[assignment]
-        else:
-            yield message
+        tags = tuple(t for t in cg.tags if t != existing)
+        yield field_issue(message, cg, "tags", (*tags, updated))
 
     for ident in constants.ArticleIdentifier:
         # Count per year and total across group for this identifier

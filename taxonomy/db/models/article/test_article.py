@@ -10,6 +10,7 @@ from taxonomy.db.constants import ArticleKind, ArticleType
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus, api_data
 from taxonomy.db.models.article import lint as article_lint
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.lint_types import LintIssue
 
 
 def _get_tags(tags: tuple[object, ...], tag_cls: type[object]) -> Iterable[object]:
@@ -32,14 +33,15 @@ def test_title_lint_merges_adjacent_italics() -> None:
         ),
     )
 
-    assert (
-        list(
-            article_lint.check_title.linter(
-                article, LintConfig(autofix=True, interactive=False)
-            )
+    issues = list(
+        article_lint.check_title.linter(
+            article, LintConfig(autofix=True, interactive=False)
         )
-        == []
     )
+    assert len(issues) == 1
+    assert isinstance(issues[0], LintIssue)
+    assert issues[0].fix is not None
+    issues[0].fix.apply()
     assert article.title == "The status of _Nycticebus coucang brachycephalus_ Sody"
 
 

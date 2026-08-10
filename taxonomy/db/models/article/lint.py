@@ -33,7 +33,14 @@ from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
 from taxonomy.db.models.issue_date import IssueDate
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    append_to_field_issue,
+    field_issue,
+    fields_issue,
+)
+from taxonomy.db.models.lint_types import LintIssue, LintResult
 from taxonomy.db.models.person import AuthorTag, is_more_specific_than
 
 from . import jstor_db
@@ -63,7 +70,7 @@ LINT = Lint(Article, get_ignores, remove_unused_ignores, add_ignore)
 
 
 @LINT.add("tags")
-def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_tags(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if not art.tags:
         return
     tags: list[ArticleTag] = []
@@ -94,11 +101,7 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
                 expected_doi = f"10.2307/{jstor_id}"
                 if models.article.api_data.is_doi_valid(expected_doi):
                     message = f"adding DOI {expected_doi} based on JSTOR id"
-                    if cfg.autofix:
-                        print(f"{art}: {message}")
-                        art.doi = expected_doi
-                    else:
-                        yield message
+                    yield field_issue(message, art, "doi", expected_doi)
         elif isinstance(tag, ArticleTag.PMC):
             pmc_id = tag.text
             if not re.fullmatch(r"^PMC\d+$", pmc_id):
@@ -130,10 +133,7 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[str]:
         if set(tags) != set(original_tags):
             print(f"changing tags for {art}")
             getinput.print_diff(sorted(original_tags), tags)
-        if cfg.autofix:
-            art.tags = tags  # type: ignore[assignment]
-        else:
-            yield f"{art}: needs change to tags"
+        yield field_issue(f"{art}: needs change to tags", art, "tags", tuple(tags))
 
 
 @LINT.add("name")
@@ -158,7 +158,7 @@ def check_name(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("path")
-def check_path(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_path(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.kind.is_electronic():
         if art.path is None or art.path == "NOFILE":
             yield "electronic article should have a path"
@@ -167,15 +167,11 @@ def check_path(art: Article, cfg: LintConfig) -> Iterable[str]:
             f"non-electronic article (kind {art.kind!r}) should have no"
             f" path, but has {art.path}"
         )
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.path = None
-        else:
-            yield message
+        yield field_issue(message, art, "path", None)
 
 
 @LINT.add("type_kind")
-def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     # The difference between kind and type is:
     # * kind is about how this article is stored in the database (electronic copy,
     #   physical copy, etc.)
@@ -204,15 +200,16 @@ def check_type_and_kind(art: Article, cfg: LintConfig) -> Iterable[str]:
                 "www.biodiversitylibrary.org",
                 "biodiversitylibrary.org",
             ):
-                if cfg.autofix:
-                    print(f"{art}: set kind to reference")
-                    art.kind = ArticleKind.reference
-                else:
-                    yield "has a BHL URL and should be of kind 'reference'"
+                yield field_issue(
+                    "has a BHL URL and should be of kind 'reference'",
+                    art,
+                    "kind",
+                    ArticleKind.reference,
+                )
 
 
 @LINT.add("article_number")
-def check_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_article_number(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if not art.article_number:
         return
     if art.type is not ArticleType.JOURNAL:
@@ -232,13 +229,12 @@ def check_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
                 )
             ):
                 message = f"replace start and end page {art.start_page}-{art.end_page}, since there is an article number"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.pages = art.end_page
-                    art.start_page = None
-                    art.end_page = None
-                else:
-                    yield message
+                yield fields_issue(
+                    message,
+                    (art, "pages", art.end_page),
+                    (art, "start_page", None),
+                    (art, "end_page", None),
+                )
         else:
             yield f"citation group {art.citation_group} has no ArticleNumberRegex tag"
         if (
@@ -247,15 +243,11 @@ def check_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
             and art.start_page == art.article_number
         ):
             message = f"replace start page {art.start_page} with article number {art.article_number}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.start_page = None
-            else:
-                yield message
+            yield field_issue(message, art, "start_page", None)
 
 
 @LINT.add("transfer_article_number")
-def transfer_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
+def transfer_article_number(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         art.article_number is not None
         or art.start_page is None
@@ -270,12 +262,9 @@ def transfer_article_number(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not re.fullmatch(tag.text, art.start_page):
         return
     message = f"transferring start page {art.start_page} to article number"
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.article_number = art.start_page
-        art.start_page = None
-    else:
-        yield message
+    yield fields_issue(
+        message, (art, "article_number", art.start_page), (art, "start_page", None)
+    )
 
 
 SOURCE_PRIORITY = {
@@ -376,7 +365,7 @@ def infer_publication_date_from_issue_date(
 
 
 @LINT.add("year")
-def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_year(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.kind is ArticleKind.alternative_version:
         return
     if art.year is not None:
@@ -400,9 +389,8 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield from messages
     if issue is not None and issue != art.issue:
         message = f"issue mismatch: inferred {issue}, actual {art.issue}"
-        if cfg.autofix and art.issue is None:
-            print(f"{art}: {message}")
-            art.issue = issue
+        if art.issue is None:
+            yield field_issue(message, art, "issue", issue)
         else:
             yield message
 
@@ -430,9 +418,8 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[str]:
             and abs(art.numeric_year() - inferred_year) <= 1
         ):
             can_autofix = True
-        if cfg.autofix and can_autofix:
-            print(f"{art}: {message}")
-            art.year = inferred
+        if can_autofix:
+            yield field_issue(message, art, "year", inferred)
         else:
             yield message
 
@@ -508,7 +495,7 @@ def check_date_ordering(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("infer_precise_date")
-def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     siblings = get_inferred_date_from_position(art)
     if siblings is None:
         return
@@ -517,11 +504,7 @@ def infer_precise_date(art: Article, cfg: LintConfig) -> Iterable[str]:
         f"inferred publication date of {after.year} based on position between"
         f" {before!r} and {after!r}"
     )
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.year = after.year
-    else:
-        yield message
+    yield field_issue(message, art, "year", after.year)
 
 
 def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | None:
@@ -616,7 +599,9 @@ def text_contains_date(art: Article) -> bool:
 
 
 @LINT.add("add_internal_publication_date")
-def add_internal_publication_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+def add_internal_publication_date(
+    art: Article, cfg: LintConfig
+) -> Iterable[LintResult]:
     # A newly proposed electronic Article still points at its future catalog path;
     # the staged PDF is deliberately not installed during virtual lint.
     if art.is_virtual and art.virtual_origin is None:
@@ -626,11 +611,7 @@ def add_internal_publication_date(art: Article, cfg: LintConfig) -> Iterable[str
     if text_contains_date(art):
         tag = ArticleTag.PublicationDate(DateSource.internal, art.year)
         message = f"adding PublicationDate tag for {art.year}: {tag}"
-        if cfg.autofix:
-            print(f"{art}: adding PublicationDate tag for {art.year}")
-            art.add_tag(tag)
-        else:
-            yield message
+        yield append_to_field_issue(message, art, "tags", tag)
 
 
 _JSTOR_URL_REGEX = r"https?://www\.jstor\.org/stable/(\d+)"
@@ -639,6 +620,13 @@ _JSTOR_DOI_PREFIX = "10.2307/"
 
 def is_valid_hdl(hdl: str) -> bool:
     return bool(re.fullmatch(r"^\d+(\.\d+)?\/\S+$", hdl))
+
+
+def _set_or_replace_url_issue(message: str, art: Article, url: str) -> LintIssue:
+    tags = tuple(art.tags or ())
+    if art.url:
+        tags = (*tags, ArticleTag.AlternativeURL(art.url))
+    return fields_issue(message, (art, "tags", tags), (art, "url", url))
 
 
 def is_valid_doi(doi: str) -> bool:
@@ -676,17 +664,19 @@ def check_must_have_publisher(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("url")
-def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.url is None:
         return
     parsed_url = urlparse.parse_url(art.url)
     match parsed_url:
         case urlparse.HDLUrl(hdl, query=None):
             message = f"inferred HDL {hdl} from url {art.url}"
-            if cfg.autofix and api_is_hdl_valid(hdl):
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.HDL(hdl))
-                art.url = None
+            if api_is_hdl_valid(hdl):
+                yield fields_issue(
+                    message,
+                    (art, "tags", (*(art.tags or ()), ArticleTag.HDL(hdl))),
+                    (art, "url", None),
+                )
             else:
                 yield message
             return
@@ -696,62 +686,61 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
             if urlappend_list and len(urlappend_list) == 1:
                 urlappend = urllib.parse.unquote(urlappend_list[0])
                 message = f"inferred HDL {hdl} (with urlappend={urlappend}) from url {art.url}"
-                if cfg.autofix and api_is_hdl_valid(hdl):
-                    print(f"{art}: {message}")
-                    art.add_tag(ArticleTag.HDL(hdl, urlappend=urlappend))
-                    art.url = None
+                if api_is_hdl_valid(hdl):
+                    yield fields_issue(
+                        message,
+                        (
+                            art,
+                            "tags",
+                            (
+                                *(art.tags or ()),
+                                ArticleTag.HDL(hdl, urlappend=urlappend),
+                            ),
+                        ),
+                        (art, "url", None),
+                    )
                 else:
                     yield message
                 return
         case urlparse.JStorUrl(jstor_id):
             message = f"inferred JStor id {jstor_id} from url {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.JSTOR(jstor_id))
-                art.url = None
-            else:
-                yield message
+            yield fields_issue(
+                message,
+                (art, "tags", (*(art.tags or ()), ArticleTag.JSTOR(jstor_id))),
+                (art, "url", None),
+            )
         case urlparse.DOIURL(doi):
             message = f"inferred DOI {doi} from url {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.doi = doi
-                art.url = None
-            else:
-                yield message
+            yield fields_issue(message, (art, "doi", doi), (art, "url", None))
         case urlparse.PMCUrl(pmc_id):
             message = f"inferred PMC id {pmc_id} from url {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.PMC(pmc_id))
-                art.url = None
-            else:
-                yield message
+            yield fields_issue(
+                message,
+                (art, "tags", (*(art.tags or ()), ArticleTag.PMC(pmc_id))),
+                (art, "url", None),
+            )
         case urlparse.PubMedUrl(pmid):
             message = f"inferred PMID {pmid} from url {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.PMID(pmid))
-                art.url = None
-            else:
-                yield message
+            yield fields_issue(
+                message,
+                (art, "tags", (*(art.tags or ()), ArticleTag.PMID(pmid))),
+                (art, "url", None),
+            )
         case urlparse.BhlPart(part_id):
             if art.doi is None:
                 expected_doi = f"10.5962/bhl.part.{part_id}"
                 if models.article.api_data.is_doi_valid(expected_doi):
                     message = f"inferred DOI {expected_doi} from BHL part url {art.url}"
-                    if cfg.autofix:
-                        print(f"{art}: {message}")
-                        art.doi = expected_doi
-                    else:
-                        yield message
+                    yield field_issue(message, art, "doi", expected_doi)
                     return
         case urlparse.DeepBlueUrl(handle, _):
             message = f"inferred HDL {handle} from url {art.url}"
-            if cfg.autofix and api_is_hdl_valid(handle):
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.HDL(handle))
-                art.url = None
+            if api_is_hdl_valid(handle):
+                yield fields_issue(
+                    message,
+                    (art, "tags", (*(art.tags or ()), ArticleTag.HDL(handle))),
+                    (art, "url", None),
+                )
             else:
                 yield message
 
@@ -759,18 +748,14 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[str]:
         stringified = str(parsed_url)
         if stringified != art.url:
             message = f"reformatted url to {parsed_url} from {art.url}"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.url = stringified
-            else:
-                yield message
+            yield field_issue(message, art, "url", stringified)
 
         for message in parsed_url.lint():
             yield f"URL {art.url}: {message}"
 
 
 @LINT.add("doi", requires_network=True)
-def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.doi is None:
         return
     cleaned = urllib.parse.unquote(art.doi)
@@ -788,15 +773,13 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
                 f"inferred JStor id {jstor_id} from doi {art.doi} (CG"
                 f" {art.citation_group})"
             )
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(ArticleTag.JSTOR(jstor_id))
-            else:
-                yield message
+            yield append_to_field_issue(
+                message, art, "tags", ArticleTag.JSTOR(jstor_id)
+            )
 
 
 @LINT.add("bhl_item_from_bibliography", requires_network=True)
-def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
+def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.url is None:
         return
     match urlparse.parse_url(art.url):
@@ -806,15 +789,11 @@ def bhl_item_from_bibliography(art: Article, cfg: LintConfig) -> Iterable[str]:
                 item_id = metadata["Items"][0]["ItemID"]
                 new_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
                 message = f"inferred BHL item {item_id} from bibliography {art.url}"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.url = new_url
-                else:
-                    yield message
+                yield field_issue(message, art, "url", new_url)
 
 
 @LINT.add("bhl_part_from_page", requires_network=True)
-def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
+def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.url is None or art.title is None:
         return
     parsed = urlparse.parse_url(art.url)
@@ -839,11 +818,9 @@ def bhl_part_from_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     if matching_part is None:
         return
     message = f"inferred BHL part {matching_part['PartID']} from page {art.url}"
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.url = str(urlparse.BhlPart(matching_part["PartID"]))
-    else:
-        yield message
+    yield field_issue(
+        message, art, "url", str(urlparse.BhlPart(matching_part["PartID"]))
+    )
 
 
 @LINT.add("item_file_consistency", requires_network=True)
@@ -879,7 +856,7 @@ def check_item_file_consistency(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("infer_item_file_url", requires_network=True)
-def infer_item_file_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+def infer_item_file_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.url is None:
         return
     item_id = bhl.get_bhl_item_from_url(art.url)
@@ -900,11 +877,9 @@ def infer_item_file_url(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     expected_url = f"https://www.biodiversitylibrary.org/item/{item_id}"
     if itf.url is None:
-        if cfg.autofix:
-            print(f"{art}: setting URL to {expected_url} on ItemFile {itf}")
-            itf.url = expected_url
-        else:
-            yield f"setting URL to {expected_url} on ItemFile {itf}"
+        yield field_issue(
+            f"setting URL to {expected_url} on ItemFile {itf}", itf, "url", expected_url
+        )
     elif itf.url != expected_url:
         yield f"ItemFile {itf} has URL {itf.url} but expected {expected_url}"
 
@@ -937,7 +912,7 @@ def must_have_bhl_url_from_names(art: Article, cfg: LintConfig) -> Iterable[str]
 
 
 @LINT.add("bhl_page_from_names", requires_network=True)
-def infer_bhl_page_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
+def infer_bhl_page_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if not should_look_for_bhl_url(art):
         if cfg.verbose:
             print(f"{art}: not looking for BHL URL")
@@ -984,13 +959,9 @@ def infer_bhl_page_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
             part_page_ids = {page["PageID"] for page in part_metadata["Pages"]}
             if bhl_page_ids <= part_page_ids:
                 message = f"inferred BHL part {part_id} from names"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.set_or_replace_url(
-                        f"https://www.biodiversitylibrary.org/part/{part_id}"
-                    )
-                else:
-                    yield message
+                yield _set_or_replace_url_issue(
+                    message, art, f"https://www.biodiversitylibrary.org/part/{part_id}"
+                )
                 return
             elif cfg.verbose:
                 print(
@@ -1039,13 +1010,11 @@ def infer_bhl_page_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
                 )
             continue
         message = f"inferred BHL page {possible_start_page} from names"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.set_or_replace_url(
-                f"https://www.biodiversitylibrary.org/page/{possible_start_page}"
-            )
-        else:
-            yield message
+        yield _set_or_replace_url_issue(
+            message,
+            art,
+            f"https://www.biodiversitylibrary.org/page/{possible_start_page}",
+        )
 
 
 def should_look_for_bhl_url(art: Article) -> bool:
@@ -1123,7 +1092,9 @@ def must_have_bhl_link(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("bhl_page", requires_network=True)
-def infer_bhl_page(art: Article, cfg: LintConfig = LintConfig()) -> Iterable[str]:
+def infer_bhl_page(
+    art: Article, cfg: LintConfig = LintConfig()
+) -> Iterable[LintResult]:
     if not should_look_for_bhl_url(art):
         return
     page_obj = get_inferred_bhl_page(art, cfg)
@@ -1132,11 +1103,7 @@ def infer_bhl_page(art: Article, cfg: LintConfig = LintConfig()) -> Iterable[str
     message = f"inferred BHL page {page_obj} from {art.start_page}–{art.end_page}"
     if art.url is not None:
         message += f" (replacing {art.url})"
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.set_or_replace_url(page_obj.page_url)
-    else:
-        yield message
+    yield _set_or_replace_url_issue(message, art, page_obj.page_url)
     print(page_obj.page_url)
 
 
@@ -1250,7 +1217,7 @@ def get_inferred_bhl_page(art: Article, cfg: LintConfig) -> bhl.PossiblePage | N
 @LINT.add("bhl_page_from_other_articles", requires_network=True)
 def infer_bhl_page_from_other_articles(
     art: Article, cfg: LintConfig = LintConfig()
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not should_look_for_bhl_url(art):
         return
     page_id = get_inferred_bhl_page_from_articles(art, cfg)
@@ -1260,11 +1227,7 @@ def infer_bhl_page_from_other_articles(
     if art.url is not None:
         message += f" (replacing {art.url})"
     page_url = f"https://www.biodiversitylibrary.org/page/{page_id}"
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.set_or_replace_url(page_url)
-    else:
-        yield message
+    yield _set_or_replace_url_issue(message, art, page_url)
     print(page_url)
 
 
@@ -1454,7 +1417,7 @@ _TITLE_REGEXES = [
 
 
 @LINT.add("title")
-def check_title(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_title(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.title is None:
         return
     new_title = art.title
@@ -1545,7 +1508,7 @@ def md_lint(text: str) -> Iterable[str]:
 
 
 @LINT.add("journal_specific")
-def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
+def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     cg = art.citation_group
     if cg is None:
         return
@@ -1605,11 +1568,7 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[str]:
             yield message
     if art.issue and should_not_have_issue(art):
         message = f"{cg} article should not have issue {art.issue}"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.issue = None
-        else:
-            yield message
+        yield field_issue(message, art, "issue", None)
 
 
 def _format_issn(issn: str | None) -> str | None:
@@ -1624,7 +1583,7 @@ def _format_issn(issn: str | None) -> str | None:
 
 
 @LINT.add("verify_jstor")
-def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[str]:
+def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     # Only for journal articles with a JSTOR id
     tags = list(art.get_tags(art.tags, ArticleTag.JSTOR))
     if not tags:
@@ -1655,24 +1614,22 @@ def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[str]:
         # ISSNs
         issn_print = _format_issn(row.get("identifiers_print_issn"))
         issn_online = _format_issn(row.get("identifiers_online_issn"))
+        new_cg_tags = []
         if issn_print:
             tag = CitationGroupTag.ISSN(issn_print)
             if tag not in cg.tags:
-                msg = f"adding print ISSN {issn_print} from JSTOR"
-                if cfg.autofix:
-                    print(f"{cg}: {msg}")
-                    cg.add_tag(tag)
-                else:
-                    yield msg
+                new_cg_tags.append(tag)
         if issn_online:
             tag = CitationGroupTag.ISSNOnline(issn_online)
             if tag not in cg.tags:
-                msg = f"adding online ISSN {issn_online} from JSTOR"
-                if cfg.autofix:
-                    print(f"{cg}: {msg}")
-                    cg.add_tag(tag)
-                else:
-                    yield msg
+                new_cg_tags.append(tag)
+        if new_cg_tags:
+            yield field_issue(
+                f"adding ISSN tags {new_cg_tags} from JSTOR",
+                cg,
+                "tags",
+                (*cg.tags, *new_cg_tags),
+            )
     # Title
     if art.title:
         jt = (row.get("title") or "").strip()
@@ -1701,15 +1658,11 @@ def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[str]:
         if not has_same:
             tag = ArticleTag.PublicationDate(DateSource.jstor, pub_date)
             msg = f"adding PublicationDate {pub_date} from JSTOR"
-            if cfg.autofix:
-                print(f"{art}: {msg}")
-                art.add_tag(tag)
-            else:
-                yield msg
+            yield append_to_field_issue(msg, art, "tags", tag)
 
 
 @LINT.add("find_jstor")
-def find_jstor(art: Article, cfg: LintConfig) -> Iterable[str]:
+def find_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     # Try to infer JSTOR id from local DB by journal+volume+title
     if art.has_tag(ArticleTag.JSTOR):
         return
@@ -1740,11 +1693,7 @@ def find_jstor(art: Article, cfg: LintConfig) -> Iterable[str]:
                 )
             return
     msg = f"inferred JSTOR id {jstor_id} (sim={cand.similarity:.2f}) via journal/volume/title"
-    if cfg.autofix and not LINT.is_ignoring_lint(art, "find_jstor"):
-        print(f"{art}: {msg}")
-        art.add_tag(ArticleTag.JSTOR(jstor_id))
-    else:
-        yield msg
+    yield append_to_field_issue(msg, art, "tags", ArticleTag.JSTOR(jstor_id))
 
 
 def should_not_have_issue(art: Article) -> bool:
@@ -1796,7 +1745,7 @@ def _clean_string_field(value: str) -> str:
 
 
 @LINT.add("string_fields")
-def check_string_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_string_fields(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     for field in art.fields():
         value = getattr(art, field)
         if not isinstance(value, str):
@@ -1830,7 +1779,7 @@ def check_required_fields(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("journal")
-def check_journal(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_journal(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.type is not ArticleType.JOURNAL:
         return
     cg = art.citation_group
@@ -1918,7 +1867,7 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("infer_lsid")
-def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
+def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.numeric_year() < 2012:
         return
     tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
@@ -1941,6 +1890,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
     cleaned_text = "".join(
         re.sub(r"\s", "", page).replace("-", "-").casefold() for page in pages
     ).replace("-", "")
+    inferred_tags = []
     for lsid in act_lsids:
         if lsid.replace("-", "") not in cleaned_text:
             continue
@@ -1954,19 +1904,24 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[str]:
                 new_tag = ArticleTag.LSIDArticle(
                     zoobank_data.citation_lsid, PresenceStatus.inferred
                 )
-                message = f"adding inferred LSID: {new_tag}"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.add_tag(new_tag)
-                else:
-                    yield message
+                if new_tag not in art.tags and new_tag not in inferred_tags:
+                    inferred_tags.append(new_tag)
+    if inferred_tags:
+        yield field_issue(
+            f"adding inferred LSIDs: {inferred_tags}",
+            art,
+            "tags",
+            (*art.tags, *inferred_tags),
+        )
 
 
 @LINT.add("lsid")
-def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
+def check_lsid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
     if not tags:
         return
+    original_tags = list(art.tags)
+    new_tags = original_tags
     by_status = defaultdict(set)
     by_lsid = defaultdict(set)
     for tag in tags:
@@ -1978,11 +1933,10 @@ def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
         if len(statuses) > 1:
             yield f"LSID present with multiple statuses: {lsid}, {statuses}"
             dupes = True
-    if dupes and cfg.autofix:
+    if dupes:
         # present > inferred > absent
         new_tags = []
-        existing_tags = list(art.tags)
-        for tag in existing_tags:
+        for tag in original_tags:
             if isinstance(tag, ArticleTag.LSIDArticle):
                 if tag.present_in_article is PresenceStatus.absent and (
                     tag.text in by_status[PresenceStatus.present]
@@ -1995,15 +1949,13 @@ def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
                 ):
                     continue
             new_tags.append(tag)
-        if existing_tags != new_tags:
-            print(f"{art}: changing tags")
-            getinput.print_diff(existing_tags, new_tags)
-            art.tags = new_tags  # type: ignore[assignment]
 
     if (
         not by_status[PresenceStatus.probably_absent]
         and not by_status[PresenceStatus.to_be_determined]
     ):
+        if new_tags != original_tags:
+            yield field_issue("changing LSID tags", art, "tags", tuple(new_tags))
         return
     pages = art.get_all_pdf_pages()
     cleaned_text = "".join(
@@ -2032,40 +1984,37 @@ def check_lsid(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield f"LSID {', '.join(prob_present)} is in fact present in article"
     if prob_absent:
         yield f"LSID {', '.join(prob_absent)} is really absent in article"
-    if cfg.autofix:
-        new_tags = []
-        existing_tags = list(art.tags)
-        for tag in existing_tags:
-            if isinstance(tag, ArticleTag.LSIDArticle):
-                if (
-                    tag.present_in_article is PresenceStatus.probably_absent
-                    and tag.text in prob_absent
-                ):
-                    new_tags.append(
-                        ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
-                    )
-                elif (
-                    tag.present_in_article is PresenceStatus.to_be_determined
-                    and tag.text in tbd_present
-                ):
-                    new_tags.append(
-                        ArticleTag.LSIDArticle(tag.text, PresenceStatus.present)
-                    )
-                elif (
-                    tag.present_in_article is PresenceStatus.to_be_determined
-                    and tag.text in tbd_absent
-                ):
-                    new_tags.append(
-                        ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
-                    )
-                else:
-                    # Others left for manual check
-                    new_tags.append(tag)
+    resolved_tags = []
+    for tag in new_tags:
+        if isinstance(tag, ArticleTag.LSIDArticle):
+            if (
+                tag.present_in_article is PresenceStatus.probably_absent
+                and tag.text in prob_absent
+            ):
+                resolved_tags.append(
+                    ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
+                )
+            elif (
+                tag.present_in_article is PresenceStatus.to_be_determined
+                and tag.text in tbd_present
+            ):
+                resolved_tags.append(
+                    ArticleTag.LSIDArticle(tag.text, PresenceStatus.present)
+                )
+            elif (
+                tag.present_in_article is PresenceStatus.to_be_determined
+                and tag.text in tbd_absent
+            ):
+                resolved_tags.append(
+                    ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
+                )
             else:
-                new_tags.append(tag)
-        if new_tags != existing_tags:
-            print(f"{art}: adjusting LSID tags: {existing_tags} -> {new_tags}")
-            art.tags = new_tags  # type: ignore[assignment]
+                # Others left for manual check
+                resolved_tags.append(tag)
+        else:
+            resolved_tags.append(tag)
+    if resolved_tags != original_tags:
+        yield field_issue("adjusting LSID tags", art, "tags", tuple(resolved_tags))
 
 
 @LINT.add("must_use_children")
@@ -2142,15 +2091,11 @@ def get_num_referencing_tags(
 
 def _maybe_clean(
     art: Article, field: str, cleaned: Any, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     current = getattr(art, field)
     if cleaned != current:
         message = f"clean {field} {current!r} -> {cleaned!r}"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            setattr(art, field, cleaned)
-        else:
-            yield message
+        yield field_issue(message, art, field, cleaned)
 
 
 @LINT.add("specify_authors")
@@ -2167,7 +2112,7 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("find_doi", requires_network=True)
-def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
+def find_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         art.doi is not None
         or art.has_tag(ArticleTag.JSTOR)
@@ -2196,16 +2141,11 @@ def find_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
         if not is_candidate_doi_acceptable(art, doi, data, cfg):
             continue
         message = build_summary_for_doi_data(doi, data)
-        if cfg.autofix and not LINT.is_ignoring_lint(art, "find_doi"):
-            if art.doi is not None:
-                if art.doi != doi:
-                    yield f"has existing DOI {art.doi}, skipping autofix adding DOI {doi}"
-            else:
-                art.doi = doi
-                print(f"{art}: {message}")
-                print(repr(art))
+        if art.doi is not None:
+            if art.doi != doi:
+                yield f"has existing DOI {art.doi}, skipping autofix adding DOI {doi}"
         else:
-            yield message + f"\n{art!r}"
+            yield field_issue(message + f"\n{art!r}", art, "doi", doi)
 
 
 def is_candidate_doi_acceptable(
@@ -2483,7 +2423,7 @@ def get_url_from_doi(doi: str) -> str | None:
 
 
 @LINT.add("replace_duplicate_url")
-def replace_duplicate_url(art: Article, cfg: LintConfig) -> Iterable[str]:
+def replace_duplicate_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.url is None:
         if art.doi is not None:
             url = get_url_from_doi(art.doi)
@@ -2492,25 +2432,17 @@ def replace_duplicate_url(art: Article, cfg: LintConfig) -> Iterable[str]:
                 and urllib.parse.urlsplit(url).netloc == "www.biodiversitylibrary.org"
             ):
                 message = f"adding BHL URL {url} from DOI"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.url = url
-                else:
-                    yield message
+                yield field_issue(message, art, "url", url)
         return
     if art.doi is not None and not has_bhl_url(art):
         url = get_url_from_doi(art.doi)
         if url is not None and _standardize_url(art.url) == _standardize_url(url):
             message = f"removing URL {art.url} since it duplicates DOI"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.url = None
-            else:
-                yield message
+            yield field_issue(message, art, "url", None)
 
 
 @LINT.add("data_from_doi", requires_network=True)
-def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
+def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         art.doi is None
         or art.kind is ArticleKind.alternative_version
@@ -2527,7 +2459,15 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[str]:
     yield from _check_doi_end_page(art, data)
     yield from _check_doi_article_number(art, data, cfg)
     yield from _check_doi_isbn(art, data, cfg)
-    yield from _check_doi_tags(art, data, cfg)
+    new_tags = [tag for tag in data["tags"] if tag not in art.tags]
+    if data.get("isbn") and art.get_identifier(ArticleTag.ISBN) is None:
+        isbn_tag = ArticleTag.ISBN(data["isbn"])
+        if isbn_tag not in new_tags:
+            new_tags.append(isbn_tag)
+    if new_tags:
+        yield field_issue(
+            f"adding tags {new_tags} from DOI", art, "tags", (*art.tags, *new_tags)
+        )
     yield from _check_doi_authors(art, data, cfg)
 
 
@@ -2590,17 +2530,13 @@ def _check_doi_volume(art: Article, data: dict[str, Any]) -> Iterable[str]:
 
 def _check_doi_issue(
     art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not data.get("issue"):
         return
     if art.issue is None:
         if not should_not_have_issue(art):
             message = f"adding issue {data['issue']} from DOI"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.issue = data["issue"]
-            else:
-                yield message
+            yield field_issue(message, art, "issue", data["issue"])
         return
     doi_issue = data["issue"].replace("/", "-").replace("–", "-")
     if doi_issue == "1":
@@ -2641,16 +2577,12 @@ def _check_doi_end_page(art: Article, data: dict[str, Any]) -> Iterable[str]:
 
 def _check_doi_article_number(
     art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not data.get("article_number"):
         return
     if art.article_number is None:
         message = f"adding article number {data['article_number']} from DOI"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.article_number = data["article_number"]
-        else:
-            yield message
+        yield field_issue(message, art, "article_number", data["article_number"])
     elif data["article_number"] != art.article_number and not re.fullmatch(
         rf"(e|[a-z]+\.){re.escape(data["article_number"])}", art.article_number
     ):
@@ -2664,12 +2596,6 @@ def _check_doi_isbn(
         return
     existing = art.get_identifier(ArticleTag.ISBN)
     if existing is None:
-        message = f"adding ISBN {data['isbn']} from DOI"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.add_tag(ArticleTag.ISBN(data["isbn"]))
-        else:
-            yield message
         return
     existing_cleaned = existing.replace("-", "").replace(" ", "")
     new_cleaned = data["isbn"].replace("-", "").replace(" ", "")
@@ -2677,22 +2603,9 @@ def _check_doi_isbn(
         yield f"ISBN mismatch: {data['isbn']} (DOI) vs. {existing} (article)"
 
 
-def _check_doi_tags(
-    art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
-    for tag in data["tags"]:
-        if tag not in art.tags:
-            message = f"adding tag {tag} from DOI"
-            if cfg.autofix:
-                print(f"{art}: {message}")
-                art.add_tag(tag)
-            else:
-                yield message
-
-
 def _check_doi_authors(
     art: Article, data: dict[str, Any], cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if "author_tags" not in data:
         return
     doi_authors = data["author_tags"]
@@ -2709,15 +2622,11 @@ def _check_doi_authors(
         return
     message = "updating authors from DOI"
     getinput.print_diff(art.author_tags, new_authors)
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.author_tags = new_authors  # type: ignore[assignment]
-    else:
-        yield message
+    yield field_issue(message, art, "author_tags", tuple(new_authors))
 
 
 @LINT.add("infer_pmid", requires_network=True)
-def infer_pmid(art: Article, cfg: LintConfig) -> Iterable[str]:
+def infer_pmid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         art.has_tag(ArticleTag.PMID)
         or art.type is ArticleType.SUPPLEMENT
@@ -2739,15 +2648,11 @@ def infer_pmid(art: Article, cfg: LintConfig) -> Iterable[str]:
     if pmid is None:
         return
     message = f"adding PMID {pmid} inferred from DOI"
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.add_tag(ArticleTag.PMID(pmid))
-    else:
-        yield message
+    yield append_to_field_issue(message, art, "tags", ArticleTag.PMID(pmid))
 
 
 @LINT.add("data_from_pubmed", requires_network=True)
-def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
+def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     """Compare article data against PubMed (via ESummary) when PMID is present.
 
     Similar spirit to data_from_doi: warn on inconsistencies; autofix missing issue.
@@ -2815,11 +2720,7 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
         if art.issue is None:
             if not should_not_have_issue(art):
                 message = f"adding issue {data['issue']} from PubMed"
-                if cfg.autofix and not LINT.is_ignoring_lint(art, "data_from_pubmed"):
-                    print(f"{art}: {message}")
-                    art.issue = data["issue"]
-                else:
-                    yield message
+                yield field_issue(message, art, "issue", data["issue"])
         else:
             src_issue = data["issue"].replace("/", "-").replace("–", "-")
             if (
@@ -2849,15 +2750,11 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[str]:
         and models.article.api_data.is_doi_valid(data["doi"])
     ):
         message = f"adding DOI {data['doi']} from PubMed"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.doi = data["doi"]
-        else:
-            yield message
+        yield field_issue(message, art, "doi", data["doi"])
 
 
 @LINT.add("data_from_pmc", requires_network=True)
-def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
+def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     """Compare article data against PMC (via Europe PMC) when PMCID is present."""
     pmc = art.get_identifier(ArticleTag.PMC)
     if not pmc or art.kind is ArticleKind.alternative_version:
@@ -2895,11 +2792,7 @@ def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
         if art.issue is None:
             if not should_not_have_issue(art):
                 message = f"adding issue {data['issue']} from PMC"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.issue = data["issue"]
-                else:
-                    yield message
+                yield field_issue(message, art, "issue", data["issue"])
         else:
             src_issue = data["issue"].replace("/", "-").replace("–", "-")
             if (
@@ -2929,25 +2822,17 @@ def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
         and models.article.api_data.is_doi_valid(data["doi"])
     ):
         message = f"adding DOI {data['doi']} from PMC"
-        if cfg.autofix:
-            print(f"{art}: {message}")
-            art.doi = data["doi"]
-        else:
-            yield message
+        yield field_issue(message, art, "doi", data["doi"])
     # PMID (optional add if present and missing)
     if not art.get_identifier(ArticleTag.PMID):
         for tag in data.get("tags", []) or []:
             if isinstance(tag, ArticleTag.PMID):
                 message = f"adding PMID {tag.text} from PMC"
-                if cfg.autofix:
-                    print(f"{art}: {message}")
-                    art.add_tag(tag)
-                else:
-                    yield message
+                yield append_to_field_issue(message, art, "tags", tag)
 
 
 @LINT.add("infer_pmc", requires_network=True)
-def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
+def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     """Infer PMCID for articles lacking it, using PMID/DOI or metadata as fallback."""
     if (
         art.get_identifier(ArticleTag.PMC)
@@ -2986,11 +2871,7 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[str]:
     if not pmcid:
         return
     message = f"adding PMCID {pmcid}"
-    if cfg.autofix:
-        print(f"{art}: {message}")
-        art.add_tag(ArticleTag.PMC(pmcid))
-    else:
-        yield message
+    yield append_to_field_issue(message, art, "tags", ArticleTag.PMC(pmcid))
 
 
 def _check_zoobank_year(art: Article, data: dict[str, Any]) -> Iterable[str]:

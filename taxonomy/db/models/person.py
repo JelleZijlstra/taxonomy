@@ -23,6 +23,8 @@ from .base import (
     TextOrNullField,
     get_tag_based_derived_field,
 )
+from .lint import field_issue
+from .lint_types import LintResult
 
 ALLOWED_TUSSENVOEGSELS = {
     NamingConvention.dutch: {
@@ -488,23 +490,28 @@ class Person(BaseModel):
             self.type.name,
         )
 
-    def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
+    def lint_invalid(self, cfg: LintConfig) -> Iterable[LintResult]:
         if self.type in (PersonType.hard_redirect, PersonType.soft_redirect):
             if not self.target:
-                yield f"{self}: redirect has no target"
-                if cfg.autofix:
-                    print(f"{self}: resetting type to unchecked")
-                    self.type = PersonType.unchecked
+                yield field_issue(
+                    f"{self}: redirect has no target; resetting type to unchecked",
+                    self,
+                    "type",
+                    PersonType.unchecked,
+                )
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         for field_name, field_obj in self.clirm_fields.items():
             if field_obj.type_object is str:
                 value = getattr(self, field_name)
                 if value is not None and not helpers.is_clean_string(value):
                     cleaned = helpers.clean_string(value)
-                    print(f"{self}: clean {field_name} from {value!r} to {cleaned!r}")
-                    if cfg.autofix:
-                        setattr(self, field_name, cleaned)
+                    yield field_issue(
+                        f"{self}: clean {field_name} from {value!r} to {cleaned!r}",
+                        self,
+                        field_name,
+                        cleaned,
+                    )
 
         for tag in self.tags:
             if isinstance(tag, models.tags.PersonTag.Wiki):

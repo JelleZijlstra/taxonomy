@@ -4,7 +4,8 @@ from typing import Any, ClassVar, cast
 import pytest
 
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import Lint
+from taxonomy.db.models.lint import Lint, count_lint_codes, field_issue
+from taxonomy.db.models.lint_types import LintIssue
 
 
 @dataclass(frozen=True)
@@ -128,7 +129,9 @@ def test_linter_error_preserves_ignore() -> None:
 
     messages = list(lint.run(obj, LintConfig(autofix=True, interactive=False)))
 
-    assert messages == ["FakeObject(1): error running problem linter: broken linter"]
+    assert [str(message) for message in messages] == [
+        "FakeObject(1): error running problem linter: broken linter"
+    ]
     assert obj.tags == [FakeIgnore("problem", "earlier review")]
 
 
@@ -165,6 +168,48 @@ def test_linter_can_skip_virtual_objects_and_preserve_ignore() -> None:
 
     messages = list(lint.run(obj, LintConfig(autofix=True, interactive=False)))
 
-    assert messages == ["FakeObject(1): has problem [problem]"]
+    assert [str(message) for message in messages] == [
+        "FakeObject(1): has problem [problem]"
+    ]
     assert calls == []
     assert obj.tags == [FakeIgnore("persisted_only", "requires database state")]
+
+
+def test_decorator_adds_code_to_plain_lint_issue() -> None:
+    obj = FakeObject(1, needs_ignore=True)
+    lint = make_lint([obj])
+
+    (message,) = lint.run(obj, LintConfig(autofix=False, interactive=False))
+
+    assert isinstance(message, LintIssue)
+    assert not isinstance(message, str)
+    assert message.message == "FakeObject(1): has problem [problem]"
+    assert message.code == "problem"
+    assert str(message) == "FakeObject(1): has problem [problem]"
+    assert count_lint_codes([message, "legacy issue"]) == {"problem": 1, "uncoded": 1}
+
+
+def test_structured_autofix_only_changes_virtual_objects() -> None:
+    virtual = FakeObject(1, needs_ignore=True, is_virtual=True)
+    persisted = FakeObject(2, needs_ignore=True)
+    lint = make_lint([virtual, persisted])
+    lint.linters[0].linter = lambda obj, _cfg: [
+        field_issue("clear problem", cast(Any, obj), "needs_ignore", new=False)
+    ]
+    applied: list[Any] = []
+    cfg = LintConfig(
+        autofix=False,
+        structured_autofix=True,
+        fix_callback=applied.append,
+        interactive=False,
+    )
+
+    assert list(lint.run(virtual, cfg)) == []
+    assert virtual.needs_ignore is False
+    assert len(applied) == 1
+    assert applied[0].code == "problem"
+
+    (unresolved,) = lint.run(persisted, cfg)
+    assert persisted.needs_ignore is True
+    assert isinstance(unresolved, LintIssue)
+    assert unresolved.code == "problem"

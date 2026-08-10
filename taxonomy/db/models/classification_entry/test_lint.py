@@ -10,6 +10,7 @@ from taxonomy.db.models.classification_entry.ce import (
 from taxonomy.db.models.classification_entry.lint import (
     _is_misspelling_of,
     check_auxiliary_name,
+    check_missing_mapped_name,
     check_needs_auxiliary_name,
     check_parent_cycle,
     check_parent_rank,
@@ -73,7 +74,7 @@ def test_verbatim_parent_must_be_auxiliary() -> None:
     messages = list(check_verbatim_parent(ce, LintConfig()))
 
     assert len(messages) == 1
-    assert messages[0].endswith(
+    assert str(messages[0]).endswith(
         f"VerbatimParent target {target} is not an AuxiliaryName CE "
         "[verbatim_parent]"
     )
@@ -88,7 +89,7 @@ def test_verbatim_parent_must_have_same_parent() -> None:
     messages = list(check_verbatim_parent(ce, LintConfig()))
 
     assert len(messages) == 1
-    assert messages[0].endswith(
+    assert str(messages[0]).endswith(
         f"VerbatimParent target {auxiliary} does not have the same parent "
         "[verbatim_parent]"
     )
@@ -108,7 +109,7 @@ def test_auxiliary_name_requires_same_rank_parent() -> None:
     messages = list(check_auxiliary_name(auxiliary, LintConfig()))
 
     assert len(messages) == 1
-    assert messages[0].endswith(
+    assert str(messages[0]).endswith(
         "AuxiliaryName CE has parent of different rank genus [auxiliary_name]"
     )
 
@@ -123,7 +124,7 @@ def test_auxiliary_name_requires_misspelling_mapping() -> None:
     messages = list(check_auxiliary_name(auxiliary, LintConfig()))
 
     assert len(messages) == 1
-    assert messages[0].endswith(
+    assert str(messages[0]).endswith(
         "AuxiliaryName CE does not map to a misspelling of its parent name "
         "[auxiliary_name]"
     )
@@ -178,6 +179,41 @@ def test_is_misspelling_of() -> None:
     assert _is_misspelling_of(misspelling, correct)
 
 
+def test_missing_mapped_name_exposes_structured_fix_and_decorator_code() -> None:
+    ce = _make_ce(parent=None, auxiliary=False)
+    ce.mapped_name = None
+    inferred = _make_name("inferred")
+
+    with patch(
+        "taxonomy.db.models.classification_entry.lint."
+        "get_filtered_possible_mapped_names",
+        return_value=[inferred],
+    ):
+        (issue,) = check_missing_mapped_name(
+            ce, LintConfig(autofix=False, interactive=False)
+        )
+
+    assert issue.code == "missing_mapped_name"
+    assert issue.fix is not None
+    assert ce.mapped_name is None
+
+    with patch(
+        "taxonomy.db.models.classification_entry.lint."
+        "get_filtered_possible_mapped_names",
+        return_value=[inferred],
+    ):
+        assert (
+            list(
+                check_missing_mapped_name(
+                    ce, LintConfig(autofix=True, interactive=False)
+                )
+            )
+            == []
+        )
+
+    assert ce.mapped_name is inferred
+
+
 def test_needs_auxiliary_name_finds_misspelled_sibling() -> None:
     parent = _make_ce(parent=None, auxiliary=False)
     correct_name = _make_name("correct")
@@ -200,7 +236,7 @@ def test_needs_auxiliary_name_finds_misspelled_sibling() -> None:
         )
 
     assert len(messages) == 1
-    assert "convert to AuxiliaryName under sibling CE" in messages[0]
+    assert "convert to AuxiliaryName under sibling CE" in str(messages[0])
 
 
 def test_needs_auxiliary_name_autofix() -> None:
@@ -226,7 +262,7 @@ def test_needs_auxiliary_name_autofix() -> None:
     ):
         messages = list(check_needs_auxiliary_name(misspelled_ce, LintConfig()))
 
-    assert len(messages) == 1
+    assert messages == []
     assert misspelled_ce.has_tag(ClassificationEntryTag.AuxiliaryName)
     assert misspelled_ce.parent is correct_ce
     assert child.parent is correct_ce

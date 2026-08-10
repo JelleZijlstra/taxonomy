@@ -59,6 +59,7 @@ from taxonomy.db.models.base import (
     get_tag_based_derived_field,
 )
 from taxonomy.db.models.citation_group import CitationGroup
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.person import (
     AuthorTag,
     Person,
@@ -1366,7 +1367,7 @@ class Article(BaseModel):
         self.specify_authors()
         return super().format(quiet=quiet, cfg=cfg)
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         yield from models.article.lint.LINT.run(self, cfg)
 
     @classmethod

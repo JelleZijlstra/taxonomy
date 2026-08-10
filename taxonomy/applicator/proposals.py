@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any, TypeVar
+from dataclasses import dataclass, replace
+from typing import Any, TypeVar, cast
 
 from clirm import substitute_virtual_models
 
 from taxonomy import adt
 from taxonomy.db.models.base import BaseModel, LintConfig
+from taxonomy.db.models.lint import count_lint_codes
+from taxonomy.db.models.lint_types import LintIssue, LintResult
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
@@ -22,7 +24,8 @@ class ProposedModel:
 @dataclass(frozen=True, slots=True)
 class ProposalLintResult:
     proposal: ProposedModel
-    messages: tuple[str, ...]
+    messages: tuple[LintResult, ...]
+    simulated_fixes: tuple[LintIssue, ...] = ()
 
 
 class ProposalBuilder:
@@ -48,7 +51,7 @@ class ProposalBuilder:
             self._by_origin_identity[identity] = proposal
             self._proposals.append(proposal)
         self._add_context(proposal, context)
-        return proposal
+        return cast(ModelT, proposal)
 
     def create(
         self,
@@ -68,7 +71,7 @@ class ProposalBuilder:
 
     def replacement(self, model: ModelT) -> ModelT:
         """Return an existing proposal for a model, or the persisted model itself."""
-        return self._by_origin_identity.get(id(model), model)
+        return cast(ModelT, self._by_origin_identity.get(id(model), model))
 
     def _remap_value(self, value: Any) -> Any:
         if isinstance(value, BaseModel):
@@ -134,10 +137,24 @@ def lint_proposals(
     proposals: tuple[ProposedModel, ...],
     *,
     cfg: LintConfig = LintConfig(autofix=False, interactive=False),
+    max_fix_rounds: int = 10,
 ) -> tuple[ProposalLintResult, ...]:
-    """Run ordinary taxonomy lint against virtual proposals on a best-effort basis."""
-    results: list[ProposalLintResult] = []
+    """Run lint and safely simulate structured fixes against virtual proposals."""
+    if max_fix_rounds < 1:
+        raise ValueError("max_fix_rounds must be positive")
+    base_cfg = replace(
+        cfg,
+        autofix=False,
+        structured_autofix=False,
+        fix_callback=None,
+        interactive=False,
+    )
     model_types = {type(proposal.model) for proposal in proposals}
+    simulated_by_model: dict[int, list[LintIssue]] = {
+        id(proposal.model): [] for proposal in proposals
+    }
+    latest_messages: dict[int, tuple[LintIssue, ...]] = {}
+    convergence_error: LintIssue | None = None
     for model_type in model_types:
         model_type.clear_lint_caches()
     try:
@@ -145,32 +162,97 @@ def lint_proposals(
             BaseModel.clirm.readonly(),
             substitute_virtual_models(proposal.model for proposal in proposals),
         ):
-            for proposal in proposals:
-                model = proposal.model
-                try:
-                    messages = tuple(model.general_lint(cfg))
-                except Exception as exc:
-                    messages = (f"error running virtual lint: {exc!r}",)
-                if model.virtual_origin is not None:
-                    # Database-wide duplicate queries necessarily find the proposal's
-                    # own persisted origin. That is an artifact of virtual lint, not a
-                    # proposed duplicate.
-                    messages = tuple(
-                        message
-                        for message in messages
-                        if not message.endswith(" [duplicate]")
+            for _round_index in range(max_fix_rounds):
+                round_fix_count = 0
+                for proposal in proposals:
+                    model = proposal.model
+                    simulated_this_pass: list[LintIssue] = []
+                    run_cfg = replace(
+                        base_cfg,
+                        structured_autofix=True,
+                        fix_callback=simulated_this_pass.append,
                     )
-                results.append(ProposalLintResult(proposal, messages))
+                    try:
+                        raw_messages = tuple(model.general_lint(run_cfg))
+                    except Exception as exc:
+                        raw_messages = (
+                            LintIssue(
+                                f"error running virtual lint: {exc!r}",
+                                code="virtual_lint_error",
+                            ),
+                        )
+                    messages = tuple(
+                        (
+                            message
+                            if isinstance(message, LintIssue)
+                            else LintIssue(str(message))
+                        )
+                        for message in raw_messages
+                    )
+                    if model.virtual_origin is not None:
+                        # Database-wide duplicate queries necessarily find the
+                        # proposal's own persisted origin. That is an artifact of
+                        # virtual lint, not a proposed duplicate.
+                        messages = tuple(
+                            message
+                            for message in messages
+                            if not str(message).endswith(" [duplicate]")
+                        )
+                    latest_messages[id(model)] = messages
+                    simulated_by_model[id(model)].extend(simulated_this_pass)
+                    round_fix_count += len(simulated_this_pass)
+                if round_fix_count == 0:
+                    break
+                for model_type in model_types:
+                    model_type.clear_lint_caches()
+            else:
+                convergence_error = LintIssue(
+                    f"structured virtual autofix did not converge after "
+                    f"{max_fix_rounds} rounds",
+                    code="virtual_autofix_nonconvergent",
+                )
     finally:
         for model_type in model_types:
             model_type.clear_lint_caches()
+    results = []
+    for index, proposal in enumerate(proposals):
+        messages = latest_messages.get(id(proposal.model), ())
+        if convergence_error is not None and index == 0:
+            messages = (*messages, convergence_error)
+        results.append(
+            ProposalLintResult(
+                proposal, messages, tuple(simulated_by_model[id(proposal.model)])
+            )
+        )
     return tuple(results)
 
 
 def print_lint_results(results: tuple[ProposalLintResult, ...]) -> None:
     """Print advisory virtual-lint results without claiming complete validation."""
     with_issues = [result for result in results if result.messages]
+    simulated = [issue for result in results for issue in result.simulated_fixes]
     print("BEST_EFFORT VIRTUAL LINT")
+    if simulated:
+        counts = count_lint_codes(simulated)
+        print(f"VIRTUAL_AUTOFIX_SIMULATED total={len(simulated)}")
+        for code, count in sorted(counts.items()):
+            print(f"- code={code} count={count}")
+        for result in results:
+            if not result.simulated_fixes:
+                continue
+            model = result.proposal.model
+            origin = model.virtual_origin_id
+            identity = (
+                f"origin={origin}"
+                if origin is not None
+                else f"new_virtual_id={model.id!r}"
+            )
+            print(
+                f"SIMULATED_FIXES {type(model).__name__} {identity}; "
+                f"contexts={result.proposal.contexts!r}"
+            )
+            for issue in result.simulated_fixes:
+                print(f"- {issue}")
     for result in with_issues:
         model = result.proposal.model
         origin = model.virtual_origin_id
@@ -181,6 +263,13 @@ def print_lint_results(results: tuple[ProposalLintResult, ...]) -> None:
         )
         for message in result.messages:
             print(f"- {message}")
+    remaining = count_lint_codes(
+        message for result in with_issues for message in result.messages
+    )
+    if remaining:
+        print("VIRTUAL_LINT_REMAINING_BY_CODE")
+        for code, count in sorted(remaining.items()):
+            print(f"- code={code} count={count}")
     print(
         f"Best-effort virtual lint: {len(results)} object(s) checked, "
         f"{len(with_issues)} with issue(s). New virtual rows and changed scalar "

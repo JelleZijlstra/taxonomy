@@ -14,6 +14,8 @@ from taxonomy.db.constants import Markdown
 from .article import Article
 from .base import ADTField, BaseModel, LintConfig
 from .citation_group import CitationGroup
+from .lint import field_issue
+from .lint_types import LintResult
 
 
 class IssueDate(BaseModel):
@@ -46,14 +48,10 @@ class IssueDate(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         if self.issue is not None and "–" in self.issue:
             message = f"{self}: dash in issue: {self.issue}"
-            if cfg.autofix:
-                print(message)
-                self.issue = self.issue.replace("–", "-")
-            else:
-                yield message
+            yield field_issue(message, self, "issue", self.issue.replace("–", "-"))
         if not helpers.is_valid_date(self.date):
             yield f"{self}: invalid date {self.date}"
         if self.start_page is not None and not self.start_page.isnumeric():

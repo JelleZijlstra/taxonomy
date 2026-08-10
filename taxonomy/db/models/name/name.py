@@ -66,6 +66,7 @@ from taxonomy.db.models.collection import (
     UNTRACED_COLLECTION,
     Collection,
 )
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name_complex import NameComplex, SpeciesNameComplex
 from taxonomy.db.models.person import AuthorTag, Person, get_new_authors_list
@@ -1837,7 +1838,7 @@ class Name(BaseModel):
         if full:
             data: dict[str, Any] = {}
             if not skip_lint:
-                lints = "; ".join(self.lint())
+                lints = "; ".join(map(str, self.lint()))
                 if lints:
                     data["lint"] = lints
             level_strings = []
@@ -2221,7 +2222,7 @@ class Name(BaseModel):
 
     def lint(
         self, cfg: LintConfig = LintConfig(autofix=False, interactive=False)
-    ) -> Iterable[str]:
+    ) -> Iterable[LintResult]:
         try:
             self.get_description(full=True, include_taxon=True, skip_lint=True)
         except Exception as e:

@@ -981,9 +981,9 @@ def test_explicit_location_equivalence_lint_accepts_parenthetical_marker(
     )
 
     assert len(messages) == 1
-    assert "bracketed equivalent 'Humpata'" in messages[0]
-    assert "valid Location 20: 'Humpata'" in messages[0]
-    assert "Region 'Angola'" in messages[0]
+    assert "bracketed equivalent 'Humpata'" in str(messages[0])
+    assert "valid Location 20: 'Humpata'" in str(messages[0])
+    assert "Region 'Angola'" in str(messages[0])
 
 
 def test_explicit_location_equivalence_lint_rechecks_same_region_candidate(
@@ -1030,11 +1030,11 @@ def test_explicit_location_equivalence_lint_rechecks_same_region_candidate(
     )
 
     assert len(messages) == 1
-    assert "bracketed equivalent 'Tuare'" in messages[0]
-    assert "valid Location 20: 'Toware'" in messages[0]
-    assert "Region 'Central Sulawesi'" in messages[0]
-    assert "Location 30" not in messages[0]
-    assert "Location 40" not in messages[0]
+    assert "bracketed equivalent 'Tuare'" in str(messages[0])
+    assert "valid Location 20: 'Toware'" in str(messages[0])
+    assert "Region 'Central Sulawesi'" in str(messages[0])
+    assert "Location 30" not in str(messages[0])
+    assert "Location 40" not in str(messages[0])
 
 
 def test_explicit_location_equivalence_lint_rechecks_cached_candidate(
@@ -1060,8 +1060,8 @@ def test_explicit_location_equivalence_lint_rechecks_cached_candidate(
         location_lint.check_explicit_location_equivalence(current, LintConfig())
     )
     assert len(messages) == 1
-    assert "bracketed equivalent 'Tlalpan'" in messages[0]
-    assert "valid Location 20: 'Tlalpan'" in messages[0]
+    assert "bracketed equivalent 'Tlalpan'" in str(messages[0])
+    assert "valid Location 20: 'Tlalpan'" in str(messages[0])
 
     stale = _location_without_coordinates(
         id=20, name="Tlalpan", region=cast(Region, region)
@@ -1197,8 +1197,8 @@ def test_coordinate_collision_reports_different_regions(
     messages = list(location_lint.check_coordinate_collision(first, LintConfig()))
 
     assert len(messages) == 1
-    assert "shared with Location(s) in different Regions" in messages[0]
-    assert "20: 'Second' (Nevada)" in messages[0]
+    assert "shared with Location(s) in different Regions" in str(messages[0])
+    assert "20: 'Second' (Nevada)" in str(messages[0])
 
 
 def test_coordinate_collision_rechecks_cached_candidates(
@@ -1617,8 +1617,8 @@ def test_plss_tag_requires_canonical_text_and_meridian() -> None:
 
     messages = list(location_lint.check_plss_tag(loc, LintConfig(autofix=False)))
 
-    assert any("not canonical" in message for message in messages)
-    assert any("not a valid CadNSDI PLSSID" in message for message in messages)
+    assert any("not canonical" in str(message) for message in messages)
+    assert any("not a valid CadNSDI PLSSID" in str(message) for message in messages)
 
 
 def test_plss_tag_autofixes_noncanonical_text() -> None:
@@ -1731,9 +1731,9 @@ def test_location_plss_lint_suggests_tag_from_linked_name(
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "add PLSS" in messages[0]
-    assert "T27S R31E Sec. 3, Willamette Meridian" in messages[0]
-    assert "OR330270S0310E0" in messages[0]
+    assert "add PLSS" in str(messages[0])
+    assert "T27S R31E Sec. 3, Willamette Meridian" in str(messages[0])
+    assert "OR330270S0310E0" in str(messages[0])
 
 
 def test_location_plss_lint_uses_common_township_for_distinct_sections(
@@ -1756,7 +1756,7 @@ def test_location_plss_lint_uses_common_township_for_distinct_sections(
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "add PLSS('T27S R31E, Willamette Meridian'" in messages[0]
+    assert "add PLSS('T27S R31E, Willamette Meridian'" in str(messages[0])
 
 
 def test_location_plss_lint_uses_common_section_for_distinct_quarters(
@@ -1779,7 +1779,7 @@ def test_location_plss_lint_uses_common_section_for_distinct_quarters(
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "add PLSS('T27S R31E Sec. 3, Willamette Meridian'" in messages[0]
+    assert "add PLSS('T27S R31E Sec. 3, Willamette Meridian'" in str(messages[0])
 
 
 def test_location_plss_lint_extracts_location_detail(
@@ -1794,8 +1794,8 @@ def test_location_plss_lint_extracts_location_detail(
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "add PLSS" in messages[0]
-    assert "Location location_detail" in messages[0]
+    assert "add PLSS" in str(messages[0])
+    assert "Location location_detail" in str(messages[0])
 
 
 def test_location_plss_lint_infers_coordinates_before_gazetteers(
@@ -1871,7 +1871,7 @@ def test_location_plss_lint_does_not_add_tag_to_general_location(
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "general location has precise PLSS evidence" in messages[0]
+    assert "general location has precise PLSS evidence" in str(messages[0])
     assert loc.tags == ()
 
 
@@ -1884,7 +1884,7 @@ def test_location_plss_lint_rejects_tag_on_general_location() -> None:
     messages = list(location_lint.check_general_plss(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "general location should not have a precise PLSS tag" in messages[0]
+    assert "general location should not have a precise PLSS tag" in str(messages[0])
 
 
 def test_location_plss_lint_infers_township_from_alternative_sections(
@@ -1911,8 +1911,8 @@ def test_location_plss_lint_infers_township_from_alternative_sections(
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "general location has precise PLSS evidence" in messages[0]
-    assert "T13S R36W, Willamette Meridian" in messages[0]
+    assert "general location has precise PLSS evidence" in str(messages[0])
+    assert "T13S R36W, Willamette Meridian" in str(messages[0])
     assert loc.tags == ()
     resolver.assert_called_once()
 
@@ -1967,7 +1967,7 @@ def test_location_plss_lint_checks_coordinates_against_polygon(
     messages = list(location_lint.check_plss(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "from the section polygon" in messages[0]
+    assert "from the section polygon" in str(messages[0])
 
 
 def test_location_plss_lint_adds_coordinate_bounds_in_autofix_mode(
@@ -2016,7 +2016,7 @@ def test_location_plss_lint_does_not_overwrite_partial_coordinates(
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "coordinate bounds could be" in messages[0]
+    assert "coordinate bounds could be" in str(messages[0])
     assert loc.latitude == "42.95°N"
     assert loc.longitude is None
     assert loc.tags == (plss_tag,)
@@ -2100,7 +2100,7 @@ def test_location_plss_lint_only_reports_missing_polygon_when_verbose(
     assert list(location_lint.check_plss(loc, LintConfig())) == []
     messages = list(location_lint.check_plss(loc, LintConfig(verbose=True)))
     assert len(messages) == 1
-    assert "BLM has no section polygon" in messages[0]
+    assert "BLM has no section polygon" in str(messages[0])
 
 
 def _nominatim_result(
@@ -2443,7 +2443,7 @@ def test_location_infers_coordinates_from_occurrence_record() -> None:
     )
 
     assert len(messages) == 1
-    assert "coordinates should be 37.9°N, 122.1°W" in messages[0]
+    assert "coordinates should be 37.9°N, 122.1°W" in str(messages[0])
 
 
 def test_location_infers_coordinate_ranges_from_linked_evidence() -> None:
@@ -2493,7 +2493,7 @@ def test_location_does_not_infer_conflicting_coordinates() -> None:
     )
 
     assert len(messages) == 1
-    assert "cannot infer coordinates" in messages[0]
+    assert "cannot infer coordinates" in str(messages[0])
     assert loc.latitude is None
     assert loc.longitude is None
 
@@ -2531,7 +2531,7 @@ def test_coordinate_provenance_lint_suggests_backfill_without_autofix(
     )
 
     assert len(messages) == 1
-    assert "add coordinate provenance tags" in messages[0]
+    assert "add coordinate provenance tags" in str(messages[0])
     assert loc.tags == ()
 
 
@@ -2556,7 +2556,7 @@ def test_coordinate_provenance_lint_does_not_backfill_nearby_name_coordinates(
     )
 
     assert len(messages) == 1
-    assert "not supported by a coordinate provenance tag" in messages[0]
+    assert "not supported by a coordinate provenance tag" in str(messages[0])
     assert loc.tags == ()
 
 
@@ -2576,7 +2576,7 @@ def test_coordinate_provenance_lint_reports_changed_name_coordinates(
     messages = list(location_lint.check_coordinate_provenance(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "do not exactly match the numeric extent" in messages[0]
+    assert "do not exactly match the numeric extent" in str(messages[0])
 
 
 def test_coordinate_provenance_lint_rejects_nearby_name_coordinates(
@@ -2595,8 +2595,8 @@ def test_coordinate_provenance_lint_rejects_nearby_name_coordinates(
     messages = list(location_lint.check_coordinate_provenance(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "do not exactly match the numeric extent" in messages[0]
-    assert "expected 37.9°N, 122.1°W" in messages[0]
+    assert "do not exactly match the numeric extent" in str(messages[0])
+    assert "expected 37.9°N, 122.1°W" in str(messages[0])
 
 
 def test_coordinate_provenance_lint_accepts_equivalent_formatting(
@@ -2663,7 +2663,7 @@ def test_coordinate_provenance_lint_rejects_nonmatching_location_detail_pairs(
     messages = list(location_lint.check_coordinate_provenance(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "expected 37.9°N-38°N, 122.1°W-122°W" in messages[0]
+    assert "expected 37.9°N-38°N, 122.1°W-122°W" in str(messages[0])
 
 
 def test_coordinate_provenance_lint_backfills_one_exact_name_coordinate(
@@ -2791,7 +2791,7 @@ def test_coordinate_provenance_lint_rejects_stale_extra_provenance(
     messages = list(location_lint.check_coordinate_provenance(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "expected 37.9°N-38°N, 122.1°W-122°W" in messages[0]
+    assert "expected 37.9°N-38°N, 122.1°W-122°W" in str(messages[0])
 
 
 def test_coordinate_provenance_lint_backfills_exact_multi_source_union(
@@ -2854,7 +2854,7 @@ def test_coordinate_provenance_lint_reports_unsupported_coordinates(
     )
 
     assert len(messages) == 1
-    assert "not supported by a coordinate provenance tag" in messages[0]
+    assert "not supported by a coordinate provenance tag" in str(messages[0])
 
 
 def test_coordinate_provenance_lint_backfills_nominatim_for_non_recent_location(
@@ -3056,7 +3056,7 @@ def test_coordinate_provenance_lint_updates_category_but_reports_changed_extent(
         location_lint.check_coordinate_provenance(loc, LintConfig(autofix=True))
     )
 
-    assert any("do not exactly match" in message for message in messages)
+    assert any("do not exactly match" in str(message) for message in messages)
     assert loc.tags == (
         LocationTag.CoordinatesFromNominatim(
             "node", 1234, "natural", use_bounding_box=False
@@ -3109,9 +3109,11 @@ def test_location_does_not_infer_conflicting_geonames_coordinates(
     )
 
     assert len(messages) == 1
-    assert "2 conflicting usable exact matches in the assigned Region" in messages[0]
-    assert "ID 1" in messages[0]
-    assert "ID 2" in messages[0]
+    assert "2 conflicting usable exact matches in the assigned Region" in str(
+        messages[0]
+    )
+    assert "ID 1" in str(messages[0])
+    assert "ID 2" in str(messages[0])
     assert loc.latitude is None
     assert loc.longitude is None
 
@@ -3259,7 +3261,7 @@ def test_geonames_does_not_override_ambiguous_nominatim_results(
     )
 
     assert len(messages) == 1
-    assert "Nominatim returned 2 conflicting exact matches" in messages[0]
+    assert "Nominatim returned 2 conflicting exact matches" in str(messages[0])
     assert loc.latitude is None
     assert loc.longitude is None
 
@@ -3285,7 +3287,7 @@ def test_geonames_and_nominatim_incompatible_coordinates_are_not_inferred(
     )
 
     assert len(messages) == 1
-    assert "resolve to incompatible coordinate clusters" in messages[0]
+    assert "resolve to incompatible coordinate clusters" in str(messages[0])
     assert loc.latitude is None
     assert loc.longitude is None
 
@@ -3421,10 +3423,10 @@ def test_location_coordinates_are_far_from_all_geonames_candidates(
     )
 
     assert len(messages) == 1
-    assert "more than 5 km from all 2 exact GeoNames matches" in messages[0]
-    assert "ID 5376890" in messages[0]
-    assert "ID 2" in messages[0]
-    assert messages[0].count("km away") == 2
+    assert "more than 5 km from all 2 exact GeoNames matches" in str(messages[0])
+    assert "ID 5376890" in str(messages[0])
+    assert "ID 2" in str(messages[0])
+    assert str(messages[0]).count("km away") == 2
 
 
 def test_geonames_consistency_reports_conflicting_points_masked_by_range(
@@ -3450,10 +3452,10 @@ def test_geonames_consistency_reports_conflicting_points_masked_by_range(
     )
 
     assert len(messages) == 1
-    assert "may mask conflated homonyms" in messages[0]
-    assert "2 conflicting point-like GeoNames exact matches" in messages[0]
-    assert "ID 1" in messages[0]
-    assert "ID 2" in messages[0]
+    assert "may mask conflated homonyms" in str(messages[0])
+    assert "2 conflicting point-like GeoNames exact matches" in str(messages[0])
+    assert "ID 1" in str(messages[0])
+    assert "ID 2" in str(messages[0])
 
 
 def test_geonames_search_uses_country_and_applies_locality_offset(
@@ -3664,7 +3666,7 @@ def test_non_recent_location_checks_geonames_coordinate_consistency(
     )
 
     assert len(messages) == 1
-    assert "more than 5 km from all" in messages[0]
+    assert "more than 5 km from all" in str(messages[0])
 
 
 def test_non_general_significant_coordinate_range_is_reported(
@@ -3686,11 +3688,11 @@ def test_non_general_significant_coordinate_range_is_reported(
     messages = list(location_lint.check_coordinates(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert (
-        "non-General location has a coordinate range with 78.6 km radius" in messages[0]
+    assert "non-General location has a coordinate range with 78.6 km radius" in str(
+        messages[0]
     )
-    assert "contains more precise linked evidence" in messages[0]
-    assert "0.5°N, 0.5°E" in messages[0]
+    assert "contains more precise linked evidence" in str(messages[0])
+    assert "0.5°N, 0.5°E" in str(messages[0])
 
 
 def test_unplaced_significant_coordinate_range_is_not_reported(
@@ -3722,7 +3724,7 @@ def test_general_location_rejects_point_coordinates(
     messages = list(location_lint.check_coordinates(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "should use a coordinate range, not point coordinates" in messages[0]
+    assert "should use a coordinate range, not point coordinates" in str(messages[0])
     check_region.assert_not_called()
 
 
@@ -3910,7 +3912,7 @@ def test_general_location_retains_conflicting_broad_river_matches(
     )
 
     assert len(messages) == 1
-    assert "2 conflicting exact-match bounding boxes" in messages[0]
+    assert "2 conflicting exact-match bounding boxes" in str(messages[0])
 
 
 def test_general_location_proposes_replacing_point_with_nominatim_bounding_box(
@@ -3949,8 +3951,10 @@ def test_general_location_proposes_replacing_point_with_nominatim_bounding_box(
     )
 
     assert len(messages) == 1
-    assert "coordinate range should be 6.7562674°N-9.2562168°N" in messages[0]
-    assert "replace point coordinates 7.0000167°N, 93.8110528°E manually" in messages[0]
+    assert "coordinate range should be 6.7562674°N-9.2562168°N" in str(messages[0])
+    assert "replace point coordinates 7.0000167°N, 93.8110528°E manually" in str(
+        messages[0]
+    )
     assert loc.latitude == "7.0000167°N"
     assert loc.longitude == "93.8110528°E"
 
@@ -4019,9 +4023,9 @@ def test_possible_general_location_reports_broad_nominatim_feature(
     )
 
     assert len(messages) == 1
-    assert "should be reviewed for the General tag" in messages[0]
-    assert "relation waterway/river" in messages[0]
-    assert "78.6 km bounding-box radius" in messages[0]
+    assert "should be reviewed for the General tag" in str(messages[0])
+    assert "relation waterway/river" in str(messages[0])
+    assert "78.6 km bounding-box radius" in str(messages[0])
     assert loc.tags == ()
 
 
@@ -4092,7 +4096,7 @@ def test_possible_general_location_accepts_named_administrative_area(
     messages = list(location_lint.check_possible_general_location(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "boundary/administrative" in messages[0]
+    assert "boundary/administrative" in str(messages[0])
 
 
 def test_possible_general_location_rejects_settlement_administrative_boundary(
@@ -4222,7 +4226,7 @@ def test_possible_general_location_reports_linked_coordinate_spread(
     messages = list(location_lint.check_possible_general_location(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "Linked coordinate evidence also spans 111.2 km" in messages[0]
+    assert "Linked coordinate evidence also spans 111.2 km" in str(messages[0])
 
 
 def test_nominatim_bounding_box_rejects_antimeridian_fallback() -> None:
@@ -4528,7 +4532,7 @@ def test_location_offset_name_lint(name: str, expected: str) -> None:
     messages = list(location_lint.check_offset_name(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert f"distance-offset name should be {expected!r}" in messages[0]
+    assert f"distance-offset name should be {expected!r}" in str(messages[0])
 
 
 def test_location_offset_name_lint_accepts_canonical_name() -> None:
@@ -4543,7 +4547,7 @@ def test_location_name_lint_proposes_canonical_spacing() -> None:
     messages = list(location_lint.check_location_name(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "location name should be 'Foo River (California): mouth'" in messages[0]
+    assert "location name should be 'Foo River (California): mouth'" in str(messages[0])
 
 
 def test_location_name_lint_does_not_autofix_canonical_spacing() -> None:
@@ -4552,7 +4556,7 @@ def test_location_name_lint_does_not_autofix_canonical_spacing() -> None:
     messages = list(location_lint.check_location_name(loc, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "location name should be 'Foo River (California): mouth'" in messages[0]
+    assert "location name should be 'Foo River (California): mouth'" in str(messages[0])
     assert loc.name == "Foo River (California) : mouth"
 
 
@@ -4562,7 +4566,7 @@ def test_location_name_lint_rejects_multiple_disambiguators() -> None:
     messages = list(location_lint.check_location_name(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "may contain only one parenthetical disambiguator" in messages[0]
+    assert "may contain only one parenthetical disambiguator" in str(messages[0])
 
 
 def test_location_offset_name_lint_autofixes_available_name(
@@ -4589,7 +4593,7 @@ def test_location_offset_name_lint_does_not_autofix_name_collision(
     assert len(messages) == 1
     assert (
         "distance-offset name should be 'Castle Brace: 2 mi SW'; "
-        "cannot autofix because that name is already in use" in messages[0]
+        "cannot autofix because that name is already in use" in str(messages[0])
     )
 
 
@@ -4693,7 +4697,7 @@ def test_location_disambiguator_lint_rejects_nearby_region_without_modifier() ->
     messages = list(location_lint.check_disambiguator(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "disambiguator 'Netherlands' is not an enclosing Region" in messages[0]
+    assert "disambiguator 'Netherlands' is not an enclosing Region" in str(messages[0])
 
 
 def test_location_disambiguator_lint_accepts_containing_period(
@@ -4753,9 +4757,9 @@ def test_location_disambiguator_lint_rejects_other_qualifiers(
     assert len(messages) == 1
     assert (
         f"disambiguator {disambiguator!r} is not an enclosing Region, "
-        "an assigned Period, or an assigned StratigraphicUnit" in messages[0]
+        "an assigned Period, or an assigned StratigraphicUnit" in str(messages[0])
     )
-    assert "location name should be" not in messages[0]
+    assert "location name should be" not in str(messages[0])
 
 
 def test_location_disambiguator_lint_accepts_modifier() -> None:
@@ -4770,7 +4774,7 @@ def test_location_disambiguator_lint_does_not_propose_or_autofix_modifier() -> N
     messages = list(location_lint.check_disambiguator(loc, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "location name should be" not in messages[0]
+    assert "location name should be" not in str(messages[0])
     assert loc.name == "Lomas Cantadas (upper)"
 
 
@@ -4830,8 +4834,8 @@ def test_coordinate_modifier_lint_detects_location_coordinate_mismatch(
     messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "does not match Location coordinates" in messages[0]
-    assert "km apart" in messages[0]
+    assert "does not match Location coordinates" in str(messages[0])
+    assert "km apart" in str(messages[0])
 
 
 def test_coordinate_modifier_lint_allows_equivalent_coordinate_notation(
@@ -4860,7 +4864,7 @@ def test_coordinate_modifier_lint_requires_location_coordinates(
     messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "Location coordinates are missing or incomplete" in messages[0]
+    assert "Location coordinates are missing or incomplete" in str(messages[0])
 
 
 def test_coordinate_modifier_lint_rejects_impossible_coordinates() -> None:
@@ -4869,7 +4873,7 @@ def test_coordinate_modifier_lint_rejects_impossible_coordinates() -> None:
     messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "invalid coordinate modifier '-117.1, -270.2'" in messages[0]
+    assert "invalid coordinate modifier '-117.1, -270.2'" in str(messages[0])
     assert list(location_lint.check_disambiguator(loc, LintConfig())) == []
 
 
@@ -4890,7 +4894,7 @@ def test_coordinate_modifier_lint_checks_region(
     assert len(messages) == 1
     assert (
         "coordinate modifier 17°S 70°W: "
-        "coordinate extent is outside Test Region" in messages[0]
+        "coordinate extent is outside Test Region" in str(messages[0])
     )
 
 
@@ -4991,7 +4995,7 @@ def test_location_modifier_keeps_disambiguator_when_required(
     )
 
     assert len(messages) == 1
-    assert "Castle Brace (Dominica): 2 mi SW" in messages[0]
+    assert "Castle Brace (Dominica): 2 mi SW" in str(messages[0])
 
 
 def test_virtual_copy_does_not_collide_with_its_persisted_origin(
@@ -5102,9 +5106,9 @@ def test_untagged_cross_region_modifier_still_requires_disambiguators(
     )
 
     assert len(base_messages) == 1
-    assert "Maastricht (Netherlands)" in base_messages[0]
+    assert "Maastricht (Netherlands)" in str(base_messages[0])
     assert len(modified_messages) == 1
-    assert "Maastricht (Belgium): 20 km W" in modified_messages[0]
+    assert "Maastricht (Belgium): 20 km W" in str(modified_messages[0])
 
 
 @pytest.mark.parametrize(
@@ -5251,7 +5255,7 @@ def test_location_does_not_choose_place_over_distant_administrative_boundaries(
     )
 
     assert len(messages) == 1
-    assert "returned 3 conflicting exact matches" in messages[0]
+    assert "returned 3 conflicting exact matches" in str(messages[0])
     assert loc.latitude is None
     assert loc.longitude is None
 
@@ -5289,8 +5293,8 @@ def test_location_does_not_choose_between_multiple_place_candidates(
     )
 
     assert len(messages) == 1
-    assert "returned 3 conflicting exact matches" in messages[0]
-    assert all(result.display_name in messages[0] for result in results)
+    assert "returned 3 conflicting exact matches" in str(messages[0])
+    assert all(result.display_name in str(messages[0]) for result in results)
     assert loc.latitude is None
     assert loc.longitude is None
 
@@ -5354,9 +5358,9 @@ def test_nominatim_consistency_reports_conflicting_places_masked_by_range(
     )
 
     assert len(messages) == 1
-    assert "may mask conflated homonyms" in messages[0]
-    assert "2 conflicting non-linear Nominatim exact matches" in messages[0]
-    assert all(result.display_name in messages[0] for result in results)
+    assert "may mask conflated homonyms" in str(messages[0])
+    assert "2 conflicting non-linear Nominatim exact matches" in str(messages[0])
+    assert all(result.display_name in str(messages[0]) for result in results)
 
 
 def test_nominatim_masked_homonym_check_ignores_river_segments(
@@ -5419,9 +5423,9 @@ def test_location_coordinates_are_far_from_all_nominatim_candidates(
     )
 
     assert len(messages) == 1
-    assert "more than 5 km from all 2 exact Nominatim matches" in messages[0]
-    assert all(result.display_name in messages[0] for result in results)
-    assert messages[0].count("km away") == 2
+    assert "more than 5 km from all 2 exact Nominatim matches" in str(messages[0])
+    assert all(result.display_name in str(messages[0]) for result in results)
+    assert str(messages[0]).count("km away") == 2
 
 
 def test_reverse_geocoding_reports_stable_region_mismatch(
@@ -5442,8 +5446,8 @@ def test_reverse_geocoding_reports_stable_region_mismatch(
     messages = list(location_lint.check_nominatim_region_consistency(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "consistently reverse-geocode to 'Nevada'" in messages[0]
-    assert "not assigned Region 'California'" in messages[0]
+    assert "consistently reverse-geocode to 'Nevada'" in str(messages[0])
+    assert "not assigned Region 'California'" in str(messages[0])
     assert reverse.call_count == 5
     assert all(call.kwargs == {"zoom": 8} for call in reverse.call_args_list)
 
@@ -5712,7 +5716,7 @@ def test_reverse_geocoding_only_matches_administrative_address_fields(
     messages = list(location_lint.check_nominatim_region_consistency(loc, LintConfig()))
 
     assert len(messages) == 1
-    assert "reverse-geocode to 'Nevada'" in messages[0]
+    assert "reverse-geocode to 'Nevada'" in str(messages[0])
     assert reverse.call_count == 5
 
 
@@ -5806,8 +5810,8 @@ def test_location_lists_all_conflicting_nominatim_matches(
     )
 
     assert len(messages) == 1
-    assert "returned 3 conflicting exact matches" in messages[0]
-    assert all(result.display_name in messages[0] for result in results)
+    assert "returned 3 conflicting exact matches" in str(messages[0])
+    assert all(result.display_name in str(messages[0]) for result in results)
     assert loc.latitude is None
     assert loc.longitude is None
 

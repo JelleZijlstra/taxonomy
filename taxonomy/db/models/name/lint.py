@@ -71,7 +71,14 @@ from taxonomy.db.models.collection import (
     Collection,
 )
 from taxonomy.db.models.item_file import ItemFile
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    append_to_field_issue,
+    field_issue,
+    fields_issue,
+)
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location.age import (
     is_non_recent_location,
     is_pre_pleistocene_location,
@@ -2122,7 +2129,7 @@ def _get_repositories(nam: Name) -> set[tuple[RepositoryKind, Collection]]:
 
 
 @LINT.add("type_specimen_order")
-def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.type_specimen is None:
         return
     try:
@@ -2136,11 +2143,7 @@ def check_type_specimen_order(nam: Name, cfg: LintConfig) -> Iterable[str]:
         f"Incorrectly formatted type specimen: got {nam.type_specimen!r}, expected"
         f" {expected_text!r}"
     )
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.type_specimen = expected_text
-    else:
-        yield message
+    yield field_issue(message, nam, "type_specimen", expected_text)
 
 
 @LINT.add("type_specimen")
@@ -2305,7 +2308,9 @@ def check_must_have_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[s
 
 
 @LINT.add("duplicate_type_specimen_links")
-def check_duplicate_type_specimen_links(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_duplicate_type_specimen_links(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     tags_with_specimens = {
         tag.url for tag in nam.type_tags if isinstance(tag, TypeTag.TypeSpecimenLinkFor)
     }
@@ -2320,15 +2325,13 @@ def check_duplicate_type_specimen_links(nam: Name, cfg: LintConfig) -> Iterable[
     if nam.type_tags != new_tags:
         removed = set(nam.type_tags) - set(new_tags)
         message = f"remove redundant tags: {removed}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.type_tags = new_tags  # type: ignore[assignment]
-        else:
-            yield message
+        yield field_issue(message, nam, "type_tags", new_tags)
 
 
 @LINT.add("replace_simple_type_specimen_link")
-def replace_simple_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def replace_simple_type_specimen_link(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     if nam.type_specimen is None:
         return
     if "," in nam.type_specimen or "(" in nam.type_specimen:
@@ -2348,11 +2351,7 @@ def replace_simple_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[st
         for tag in nam.type_tags
     )
     message = "replace TypeSpecimenLink tag with TypeSpecimenLinkFor"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.type_tags = new_tags  # type: ignore[assignment]
-    else:
-        yield message
+    yield field_issue(message, nam, "type_tags", new_tags)
 
 
 def _parse_specimen_detail(text: str) -> dict[str, str] | None:
@@ -2370,7 +2369,7 @@ def _parse_specimen_detail(text: str) -> dict[str, str] | None:
 
 
 @LINT.add("replace_type_specimen_link")
-def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.type_specimen is None:
         return
     if not any(isinstance(tag, TypeTag.TypeSpecimenLink) for tag in nam.type_tags):
@@ -2458,11 +2457,7 @@ def replace_type_specimen_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
     message = (
         f"replace TypeSpecimenLink tag with TypeSpecimenLinkFor: {', '.join(messages)}"
     )
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.type_tags = new_tags  # type: ignore[assignment]
-    else:
-        yield message
+    yield field_issue(message, nam, "type_tags", new_tags)
 
 
 def get_possible_type_specimens(nam: Name) -> Iterable[str]:
@@ -3122,7 +3117,9 @@ def get_sorted_applicable_statuses(nam: Name) -> Sequence[NomenclatureStatus]:
 
 
 @LINT.add("expected_nomenclature_status")
-def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_expected_nomenclature_status(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     """Check if the nomenclature status is as expected."""
     applicable_from_tags = set(get_applicable_nomenclature_statuses_from_tags(nam))
     if (
@@ -3147,15 +3144,11 @@ def check_expected_nomenclature_status(nam: Name, cfg: LintConfig) -> Iterable[s
             f"has status {nam.nomenclature_status.name}, but expected"
             f" {expected_status.name}"
         )
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.nomenclature_status = expected_status
-        else:
-            yield message
+        yield field_issue(message, nam, "nomenclature_status", expected_status)
 
 
 @LINT.add("redundant_fields")
-def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.nomenclature_status is not NomenclatureStatus.nomen_novum:
         return
     parent = nam.get_tag_target(NameTag.NomenNovumFor)
@@ -3165,9 +3158,8 @@ def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             continue
         can_autofix = parent is not None and getattr(parent, field) == value
         message = f"is a nomen novum and should not have the {field} field set ({can_autofix})"
-        if cfg.autofix and can_autofix:
-            print(f"{nam}: {message} (setting value to None)")
-            setattr(nam, field, None)
+        if can_autofix:
+            yield field_issue(f"{message} (setting value to None)", nam, field, None)
         else:
             yield message
 
@@ -3241,16 +3233,18 @@ def check_year(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("year_matches")
-def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_citation is None:
         return
 
     if nam.year != nam.original_citation.year:
-        if cfg.autofix and helpers.is_more_specific_date(
-            nam.original_citation.year, nam.year
-        ):
-            print(f"{nam}: fixing date {nam.year} -> {nam.original_citation.year}")
-            nam.year = nam.original_citation.year
+        if helpers.is_more_specific_date(nam.original_citation.year, nam.year):
+            yield field_issue(
+                f"fixing date {nam.year} -> {nam.original_citation.year}",
+                nam,
+                "year",
+                nam.original_citation.year,
+            )
         else:
             yield (
                 f"year mismatch: {nam.year} (name) vs."
@@ -3356,7 +3350,7 @@ def _make_rn_message(nam: Name, text: str) -> str:
 
 
 @LINT.add("root_name")
-def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     """Check that root_names are correct."""
     if nam.nomenclature_status.permissive_corrected_original_name():
         return
@@ -3378,21 +3372,17 @@ def check_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 def _check_rn_matches_original(
     nam: Name, corrected_original_name: str, cfg: LintConfig, reason: str
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     con_root = corrected_original_name.rsplit(maxsplit=1)[-1]
     if con_root == nam.root_name:
         return
     message = _make_con_messsage(
         nam, f"does not match root_name {nam.root_name!r} ({reason})"
     )
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.root_name = con_root
-    else:
-        yield message
+    yield field_issue(message, nam, "root_name", con_root)
 
 
-def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     emending_name = nam.get_tag_target(NameTag.AsEmendedBy)
     if emending_name is not None:
         corrected_original_name = emending_name.corrected_original_name
@@ -3474,7 +3464,7 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("family_root_name")
-def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.group is not Group.family:
         return
     if set(get_applicable_nomenclature_statuses_from_tags(nam)) & {
@@ -3513,25 +3503,22 @@ def check_family_root_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
             return
     if nam.has_type_tag(TypeTag.IncorrectGrammar):
         return
-    yield _make_rn_message(nam, f"does not match expected stem {expected_root_name!r}")
     if nam.root_name == stem_name:
         message = f"Autofixing root name: {nam.root_name} -> {expected_root_name}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.root_name = expected_root_name
-        else:
-            yield message
+        yield field_issue(message, nam, "root_name", expected_root_name)
     elif stem_name.endswith("id") and nam.root_name == stem_name.removesuffix("id"):
         message = f"Autofixing root name: {nam.root_name} -> {expected_root_name}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.root_name = stem_name.removesuffix("id") + expected_suffix
-        else:
-            yield message
+        yield field_issue(
+            message, nam, "root_name", stem_name.removesuffix("id") + expected_suffix
+        )
+    else:
+        yield _make_rn_message(
+            nam, f"does not match expected stem {expected_root_name!r}"
+        )
 
 
 @LINT.add("type_taxon")
-def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     """Moves names to child taxa if the type allows it."""
     if nam.group not in (Group.genus, Group.family):
         return
@@ -3550,15 +3537,14 @@ def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.taxon != expected_taxon:
         message = f"expected taxon to be {expected_taxon} not {nam.taxon}"
-        if cfg.autofix and expected_taxon.is_child_of(nam.taxon):
-            print(f"{nam}: {message}")
-            nam.taxon = expected_taxon
+        if expected_taxon.is_child_of(nam.taxon):
+            yield field_issue(message, nam, "taxon", expected_taxon)
         else:
             yield message
 
 
 @LINT.add("type")
-def check_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_type(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     """Checks for the type taxon."""
     if nam.type is None:
         return
@@ -3575,11 +3561,7 @@ def check_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
         and not nam.has_name_tag(NameTag.UnavailableVersionOf)
     ):
         message = f"type is an unavailable version of {target}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.type = target
-        else:
-            yield message
+        yield field_issue(message, nam, "type", target)
 
     match nam.group:
         case Group.family:
@@ -3591,7 +3573,7 @@ def check_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("infer_family_group_type")
-def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         nam.group is not Group.family
         or nam.type is not None
@@ -3611,11 +3593,7 @@ def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[str]:
             print(f"{nam}: could not infer type for family {nam.root_name}")
         return
     message = f"inferred type {possible_types[0]} for family {nam}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.type = possible_types[0]
-    else:
-        yield message
+    yield field_issue(message, nam, "type", possible_types[0])
 
 
 @LINT.add("name_complex")
@@ -3717,7 +3695,7 @@ def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("verbatim_from_tags")
-def verbatim_citation_from_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def verbatim_citation_from_tags(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.verbatim_citation:
         return
     if "verbatim_citation" not in nam.get_required_fields():
@@ -3727,11 +3705,7 @@ def verbatim_citation_from_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     longest = max(tags, key=lambda tag: len(tag.text))
     message = f"setting verbatim citation from tag {longest}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.verbatim_citation = longest.text
-    else:
-        yield message
+    yield field_issue(message, nam, "verbatim_citation", longest.text)
 
 
 @LINT.add("status")
@@ -3869,7 +3843,7 @@ def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("corrected_original_name")
 def autoset_corrected_original_name(
     nam: Name, cfg: LintConfig, *, aggressive: bool = False
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if nam.original_name is None or nam.corrected_original_name is not None:
         return
     if "corrected_original_name" not in nam.get_required_fields():
@@ -3880,11 +3854,7 @@ def autoset_corrected_original_name(
             f"inferred corrected_original_name to be {inferred!r} from"
             f" {nam.original_name!r}"
         )
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.corrected_original_name = inferred
-        else:
-            yield message
+        yield field_issue(message, nam, "corrected_original_name", inferred)
     else:
         yield f"could not infer corrected original name from {nam.original_name!r}"
 
@@ -3965,7 +3935,7 @@ def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("infer_page_described")
-def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         nam.page_described is not None
         or nam.verbatim_citation is None
@@ -3994,11 +3964,7 @@ def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
     else:
         return
     message = f"infer page {page!r} from {nam.verbatim_citation!r}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.page_described = page
-    else:
-        yield message
+    yield field_issue(message, nam, "page_described", page)
 
 
 @LINT.add("page_described")
@@ -4027,7 +3993,7 @@ _JG2015_RE2 = re.compile(rf" \[([A-Za-z\s\d]+)\]\ \[from {re.escape(_JG2015)}\]"
 
 
 @LINT.add("extract_date_from_verbatim")
-def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_citation is None or not nam.data:
         return
     # Extract precise dates from references from Jackson & Groves (2015). This sometimes
@@ -4056,7 +4022,7 @@ def extract_date_from_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 def _maybe_add_publication_date(
     nam: Name, parsed: str, raw_date: str, source: str, cfg: LintConfig
-) -> Iterator[str]:
+) -> Iterator[LintResult]:
     article = nam.original_citation
     if article is None:
         return
@@ -4066,11 +4032,7 @@ def _maybe_add_publication_date(
     if tag in (article.tags or ()):
         return
     message = f'inferred date for {article} from raw date "{raw_date}": {parsed}'
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        article.add_tag(tag)
-    else:
-        yield message
+    yield append_to_field_issue(message, article, "tags", tag)
 
 
 USNM_RGX = re.compile(
@@ -4094,7 +4056,9 @@ AMNH_RGX = re.compile(
 
 
 @LINT.add("extract_date_from_structured_quote")
-def extract_date_from_structured_quotes(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def extract_date_from_structured_quotes(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     if not nam.original_citation:
         return
     for comment in nam.comments.filter(
@@ -4848,7 +4812,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("infer_original_parent")
-def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         nam.original_parent is not None
         or not nam.nomenclature_status.requires_original_parent()
@@ -4862,21 +4826,13 @@ def infer_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
     ):
         original_parent = nam.type.original_parent
         message = f"inferred original_parent to be {original_parent} from type"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.original_parent = original_parent
-        else:
-            yield message
+        yield field_issue(message, nam, "original_parent", original_parent)
     elif (nam.group is Group.species) and nam.corrected_original_name is not None:
         candidates = _get_inferred_original_parent(nam)
         if len(candidates) != 1:
             return
         message = f"inferred original_parent to be {candidates} from {nam.corrected_original_name}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.original_parent = candidates[0]
-        else:
-            yield message
+        yield field_issue(message, nam, "original_parent", candidates[0])
 
 
 def _get_inferred_original_parent(nam: Name) -> Sequence[Name]:
@@ -4978,7 +4934,7 @@ def should_be_infrasubspecific(nam: Name) -> Possibility:
 
 
 @LINT.add("infrasubspecific")
-def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.group is not Group.species:
         return
     if nam.original_rank in (
@@ -4997,11 +4953,7 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if nam.has_name_tag(NameTag.VarietyOrForm):
             return
         message = "should be marked as variety or form"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_tag(NameTag.VarietyOrForm())
-        else:
-            yield message
+        yield append_to_field_issue(message, nam, "tags", NameTag.VarietyOrForm())
     else:
         if any(
             isinstance(tag, NameTag.Condition)
@@ -5014,11 +4966,9 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[str]:
         ) or nam.has_name_tag(NameTag.VarietyOrForm):
             return
         message = "should be infrasubspecific but is not"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_tag(NameTag.Condition(NomenclatureStatus.infrasubspecific))
-        else:
-            yield message
+        yield append_to_field_issue(
+            message, nam, "tags", NameTag.Condition(NomenclatureStatus.infrasubspecific)
+        )
 
 
 def _autoset_original_citation_url(nam: Name) -> None:
@@ -5987,7 +5937,7 @@ def _infer_bhl_page_from_article_page(
 
 
 @LINT.add("move_to_lowest_rank")
-def move_to_lowest_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def move_to_lowest_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     query = Taxon.select_valid().filter(Taxon.base_name == nam)
     if query.count() < 2:
         return
@@ -6006,25 +5956,17 @@ def move_to_lowest_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.taxon != lowest:
         message = f"changing taxon of {nam} to {lowest}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.taxon = lowest
-        else:
-            yield message
+        yield field_issue(message, nam, "taxon", lowest)
 
 
 @LINT.add("infer_original_name")
-def infer_original_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_original_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_name is not None:
         return
     if nam.group not in (Group.genus, Group.high):
         return
     message = f"inferred original name from root name {nam.root_name}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.original_name = nam.root_name
-    else:
-        yield message
+    yield field_issue(message, nam, "original_name", nam.root_name)
 
 
 @cache
@@ -6044,7 +5986,7 @@ def get_name_complex_finder() -> Callable[[str], tuple[NameComplex, str] | None]
 
 
 @LINT.add("infer_name_complex", clear_caches=get_name_complex_finder.cache_clear)
-def infer_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_name_complex(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.name_complex is not None:
         return
     if nam.group is not Group.genus:
@@ -6057,11 +5999,7 @@ def infer_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     nc, reason = result
     message = f"inferred name complex {nc} from root name {nam.root_name} ({reason})"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.name_complex = nc
-    else:
-        yield message
+    yield field_issue(message, nam, "name_complex", nc)
 
 
 NameComplex.creation_event.on(lambda _: get_name_complex_finder.cache_clear())
@@ -6117,7 +6055,7 @@ SpeciesNameEnding.save_event.on(lambda _: get_species_name_complex_finder.cache_
     "infer_species_name_complex",
     clear_caches=get_species_name_complex_finder.cache_clear,
 )
-def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.species_name_complex is not None:
         return
     if nam.group is not Group.species:
@@ -6130,11 +6068,7 @@ def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
     message = (
         f"inferred species name complex {snc} from root name {nam.root_name} ({reason})"
     )
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.species_name_complex = snc
-    else:
-        yield message
+    yield field_issue(message, nam, "species_name_complex", snc)
 
 
 class SuffixTree(Generic[T]):
@@ -6176,7 +6110,7 @@ _checked_root_names: set[str] = set()
 @LINT.add("infer_species_name_complex", clear_caches=_checked_root_names.clear)
 def infer_species_name_complex_from_other_names(
     nam: Name, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if nam.group is not Group.species:
         return
     # Name combinations inherit their name complex from their parent, let's ignore them here
@@ -6201,11 +6135,7 @@ def infer_species_name_complex_from_other_names(
         if nam.species_name_complex is None:
             sc = next(iter(sc_to_nams))
             message = f"inferred species name complex {sc} from other names"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.species_name_complex = sc
-            else:
-                yield message
+            yield field_issue(message, nam, "species_name_complex", sc)
     else:
         if nam.corrected_original_name is None:
             return
@@ -6268,7 +6198,7 @@ def duplicate_name(name: Name) -> tuple[object, ...]:
 
 
 @LINT.add("guess_repository")
-def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.collection is not None:
         return
     if nam.group is not Group.species:
@@ -6314,12 +6244,7 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[str]:
         case (False, False):
             return
 
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.type_tags = new_tags  # type: ignore[assignment]
-    else:
-        getinput.print_diff(nam.type_tags, new_tags)
-        yield message
+    yield field_issue(message, nam, "type_tags", new_tags)
 
 
 def _maybe_add_name_variant(
@@ -6628,7 +6553,7 @@ def should_report_unreplaceable_name(nam: Name, cfg: LintConfig) -> bool:
 @LINT.add("mark_incorrect_subsequent_spelling_as_name_combination")
 def mark_incorrect_subsequent_spelling_as_name_combination(
     nam: Name, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if nam.nomenclature_status != NomenclatureStatus.incorrect_subsequent_spelling:
         return
     if nam.corrected_original_name is None:
@@ -6677,16 +6602,13 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
                     tag, (NameTag.SubsequentUsageOf, NameTag.NameCombinationOf)
                 )
             ] + [expected_tag]
-            getinput.print_diff(nam.tags, new_tags)
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.tags = new_tags  # type: ignore[assignment]
-            else:
-                yield message
+            yield field_issue(message, nam, "tags", new_tags)
 
 
 @LINT.add("family_group_subsequent_usage")
-def mark_family_group_subsequent_usage(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def mark_family_group_subsequent_usage(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     if nam.group is not Group.family:
         return
     if nam.corrected_original_name is None or nam.original_rank is None:
@@ -6714,11 +6636,7 @@ def mark_family_group_subsequent_usage(nam: Name, cfg: LintConfig) -> Iterable[s
     earliest_name = min(same_name, key=lambda name: name.numeric_year())
     tag = NameTag.SubsequentUsageOf(earliest_name)
     message = f"marking as subsequent usage of {earliest_name}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.add_tag(tag)
-    else:
-        yield message
+    yield append_to_field_issue(message, nam, "tags", tag)
 
 
 @dataclass(frozen=True)
@@ -6861,7 +6779,9 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("duplicate_included_species")
-def check_duplicate_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_duplicate_included_species(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     if nam.group is not Group.genus:
         return
     all_included: dict[  # type: ignore[name-defined]
@@ -6896,11 +6816,12 @@ def check_duplicate_included_species(nam: Name, cfg: LintConfig) -> Iterable[str
                 yield message
     if tags_to_remove:
         message = f"remove duplicate IncludedSpecies tags {tags_to_remove}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.type_tags = [tag for tag in nam.type_tags if tag not in tags_to_remove]  # type: ignore[assignment]
-        else:
-            yield message
+        yield field_issue(
+            message,
+            nam,
+            "type_tags",
+            tuple(tag for tag in nam.type_tags if tag not in tags_to_remove),
+        )
 
 
 def _included_species_key(nam: Name) -> Name:
@@ -7093,7 +7014,7 @@ def has_classification(art: Article) -> bool:
 
 
 @LINT.add("must_have_ce")
-def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_citation is None:
         return
     if not any(nam.original_citation.get_classification_entries()):
@@ -7118,11 +7039,7 @@ def check_must_have_ce(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if len(movable_ces) == 1:
                 ce = movable_ces[0]
                 message = f"changing mapped name of {ce} from {ce.mapped_name} to {nam}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    ce.mapped_name = nam
-                else:
-                    yield message
+                yield field_issue(message, ce, "mapped_name", nam)
         if not has_classification(nam.original_citation):
             return
         yield f"must have classification entries for {nam.original_citation}"
@@ -7162,47 +7079,44 @@ _ALLOWED_TRANSFORMS: list[Callable[[str], str]] = [
 @LINT.add("matches_mapped")
 def check_matches_mapped_classification_entry(
     nam: Name, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     ce = nam.get_mapped_classification_entry()
     if ce is None:
         return
     if ce.name != nam.original_name:
-        yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
         if nam.original_name is None or can_transform(
             ce.name, nam.original_name, _ALLOWED_TRANSFORMS
         ):
             message = f"changing original name to {ce.name}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.original_name = ce.name
-            else:
-                yield message
+            yield field_issue(message, nam, "original_name", ce.name)
+        else:
+            yield f"mapped to {ce}, but {ce.name=} != {nam.original_name=}"
     expected_con = ce.get_name_to_use_as_normalized_original_name()
     if expected_con != nam.corrected_original_name:
         yield f"mapped to {ce}, but {expected_con} != {nam.corrected_original_name}"
     if ce.page != nam.page_described:
-        yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
-        if cfg.autofix:
-            if nam.page_described is None:
-                print(f"{nam}: inferred page {ce.page}")
-                nam.page_described = ce.page
-            elif set(parse_page_text(nam.page_described)) < set(
-                parse_page_text(ce.page)
-            ):
-                print(f"{nam}: extended page from {nam.page_described} to {ce.page}")
-                nam.page_described = ce.page
+        if nam.page_described is None:
+            yield field_issue(
+                f"inferred page {ce.page}", nam, "page_described", ce.page
+            )
+        elif set(parse_page_text(nam.page_described)) < set(parse_page_text(ce.page)):
+            yield field_issue(
+                f"extended page from {nam.page_described} to {ce.page}",
+                nam,
+                "page_described",
+                ce.page,
+            )
+        else:
+            yield f"mapped to {ce}, but {ce.page=} != {nam.page_described=}"
     yield from _check_matching_original_parent(nam, ce, cfg)
     if nam.original_rank is not ce.rank:
-        yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
         if nam.original_rank is None or (
             nam.status is Status.synonym and ce.rank.is_synonym
         ):
             message = f"inferred rank {ce.rank!r} from {ce}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.original_rank = ce.rank
-            else:
-                yield message
+            yield field_issue(message, nam, "original_rank", ce.rank)
+        else:
+            yield f"mapped to {ce}, but {ce.rank=!r} != {nam.original_rank=!r}"
     elif ce.rank.needs_textual_rank:
         ce_tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.TextualRank))
         if ce_tags:
@@ -7232,12 +7146,18 @@ def check_matches_mapped_classification_entry(
     ]
     if new_conditions:
         message = f"mapped {ce} has conditions {new_conditions}; add to name"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            for tag in new_conditions:
-                nam.add_tag(NameTag.Condition(tag.status, comment=tag.comment))
-        else:
-            yield message
+        yield field_issue(
+            message,
+            nam,
+            "tags",
+            (
+                *nam.tags,
+                *(
+                    NameTag.Condition(tag.status, comment=tag.comment)
+                    for tag in new_conditions
+                ),
+            ),
+        )
 
     for tag in ce.tags:
         if isinstance(tag, ClassificationEntryTag.LSIDCE):
@@ -7253,16 +7173,12 @@ def check_matches_mapped_classification_entry(
 
 def _check_matching_original_parent(
     nam: Name, ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if nam.original_parent is None:
         ce_parent = ce.get_original_parent_ce()
         if ce_parent is not None and ce_parent.mapped_name is not None:
             message = f"inferred original parent {ce_parent.mapped_name} from {ce}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.original_parent = ce_parent.mapped_name
-            else:
-                yield message
+            yield field_issue(message, nam, "original_parent", ce_parent.mapped_name)
         return
     if ce.rank.is_synonym:
         return
@@ -7296,34 +7212,22 @@ def _check_matching_original_parent(
 
 
 @LINT.add("original_rank")
-def check_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_original_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_rank is None:
         return
     if nam.original_rank is Rank.synonym:
         new_rank = helpers.GROUP_TO_SYNONYM_RANK[nam.group]
         message = f"changing original rank to {new_rank!r}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.original_rank = new_rank
-        else:
-            yield message
+        yield field_issue(message, nam, "original_rank", new_rank)
         return
     if nam.original_rank is Rank.other:
         if nam.group is Group.family:
             message = f"changing original rank to {Rank.other_family!r}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.original_rank = Rank.other_family
-            else:
-                yield message
+            yield field_issue(message, nam, "original_rank", Rank.other_family)
             return
         elif nam.group is Group.genus:
             message = f"changing original rank to {Rank.other_subgeneric!r}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.original_rank = Rank.other_subgeneric
-            else:
-                yield message
+            yield field_issue(message, nam, "original_rank", Rank.other_subgeneric)
             return
     if (
         nam.original_rank is Rank.informal
@@ -7331,12 +7235,11 @@ def check_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
         and nam.taxon.group() is Group.species
     ):
         message = f"changing original rank to {Rank.informal_species!r} and group to {Group.species!r}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.original_rank = Rank.informal_species
-            nam.group = Group.species
-        else:
-            yield message
+        yield fields_issue(
+            message,
+            (nam, "original_rank", Rank.informal_species),
+            (nam, "group", Group.species),
+        )
     if (
         nam.corrected_original_name is not None
         and nam.nomenclature_status
@@ -7356,7 +7259,7 @@ def check_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("infer_unavalailable_version")
-def infer_unavailable_version(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_unavailable_version(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.nomenclature_status not in {
         NomenclatureStatus.nomen_nudum,
         NomenclatureStatus.not_based_on_a_generic_name,
@@ -7414,11 +7317,7 @@ def infer_unavailable_version(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     tag = NameTag.UnavailableVersionOf(candidates[0])
     message = f"add UnavailableVersionOf tag: {tag}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.add_tag(tag)
-    else:
-        yield message
+    yield append_to_field_issue(message, nam, "tags", tag)
 
 
 @LINT.add("should_be_variant")
@@ -7588,7 +7487,7 @@ def is_valid_mammal(nam: Name) -> bool:
 
 
 @LINT.add("infer_reranking")
-def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.group is not Group.family:
         return
     if nam.type is None or nam.year is None or nam.original_name is None:
@@ -7624,11 +7523,7 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     tag = NameTag.RerankingOf(best_candidate)
     message = f"add RerankingOf tag: {tag}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.add_tag(tag)
-    else:
-        yield message
+    yield append_to_field_issue(message, nam, "tags", tag)
 
 
 @LINT.add("must_have")

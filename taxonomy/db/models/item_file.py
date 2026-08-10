@@ -29,7 +29,8 @@ from taxonomy.getinput import CallbackMap
 
 from .base import ADTField, BaseModel, LintConfig
 from .citation_group import CitationGroup
-from .lint import IgnoreLint, Lint
+from .lint import IgnoreLint, Lint, field_issue
+from .lint_types import LintResult
 
 
 class ItemFileTag(ADT):
@@ -137,7 +138,7 @@ class ItemFile(BaseModel):
         """If this returns True, we won't call clean_string() on the field in lint."""
         return field == "name"
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         yield from LINT.run(self, cfg)
 
     @classmethod
@@ -652,7 +653,7 @@ LINT = Lint(ItemFile, _get_ignores, _remove_unused_ignores)
 
 
 @LINT.add("roman_volume")
-def lint_roman_volume(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+def lint_roman_volume(itf: ItemFile, cfg: LintConfig) -> Iterable[LintResult]:
     # Normalize Roman numeral volume numbers (e.g., "VI" -> "6").
     vol = itf.volume
     if not vol:
@@ -668,15 +669,11 @@ def lint_roman_volume(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
     if new == vol:
         return
     message = f"convert Roman numeral volume {vol!r} -> {new!r}"
-    if cfg.autofix:
-        print(f"{itf}: {message}")
-        itf.volume = new
-    else:
-        yield message
+    yield field_issue(message, itf, "volume", new)
 
 
 @LINT.add("detect_url", requires_network=True)
-def lint_detect_url(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+def lint_detect_url(itf: ItemFile, cfg: LintConfig) -> Iterable[LintResult]:
     # Propose and optionally set a URL based on file content/name.
     if itf.url is not None:
         return
@@ -684,15 +681,11 @@ def lint_detect_url(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
     if not suggestion:
         return
     message = f"set detected URL to {suggestion}"
-    if cfg.autofix:
-        print(f"{itf}: {message}")
-        itf.url = suggestion
-    else:
-        yield message
+    yield field_issue(message, itf, "url", suggestion)
 
 
 @LINT.add("url_format")
-def lint_url_format(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+def lint_url_format(itf: ItemFile, cfg: LintConfig) -> Iterable[LintResult]:
     # Reformat URL using taxonomy.urlparse and flag invalid URLs.
     if itf.url is None:
         return
@@ -700,17 +693,13 @@ def lint_url_format(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
     stringified = str(parsed)
     if stringified != itf.url:
         message = f"reformatted url to {stringified} from {itf.url}"
-        if cfg.autofix:
-            print(f"{itf}: {message}")
-            itf.url = stringified
-        else:
-            yield message
+        yield field_issue(message, itf, "url", stringified)
     for m in parsed.lint():
         yield f"URL {itf.url}: {m}"
 
 
 @LINT.add("cg_fields")
-def lint_citation_group_fields(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
+def lint_citation_group_fields(itf: ItemFile, cfg: LintConfig) -> Iterable[LintResult]:
     cg = itf.citation_group
     if cg is None:
         return
@@ -742,11 +731,7 @@ def lint_citation_group_fields(itf: ItemFile, cfg: LintConfig) -> Iterable[str]:
         issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", issue)
         if issue != itf.issue:
             msg = f"normalize issue formatting {itf.issue!r} -> {issue!r}"
-            if cfg.autofix:
-                print(f"{itf}: {msg}")
-                itf.issue = issue
-            else:
-                yield msg
+            yield field_issue(msg, itf, "issue", issue)
         rgx = cg_lint.get_issue_regex(cg)
         rgx = f"({rgx})|(({rgx})–({rgx}))"  # Allow ranges with en-dash
         if not re.fullmatch(rgx, itf.issue):

@@ -26,6 +26,8 @@ from taxonomy.apis.cloud_search import SearchField
 from taxonomy.db import cached_data, derived_data, helpers, models
 from taxonomy.db.constants import StringKind
 
+from .lint_types import LintIssue, LintResult
+
 settings = config.get_options()
 
 
@@ -80,6 +82,10 @@ class _FieldEditor:
 @dataclass(frozen=True)
 class LintConfig:
     autofix: bool = True
+    # Migration bridge for applying only structured LintFix objects. Unlike autofix,
+    # this is not visible to legacy linters that mutate directly based on cfg.autofix.
+    structured_autofix: bool = False
+    fix_callback: Callable[[LintIssue], None] | None = None
     interactive: bool = True
     verbose: bool = False
     manual_mode: bool = False
@@ -90,7 +96,7 @@ class LintConfig:
 
 ADTT = TypeVar("ADTT", bound=adt.ADT)
 ModelT = TypeVar("ModelT", bound="BaseModel")
-Linter = Callable[[ModelT, LintConfig], Iterable[str]]
+Linter = Callable[[ModelT, LintConfig], Iterable[LintResult]]
 
 
 class BaseModel(Model):
@@ -171,7 +177,7 @@ class BaseModel(Model):
         enable_all: bool = False,
         experimental: bool = False,
         query: Iterable[Self] | None = None,
-    ) -> list[tuple[Self, list[str]]]:
+    ) -> list[tuple[Self, list[LintResult]]]:
         context = nullcontext() if autofix else cls.clirm.readonly()
         with context:
             cls.clear_lint_caches()
@@ -229,16 +235,38 @@ class BaseModel(Model):
             print(message)
         return False
 
-    def general_lint(self, cfg: LintConfig = LintConfig()) -> Iterable[str]:
+    def general_lint(self, cfg: LintConfig = LintConfig()) -> Iterable[LintResult]:
         unrenderable = list(self.check_renderable())
         if unrenderable:
             yield from unrenderable
             return
-        yield from self.check_all_fields(cfg)
+        yield from self._process_lint_results(self.check_all_fields(cfg), cfg)
         if self.is_invalid():
-            yield from self.lint_invalid(cfg)
+            yield from self._process_lint_results(self.lint_invalid(cfg), cfg)
         else:
-            yield from self.lint(cfg)
+            yield from self._process_lint_results(self.lint(cfg), cfg)
+
+    @staticmethod
+    def _process_lint_results(
+        results: Iterable[LintResult], cfg: LintConfig
+    ) -> Iterable[LintResult]:
+        for result in results:
+            if not isinstance(result, LintIssue) or result.fix is None:
+                yield result
+                continue
+            should_apply = cfg.autofix or cfg.structured_autofix
+            if not should_apply:
+                yield result
+                continue
+            if cfg.structured_autofix and not cfg.autofix:
+                if not result.fix.is_virtual_safe:
+                    yield result
+                    continue
+            result.fix.apply()
+            if cfg.fix_callback is not None:
+                cfg.fix_callback(result)
+            if cfg.autofix:
+                print(result)
 
     def check_renderable(self) -> Iterable[str]:
         try:
@@ -261,7 +289,7 @@ class BaseModel(Model):
         }
         return getinput.edit_by_word(text, callbacks=callbacks)
 
-    def check_all_fields(self, cfg: LintConfig) -> Iterable[str]:
+    def check_all_fields(self, cfg: LintConfig) -> Iterable[LintResult]:
         is_invalid = self.is_invalid()
         message: str | None
         for field in self.fields():
@@ -282,11 +310,10 @@ class BaseModel(Model):
                         f"{self}: references redirected object {value} -> {target} in"
                         f" field {field}"
                     )
-                    if cfg.autofix:
-                        print(message)
-                        setattr(self, field, target)
-                    else:
-                        yield message
+                    # Imported lazily to avoid the base/lint module cycle.
+                    from .lint import field_issue
+
+                    yield field_issue(message, self, field, target)
                 # We don't care if invalid objects reference other invalid objects
                 elif not is_invalid and value.is_invalid():
                     yield f"{self}: references invalid object {value} in field {field}"
@@ -569,11 +596,11 @@ class BaseModel(Model):
         """If this returns True, we won't call clean_string() on the field in lint."""
         return False
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         """Yield messages if something is wrong with this object."""
         return []
 
-    def lint_invalid(self, cfg: LintConfig) -> Iterable[str]:
+    def lint_invalid(self, cfg: LintConfig) -> Iterable[LintResult]:
         """Like lint() but only called if is_invalid() returned True."""
         return []
 

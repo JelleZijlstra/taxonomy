@@ -9,6 +9,8 @@ from taxonomy.applicator.proposals import (
 )
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models import Location, OccurrenceRecord, Region
+from taxonomy.db.models.lint import Lint, LintWrapper, field_issue
+from taxonomy.db.models.lint_types import LintIssue
 from taxonomy.db.models.tags import LocationTag
 
 
@@ -81,7 +83,24 @@ def test_print_lint_results_marks_output_as_best_effort(
     output = capsys.readouterr().out
     assert "BEST_EFFORT VIRTUAL LINT" in output
     assert "example issue" in output
+    assert "code=uncoded count=1" in output
     assert "New virtual rows and changed scalar fields" in output
+
+
+def test_print_lint_results_aggregates_simulated_fixes_by_code(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    location = Location.virtual(name="Place", tags=())
+    proposal = ProposedModel(location, ("manifest line 1",))
+    simulated = LintIssue("normalized field", code="normalize")
+
+    print_lint_results((ProposalLintResult(proposal, (), (simulated,)),))
+
+    output = capsys.readouterr().out
+    assert "VIRTUAL_AUTOFIX_SIMULATED total=1" in output
+    assert "code=normalize count=1" in output
+    assert "SIMULATED_FIXES Location" in output
+    assert "normalized field" in output
 
 
 def test_lint_proposals_contains_lint_failures_in_result() -> None:
@@ -110,3 +129,30 @@ def test_lint_proposals_clears_model_caches_once_per_batch(
     lint_proposals(proposals)
 
     assert len(clear_calls) == 2
+
+
+def test_lint_proposals_applies_structured_fixes_to_fixed_point(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    location = Location.virtual(name="Old", latitude=None, tags=())
+    proposal = ProposedModel(location, ("manifest line 1",))
+    registry = Lint.for_model(Location)
+
+    def check_location(item: Location, _cfg: object) -> list[LintIssue]:
+        if item.name == "Old":
+            return [field_issue("normalize name", item, "name", "New")]
+        if item.latitude is None:
+            return [field_issue("add latitude", item, "latitude", "12°N")]
+        return []
+
+    wrapper = LintWrapper(
+        linter=check_location, disabled=False, label="test_fix", lint=registry
+    )
+    monkeypatch.setattr(Location, "general_lint", lambda self, cfg: wrapper(self, cfg))
+
+    (result,) = lint_proposals((proposal,))
+
+    assert result.messages == ()
+    assert [issue.code for issue in result.simulated_fixes] == ["test_fix", "test_fix"]
+    assert location.name == "New"
+    assert location.latitude == "12°N"

@@ -16,6 +16,7 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextField
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.period import Period, period_sort_key
 from taxonomy.db.models.region import Region
 from taxonomy.db.models.stratigraphic_unit import StratigraphicUnit
@@ -1016,7 +1017,7 @@ class Location(BaseModel):
         if self.deleted is LocationStatus.alias and self.parent is None:
             yield "alias location has no parent"
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         yield from models.location.lint.LINT.run(self, cfg)
 
     @classmethod

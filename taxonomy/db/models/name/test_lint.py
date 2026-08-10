@@ -68,9 +68,9 @@ def test_collector_lifespan_flags_collection_after_death() -> None:
     messages = list(check_collector_lifespan(name, LintConfig()))
 
     assert len(messages) == 1
-    assert messages[0].startswith("<virtual Name ")
-    assert "collector Collector" in messages[0]
-    assert "died in 1900, before collection date 2 January 1901" in messages[0]
+    assert str(messages[0]).startswith("<virtual Name ")
+    assert "collector Collector" in str(messages[0])
+    assert "died in 1900, before collection date 2 January 1901" in str(messages[0])
 
 
 @pytest.mark.parametrize(
@@ -133,8 +133,8 @@ def test_name_coordinates_require_type_locality() -> None:
     messages = list(check_coordinates(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "Coordinates('40.5°N', '74.25°W') is present" in messages[0]
-    assert "type locality is not set" in messages[0]
+    assert "Coordinates('40.5°N', '74.25°W') is present" in str(messages[0])
+    assert "type locality is not set" in str(messages[0])
 
 
 def test_name_coordinates_allow_five_kilometres(
@@ -153,7 +153,7 @@ def test_name_coordinates_must_match_location(monkeypatch: pytest.MonkeyPatch) -
     messages = list(check_coordinates(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "55.6 km from Location" in messages[0]
+    assert "55.6 km from Location" in str(messages[0])
 
 
 def test_name_coordinate_range_matches_location(
@@ -171,7 +171,7 @@ def test_name_coordinates_report_exact_location_duplicate() -> None:
     messages = list(check_coordinates(name, LintConfig(autofix=False)))
 
     assert len(messages) == 1
-    assert "coordinates exactly match Location" in messages[0]
+    assert "coordinates exactly match Location" in str(messages[0])
     assert TypeTag.Coordinates("40.5°N", "74.25°W") in name.type_tags
 
 
@@ -255,7 +255,7 @@ def test_location_detail_coordinates_must_match_location() -> None:
     messages = list(check_location_detail_coordinates(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "55.6 km from Location" in messages[0]
+    assert "55.6 km from Location" in str(messages[0])
 
 
 def test_neotype_location_detail_coordinates_ignore_original_locality() -> None:
@@ -303,7 +303,7 @@ def test_conflicting_location_detail_coordinates_are_not_inferred() -> None:
     messages = list(check_location_detail_coordinates(name, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "cannot infer Coordinates tag" in messages[0]
+    assert "cannot infer Coordinates tag" in str(messages[0])
     assert not any(isinstance(tag, TypeTag.Coordinates) for tag in name.type_tags)
 
 
@@ -316,7 +316,7 @@ def test_distinct_nearby_location_detail_coordinates_are_not_combined() -> None:
     messages = list(check_location_detail_coordinates(name, LintConfig(autofix=True)))
 
     assert len(messages) == 1
-    assert "multiple coordinate pairs within 5 km" in messages[0]
+    assert "multiple coordinate pairs within 5 km" in str(messages[0])
     assert not any(isinstance(tag, TypeTag.Coordinates) for tag in name.type_tags)
 
 
@@ -328,7 +328,7 @@ def test_location_detail_plss_reports_name_local_conflict() -> None:
     messages = list(check_location_detail_plss(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "incompatible PLSS descriptions" in messages[0]
+    assert "incompatible PLSS descriptions" in str(messages[0])
 
 
 def test_location_detail_plss_allows_compatible_precision() -> None:
@@ -353,8 +353,8 @@ def test_location_detail_plss_reports_conflict_with_reviewed_location() -> None:
     messages = list(check_location_detail_plss(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "conflicts with type locality" in messages[0]
-    assert "T33S R25W Sec. 21 NW¼NE¼" in messages[0]
+    assert "conflicts with type locality" in str(messages[0])
+    assert "T33S R25W Sec. 21 NW¼NE¼" in str(messages[0])
 
 
 def test_location_detail_plss_allows_narrower_reviewed_location_evidence() -> None:
@@ -396,7 +396,7 @@ def test_location_detail_coordinates_must_match_existing_tag() -> None:
     messages = list(check_location_detail_coordinates(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "conflict with all Coordinates tags" in messages[0]
+    assert "conflict with all Coordinates tags" in str(messages[0])
 
 
 def test_nominate_subspecies_does_not_readd_merged_location_detail() -> None:
@@ -514,8 +514,8 @@ def test_name_recent_type_locality_requires_recent_taxon() -> None:
     )
 
     assert len(messages) == 1
-    assert "is Recent" in messages[0]
-    assert "has age fossil" in messages[0]
+    assert "is Recent" in str(messages[0])
+    assert "has age fossil" in str(messages[0])
 
 
 @pytest.mark.parametrize("organ", [SpecimenOrgan.skin, SpecimenOrgan.in_alcohol])
@@ -527,8 +527,8 @@ def test_name_recent_organ_conflicts_with_fossil_locality(organ: SpecimenOrgan) 
     messages = list(check_type_locality_age(name, LintConfig()))
 
     assert len(messages) == 1
-    assert organ.name.replace("_", " ") in messages[0]
-    assert "indicate a Recent type specimen" in messages[0]
+    assert organ.name.replace("_", " ") in str(messages[0])
+    assert "indicate a Recent type specimen" in str(messages[0])
 
 
 def test_name_extant_taxon_may_have_pleistocene_type_locality() -> None:
@@ -557,8 +557,8 @@ def test_name_extant_taxon_conflicts_with_pre_pleistocene_type_locality() -> Non
     messages = list(check_type_locality_age(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "is pre-Pleistocene" in messages[0]
-    assert "recently extinct taxon" in messages[0]
+    assert "is pre-Pleistocene" in str(messages[0])
+    assert "recently extinct taxon" in str(messages[0])
 
 
 def test_name_fossil_taxon_allows_pre_pleistocene_type_locality() -> None:
@@ -607,7 +607,9 @@ def test_general_type_locality_lint_inherits_tag_from_parent() -> None:
     messages = list(check_general_type_locality.linter(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "Region 'Parent Region' is tagged MustHavePreciseTypeLocality" in messages[0]
+    assert "Region 'Parent Region' is tagged MustHavePreciseTypeLocality" in str(
+        messages[0]
+    )
 
 
 def test_general_type_locality_lint_allows_more_precise_location() -> None:
@@ -644,7 +646,9 @@ def test_type_locality_validity_rejects_valid_tag() -> None:
     messages = list(check_type_locality_validity(name, LintConfig()))
 
     assert len(messages) == 1
-    assert "only allows occurrence_dubious or classification_dubious" in messages[0]
+    assert "only allows occurrence_dubious or classification_dubious" in str(
+        messages[0]
+    )
 
 
 def test_redirect_rule_flags_name_type_locality() -> None:
@@ -670,4 +674,4 @@ def test_redirect_rule_flags_name_type_locality() -> None:
     )
 
     assert len(messages) == 1
-    assert "where RedirectOccurrences says" in messages[0]
+    assert "where RedirectOccurrences says" in str(messages[0])

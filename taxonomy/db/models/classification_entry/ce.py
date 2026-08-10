@@ -26,6 +26,7 @@ from taxonomy.db.constants import (
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
+from taxonomy.db.models.lint_types import LintResult
 
 
 class ClassificationEntryStatus(enum.Enum):
@@ -189,7 +190,7 @@ class ClassificationEntry(BaseModel):
             return True
         return " " not in name
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         yield from models.classification_entry.lint.LINT.run(self, cfg)
 
     @classmethod

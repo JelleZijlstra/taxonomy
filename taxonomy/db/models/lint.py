@@ -1,6 +1,9 @@
 """Abstraction for linting models."""
 
+from __future__ import annotations
+
 import traceback
+from collections import Counter
 from collections.abc import Callable, Collection, Generator, Hashable, Iterable
 from dataclasses import dataclass, field, replace
 from functools import cache
@@ -12,10 +15,138 @@ from taxonomy import getinput
 from taxonomy.config import is_network_available
 
 from .base import BaseModel, LintConfig
+from .lint_types import LintIssue, LintResult
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
-Linter = Callable[[ModelT, LintConfig], Iterable[str]]
+
+class LintFixError(RuntimeError):
+    """Raised when a structured lint fix is no longer safe to apply."""
+
+
+@dataclass(frozen=True)
+class FieldChange:
+    """One guarded field assignment in a structured lint fix."""
+
+    target: BaseModel
+    field: str
+    expected: Any
+    new: Any
+
+    def validate(self) -> None:
+        current = getattr(self.target, self.field)
+        if current != self.expected:
+            raise LintFixError(
+                f"{self.target}: field {self.field} changed from "
+                f"{self.expected!r} to {current!r} before autofix"
+            )
+
+    def apply(self) -> None:
+        setattr(self.target, self.field, self.new)
+
+
+@dataclass(frozen=True)
+class LintFix:
+    """A deterministic, guarded collection of field assignments."""
+
+    changes: tuple[FieldChange, ...]
+
+    @property
+    def is_virtual_safe(self) -> bool:
+        return all(change.target.is_virtual for change in self.changes)
+
+    def apply(self) -> None:
+        # Validate the complete plan before the first mutation so multi-object fixes
+        # fail closed instead of leaving a partial state.
+        if not self.changes or all(
+            change.expected == change.new for change in self.changes
+        ):
+            raise LintFixError("structured lint fix would make no changes")
+        for change in self.changes:
+            change.validate()
+        for change in self.changes:
+            change.apply()
+
+
+def field_fix(target: BaseModel, field: str, new: Any) -> LintFix:
+    """Build a guarded assignment, snapshotting the current value."""
+    return LintFix((FieldChange(target, field, getattr(target, field), new),))
+
+
+def combine_fixes(*fixes: LintFix) -> LintFix:
+    """Combine guarded fixes into one all-or-nothing plan."""
+    return LintFix(tuple(change for fix in fixes for change in fix.changes))
+
+
+def field_issue(
+    message: str, target: BaseModel, field: str, new: Any, *, code: str | None = None
+) -> LintIssue:
+    """Create the common one-field autofixable lint issue."""
+    return LintIssue(message, code=code, fix=field_fix(target, field, new))
+
+
+def fields_issue(
+    message: str, *changes: tuple[BaseModel, str, Any], code: str | None = None
+) -> LintIssue:
+    """Create one guarded issue that assigns several model fields."""
+    return LintIssue(
+        message,
+        code=code,
+        fix=combine_fixes(
+            *(field_fix(target, field, new) for target, field, new in changes)
+        ),
+    )
+
+
+def append_to_field_issue(
+    message: str, target: BaseModel, field: str, value: Any, *, code: str | None = None
+) -> LintIssue:
+    """Create a guarded issue that appends to a tuple-like model field."""
+    current = getattr(target, field)
+    values = () if current is None else tuple(current)
+    return field_issue(message, target, field, (*values, value), code=code)
+
+
+def replace_in_field_issue(
+    message: str,
+    target: BaseModel,
+    field: str,
+    old: Any,
+    new: Any,
+    *,
+    code: str | None = None,
+) -> LintIssue:
+    """Create a guarded replacement within a tuple-like model field."""
+    current = getattr(target, field)
+    values = () if current is None else tuple(current)
+    replaced = tuple(new if value == old else value for value in values)
+    return field_issue(message, target, field, replaced, code=code)
+
+
+def remove_from_field_issue(
+    message: str,
+    target: BaseModel,
+    field: str,
+    values_to_remove: Collection[Any],
+    *,
+    code: str | None = None,
+) -> LintIssue:
+    """Create a guarded removal from a tuple-like model field."""
+    current = getattr(target, field)
+    values = () if current is None else tuple(current)
+    remaining = tuple(value for value in values if value not in values_to_remove)
+    return field_issue(message, target, field, remaining, code=code)
+
+
+def count_lint_codes(issues: Iterable[LintResult]) -> Counter[str]:
+    """Count structured lint codes while retaining support for plain strings."""
+    return Counter(
+        issue.code if isinstance(issue, LintIssue) and issue.code else "uncoded"
+        for issue in issues
+    )
+
+
+Linter = Callable[[ModelT, LintConfig], Iterable[LintResult]]
 DuplicateKey = Callable[[ModelT], Hashable | None]
 DuplicateFixer = Callable[[Hashable, list[ModelT], LintConfig], None]
 
@@ -27,7 +158,7 @@ class IgnoreLint(Protocol):
 @dataclass(frozen=True)
 class IgnoreLintTarget(Generic[ModelT]):
     obj: ModelT
-    issues: tuple[str, ...]
+    issues: tuple[LintResult, ...]
 
 
 @dataclass(frozen=True)
@@ -56,7 +187,9 @@ class LintWrapper(Generic[ModelT]):
                 raise
             return f"<virtual {type(obj).__name__} {obj.id!r}>"
 
-    def __call__(self, obj: ModelT, cfg: LintConfig) -> Generator[str, None, set[str]]:
+    def __call__(
+        self, obj: ModelT, cfg: LintConfig
+    ) -> Generator[LintIssue, None, set[str]]:
         if self.requires_network and not is_network_available():
             return {self.label}
         if self.skip_virtual and obj.is_virtual:
@@ -65,7 +198,10 @@ class LintWrapper(Generic[ModelT]):
             issues = list(self.linter(obj, cfg))
         except Exception as e:
             traceback.print_exc()
-            yield f"{self._format_object(obj)}: error running {self.label} linter: {e}"
+            yield LintIssue(
+                f"{self._format_object(obj)}: error running {self.label} linter: {e}",
+                code=self.label,
+            )
             # The linter could not establish whether an IgnoreLint is still needed.
             # Preserve it rather than allowing Lint.run() to remove it as unused.
             return {self.label}
@@ -74,8 +210,29 @@ class LintWrapper(Generic[ModelT]):
         ignored_lints = self.lint.get_ignored_lints(obj)
         if self.label in ignored_lints:
             return {self.label}
-        for issue in issues:
-            yield f"{self._format_object(obj)}: {issue} [{self.label}]"
+        for raw_issue in issues:
+            issue = (
+                raw_issue.with_code(self.label)
+                if isinstance(raw_issue, LintIssue)
+                else LintIssue(str(raw_issue), code=self.label)
+            )
+            code = issue.code or self.label
+            formatted = issue.with_message(
+                f"{self._format_object(obj)}: {issue} [{code}]"
+            )
+            should_apply = cfg.autofix or cfg.structured_autofix
+            if issue.fix is not None and should_apply:
+                if cfg.structured_autofix and not cfg.autofix:
+                    if not issue.fix.is_virtual_safe:
+                        yield formatted
+                        continue
+                issue.fix.apply()
+                if cfg.fix_callback is not None:
+                    cfg.fix_callback(formatted)
+                if cfg.autofix:
+                    print(formatted)
+                continue
+            yield formatted
         return set()
 
 
@@ -182,7 +339,8 @@ class Lint(Generic[ModelT]):
             prefix = "WOULD_ADD_IGNORE_LINT" if dry_run else "ADD_IGNORE_LINT"
             print(
                 f"{prefix} object={target.obj!r} lint={label!r} "
-                f"comment={comment!r} issues={' | '.join(target.issues)!r}"
+                f"comment={comment!r} "
+                f"issues={' | '.join(map(str, target.issues))!r}"
             )
         mode = "Dry run" if dry_run else "Applied"
         print(
@@ -277,7 +435,7 @@ class Lint(Generic[ModelT]):
 
         return decorator
 
-    def run(self, obj: ModelT, cfg: LintConfig) -> Iterable[str]:
+    def run(self, obj: ModelT, cfg: LintConfig) -> Iterable[LintResult]:
         if cfg.enable_all:
             linters = [*self.linters, *self.disabled_linters]
         else:
@@ -289,7 +447,9 @@ class Lint(Generic[ModelT]):
             if linter.label in actual_ignores:
                 # IgnoreLint must also prevent automated mutations. Individual
                 # linters should not need to remember to check their own label.
-                lint_cfg = replace(cfg, autofix=False, interactive=False)
+                lint_cfg = replace(
+                    cfg, autofix=False, structured_autofix=False, interactive=False
+                )
             else:
                 lint_cfg = cfg
             used_ignores |= yield from linter(obj, lint_cfg)

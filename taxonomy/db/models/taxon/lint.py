@@ -10,7 +10,8 @@ from typing import Self
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import AgeClass, Group, NomenclatureStatus, Rank, Status
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import IgnoreLint, Lint, append_to_field_issue, field_issue
+from taxonomy.db.models.lint_types import LintResult
 
 from .taxon import Taxon
 
@@ -113,7 +114,7 @@ def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("nominal_genus")
-def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
     nominal_genus_tags = list(
         taxon.get_tags(taxon.tags, models.tags.TaxonTag.NominalGenus)
     )
@@ -129,27 +130,26 @@ def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
         and not nominal_genus_tags
         and not taxon.has_parent_of_rank(Rank.genus)
     ):
-        if cfg.autofix:
-            orig_nam = taxon.base_name.corrected_original_name
-            if orig_nam:
-                orig_genus, *_ = orig_nam.split()
-                candidates = list(
-                    models.Name.select_valid().filter(
-                        models.Name.group == Group.genus,
-                        models.Name.root_name == orig_genus,
-                    )
+        orig_nam = taxon.base_name.corrected_original_name
+        if orig_nam:
+            orig_genus, *_ = orig_nam.split()
+            candidates = list(
+                models.Name.select_valid().filter(
+                    models.Name.group == Group.genus,
+                    models.Name.root_name == orig_genus,
                 )
-                if len(candidates) == 1:
-                    print(f"adding NominalGenus tag: {candidates[0]}")
-                    taxon.add_tag(
-                        models.tags.TaxonTag.NominalGenus(genus=candidates[0])
-                    )
-                    return
+            )
+            if len(candidates) == 1:
+                tag = models.tags.TaxonTag.NominalGenus(genus=candidates[0])
+                yield append_to_field_issue(
+                    f"adding NominalGenus tag: {candidates[0]}", taxon, "tags", tag
+                )
+                return
         yield "should have NominalGenus tag"
 
 
 @LINT.add("valid_name")
-def check_valid_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+def check_valid_name(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
     computed = taxon.compute_valid_name()
     if computed is None or taxon.valid_name == computed:
         return
@@ -162,12 +162,9 @@ def check_valid_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     # subspecies, or they have become nomina dubia (in which case we use the
     # corrected original name). For family-group names we don't always trust the
     # computed name, because stems may be arbitrary.
-    can_fix = cfg.autofix and (
-        taxon.base_name.group == Group.species or taxon.is_nominate_subgenus()
-    )
+    can_fix = taxon.base_name.group == Group.species or taxon.is_nominate_subgenus()
     if can_fix:
-        print(message)
-        taxon.recompute_name()
+        yield field_issue(message, taxon, "valid_name", computed)
     else:
         yield message
 

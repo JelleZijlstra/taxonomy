@@ -16,6 +16,7 @@ from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import URL, ArticleIdentifier, Managed, Markdown, Regex
 from taxonomy.db.derived_data import DerivedField, LazyType
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.region import Region
 
 CGTagT = TypeVar("CGTagT", bound="CitationGroupTag")
@@ -147,7 +148,7 @@ class CitationGroup(BaseModel):
         ):
             yield "region"
 
-    def lint(self, cfg: LintConfig) -> Iterable[str]:
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
         yield from models.citation_group.lint.LINT.run(self, cfg)
 
     @classmethod

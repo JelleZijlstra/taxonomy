@@ -13,7 +13,8 @@ from taxonomy.db.constants import (
     Rank,
 )
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import IgnoreLint, Lint, field_issue, fields_issue
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import Location, LocationStatus
 from taxonomy.db.models.location.age import (
     is_non_recent_location,
@@ -132,7 +133,9 @@ def get_inferred_location(record: OccurrenceRecord) -> Location | None:
 
 
 @LINT.add("missing_taxon")
-def check_missing_taxon(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+def check_missing_taxon(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[LintResult]:
     if record.taxon is not None:
         return
     inferred = get_inferred_taxon(record)
@@ -140,15 +143,13 @@ def check_missing_taxon(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[s
         yield "cannot infer taxon from classification entry"
     else:
         message = f"taxon should be {inferred}"
-        if cfg.autofix and not LINT.is_ignoring_lint(record, "missing_taxon"):
-            print(f"{record}: {message}")
-            record.taxon = inferred
-        else:
-            yield message
+        yield field_issue(message, record, "taxon", inferred)
 
 
 @LINT.add("taxon_mapping")
-def check_taxon_mapping(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+def check_taxon_mapping(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[LintResult]:
     if record.taxon is None:
         return
     inferred = get_inferred_taxon(record)
@@ -164,17 +165,15 @@ def check_taxon_mapping(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[s
         and record.taxon.parent_of_rank(Rank.species) == inferred
     ):
         message = f"change taxon from {record.taxon} to {inferred}"
-        if cfg.autofix and not LINT.is_ignoring_lint(record, "taxon_mapping"):
-            print(f"{record}: {message}")
-            record.taxon = inferred
-        else:
-            yield message
+        yield field_issue(message, record, "taxon", inferred)
         return
     yield f"taxon {record.taxon} differs from classification-entry mapping {inferred} without an explanation"
 
 
 @LINT.add("missing_location")
-def check_missing_location(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+def check_missing_location(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[LintResult]:
     if record.location is not None:
         return
     inferred = get_inferred_location(record)
@@ -182,16 +181,20 @@ def check_missing_location(record: OccurrenceRecord, cfg: LintConfig) -> Iterabl
         yield "cannot infer location"
     else:
         message = f"location should be {inferred}"
-        if cfg.autofix and not LINT.is_ignoring_lint(record, "missing_location"):
-            print(f"{record}: {message}")
-            record.location = inferred
-            record.remove_tags(OccurrenceRecordTag.LocationHint)
-        else:
-            yield message
+        new_tags = tuple(
+            tag
+            for tag in record.tags
+            if not isinstance(tag, OccurrenceRecordTag.LocationHint)
+        )
+        yield fields_issue(
+            message, (record, "location", inferred), (record, "tags", new_tags)
+        )
 
 
 @LINT.add("location_hint")
-def check_location_hint(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+def check_location_hint(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[LintResult]:
     if record.location is None:
         return
     hints = list(record.get_tags(record.tags, OccurrenceRecordTag.LocationHint))
@@ -200,11 +203,12 @@ def check_location_hint(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[s
     inferred = get_inferred_location(record)
     if inferred == record.location:
         message = "remove resolved LocationHint"
-        if cfg.autofix and not LINT.is_ignoring_lint(record, "location_hint"):
-            print(f"{record}: {message}")
-            record.remove_tags(OccurrenceRecordTag.LocationHint)
-        else:
-            yield message
+        new_tags = tuple(
+            tag
+            for tag in record.tags
+            if not isinstance(tag, OccurrenceRecordTag.LocationHint)
+        )
+        yield field_issue(message, record, "tags", new_tags)
 
 
 @LINT.add("location_mapping")
@@ -771,7 +775,7 @@ def _has_review(
 @LINT.add("distribution_rules")
 def check_distribution_rules(
     record: OccurrenceRecord, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if record.taxon is None or record.location is None:
         return
     taxon = record.taxon
@@ -807,21 +811,21 @@ def check_distribution_rules(
             f"taxon should be moved from {taxon} to {target} under "
             f"RedirectOccurrences ({sources})"
         )
-        if cfg.autofix:
-            print(f"{record}: {message}")
-            record.taxon = target
-            comment = (
-                f"Reassigned from {taxon} to {target} under "
-                f"RedirectOccurrences ({sources})."
-            )
-            if not any(
-                isinstance(tag, OccurrenceRecordTag.CommentFromDatabase)
-                and tag.text == comment
-                for tag in record.tags
-            ):
-                record.add_tag(OccurrenceRecordTag.CommentFromDatabase(comment))
-            return
-        yield message
+        comment = (
+            f"Reassigned from {taxon} to {target} under "
+            f"RedirectOccurrences ({sources})."
+        )
+        new_tags: object = record.tags
+        if not any(
+            isinstance(tag, OccurrenceRecordTag.CommentFromDatabase)
+            and tag.text == comment
+            for tag in record.tags
+        ):
+            new_tags = (*record.tags, OccurrenceRecordTag.CommentFromDatabase(comment))
+        yield fields_issue(
+            message, (record, "taxon", target), (record, "tags", new_tags)
+        )
+        return
 
     for tag in redirect_tags:
         if tag in move_tags:
@@ -871,7 +875,7 @@ def check_split(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("duplicate")
-def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[LintResult]:
     if record.has_tag(OccurrenceRecordTag.TaxonomicSplitFrom):
         return
     candidates = OccurrenceRecord.select_valid().filter(
@@ -896,9 +900,15 @@ def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
         getattr(record, field) == getattr(primary, field)
         for field in OccurrenceRecord.fields()
     )
-    if fields_match and cfg.autofix and not LINT.is_ignoring_lint(record, "duplicate"):
-        print(f"{record}: {message}; redirecting OR#{record.id} to OR#{primary.id}")
-        record.add_tag(OccurrenceRecordTag.RedirectTarget(primary))
-        record.status = OccurrenceRecordStatus.alias
+    if fields_match:
+        yield fields_issue(
+            message,
+            (
+                record,
+                "tags",
+                (*record.tags, OccurrenceRecordTag.RedirectTarget(primary)),
+            ),
+            (record, "status", OccurrenceRecordStatus.alias),
+        )
     else:
         yield message

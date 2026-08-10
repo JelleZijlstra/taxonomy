@@ -16,7 +16,14 @@ from taxonomy.db import helpers, models
 from taxonomy.db.constants import SYNONYM_RANKS, Group, NomenclatureStatus, Rank
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    append_to_field_issue,
+    field_issue,
+    fields_issue,
+)
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.name import Name, NameTag, TypeTag
 from taxonomy.db.models.name.lint import (
     infer_bhl_page_id,
@@ -56,7 +63,7 @@ LINT = Lint(ClassificationEntry, get_ignores, remove_unused_ignores, add_ignore)
 
 
 @LINT.add("rank")
-def check_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def check_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]:
     if ce.rank.needs_textual_rank and not any(
         ce.get_tags(ce.tags, ClassificationEntryTag.TextualRank)
     ):
@@ -65,15 +72,11 @@ def check_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         group = ce.get_group()
         new_rank = helpers.GROUP_TO_SYNONYM_RANK[group]
         message = f"change rank to {new_rank!r}"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.rank = new_rank
-        else:
-            yield message
+        yield field_issue(message, ce, "rank", new_rank)
 
 
 @LINT.add("tags")
-def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]:
     counts = Counter(type(tag) for tag in ce.tags)
     if counts[ClassificationEntryTag.TextualRank] > 1:
         yield "multiple TextualRank tags"
@@ -139,12 +142,7 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     new_tags_tuple = tuple(sorted(set(new_tags)))
     if ce.tags != new_tags_tuple:
         getinput.print_diff(ce.tags, new_tags_tuple)
-        message = "change tags"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.tags = new_tags_tuple  # type: ignore[assignment]
-        else:
-            yield message
+        yield field_issue("change tags", ce, "tags", new_tags_tuple)
 
 
 @LINT.add("parent")
@@ -224,7 +222,7 @@ def _get_same_level_ces(ce: ClassificationEntry) -> Iterable[ClassificationEntry
 @LINT.add("needs_auxiliary_name")
 def check_needs_auxiliary_name(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if (
         ce.mapped_name is None
         or ce.rank.is_synonym
@@ -264,16 +262,15 @@ def check_needs_auxiliary_name(
         return
 
     message = f"convert to AuxiliaryName under sibling CE {correct_ce}"
-    yield message
-    if cfg.autofix:
-        print(f"{ce}: {message}")
-        ce.add_tag(ClassificationEntryTag.AuxiliaryName)
-        ce.parent = correct_ce
-        for child in children:
-            new_tag = ClassificationEntryTag.VerbatimParent(ce)
-            print(f"{child}: add tag {new_tag}, set parent to {correct_ce}")
-            child.add_tag(new_tag)
-            child.parent = correct_ce
+    changes: list[tuple[ClassificationEntry, str, object]] = [
+        (ce, "tags", (*ce.tags, ClassificationEntryTag.AuxiliaryName)),
+        (ce, "parent", correct_ce),
+    ]
+    for child in children:
+        new_tag = ClassificationEntryTag.VerbatimParent(ce)
+        new_tags = child.tags if new_tag in child.tags else (*child.tags, new_tag)
+        changes.extend([(child, "tags", new_tags), (child, "parent", correct_ce)])
+    yield fields_issue(message, *changes)
 
 
 def articles_match(child_art: Article, parent_art: Article) -> bool:
@@ -288,22 +285,20 @@ def articles_match(child_art: Article, parent_art: Article) -> bool:
 
 
 @LINT.add("move_to_child")
-def check_move_to_child(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def check_move_to_child(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
     if ce.parent is None:
         return
     if ce.article == ce.parent.article.parent:
         message = f"move to child citation {ce.parent.article}"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.article = ce.parent.article
-        else:
-            yield message
+        yield field_issue(message, ce, "article", ce.parent.article)
 
 
 @LINT.add("missing_mapped_name")
 def check_missing_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if ce.mapped_name is not None:
         return
     if not must_have_mapped_name(ce):
@@ -312,11 +307,7 @@ def check_missing_mapped_name(
     if len(candidates) == 1:
         inferred = candidates[0]
         message = f"inferred mapped_name: {inferred}"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.mapped_name = inferred
-        else:
-            yield message
+        yield field_issue(message, ce, "mapped_name", inferred)
     elif cfg.verbose and candidates:
         print(f"{ce}: missing mapped_name (candidates: {candidates})")
 
@@ -344,7 +335,7 @@ def _expand_candidates(candidates: Iterable[Name]) -> Iterable[Name]:
 @LINT.add("mapped_name_inference")
 def check_mapped_name_inference(
     ce: ClassificationEntry, cfg: LintConfig, *, conservative: bool = False
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if ce.mapped_name is None:
         return
     if not conservative:
@@ -372,11 +363,7 @@ def check_mapped_name_inference(
                 best_cand = filtered_cands[0]
                 if best_cand.resolve_variant() == ce.mapped_name.resolve_variant():
                     message = f"change mapped_name to inferred candidate {best_cand}"
-                    if cfg.autofix:
-                        print(f"{ce}: {message}")
-                        ce.mapped_name = best_cand
-                    else:
-                        yield message
+                    yield field_issue(message, ce, "mapped_name", best_cand)
 
 
 def get_allowed_family_group_names(nam: Name) -> Container[str]:
@@ -409,17 +396,19 @@ def check_predates_mapped_name(
 
 
 @LINT.add("mapped_name")
-def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]:
     if ce.mapped_name is not None:
         if (
             ce.page is None
             and ce.mapped_name.original_citation == ce.article
             and ce.mapped_name.page_described is not None
         ):
-            yield "mapped_name has page, but name has no page"
-            if cfg.autofix:
-                print(f"{ce}: adding page {ce.mapped_name.page_described}")
-                ce.page = ce.mapped_name.page_described
+            yield field_issue(
+                "mapped_name has page, but name has no page",
+                ce,
+                "page",
+                ce.mapped_name.page_described,
+            )
         # Don't worry about synonyms; if the source puts them in the "high" bucket but we decide
         # it's actually a family-group name, it's still correctly marked "synonym_high" in the source.
         if not ce.rank.is_synonym:
@@ -435,11 +424,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                     message = (
                         f"mapped to unavailable version of {target}, but postdates it"
                     )
-                    if cfg.autofix:
-                        print(f"{ce}: {message}")
-                        ce.mapped_name = target
-                    else:
-                        yield message
+                    yield field_issue(message, ce, "mapped_name", target)
 
         corrected_name = ce.get_corrected_name()
         if corrected_name is None:
@@ -456,11 +441,9 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                         )
                         if emended_version is not None:
                             message = f"mapped_name corrected_original_name does not match; change to emended version {emended_version}"
-                            if cfg.autofix:
-                                print(f"{ce}: {message}")
-                                ce.mapped_name = emended_version
-                            else:
-                                yield message
+                            yield field_issue(
+                                message, ce, "mapped_name", emended_version
+                            )
             case Group.family:
                 if corrected_name != ce.mapped_name.corrected_original_name:
                     yield f"mapped_name original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
@@ -503,11 +486,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                         )
                         new_name = alternatives[0]
                         message = f"mapped_name corrected_original_name does not match; change to {new_name}"
-                        if cfg.autofix:
-                            print(f"{ce}: {message}")
-                            ce.mapped_name = new_name
-                        else:
-                            yield message
+                        yield field_issue(message, ce, "mapped_name", new_name)
     elif must_have_mapped_name(ce):
         yield "missing mapped_name"
 
@@ -950,7 +929,9 @@ def _root_name_matches(nam: Name, root_name: str) -> bool:
 
 
 @LINT.add("corrected_name")
-def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def check_corrected_name(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
     if ce.rank is Rank.informal or ClassificationEntryTag.Informal in ce.tags:
         return
     corrected_name = ce.get_corrected_name()
@@ -971,12 +952,8 @@ def check_corrected_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
                     message = (
                         f"infer corrected name from other CE: {other_corrected_name}"
                     )
-                    if cfg.autofix:
-                        print(f"{ce}: {message}")
-                        tag = ClassificationEntryTag.CorrectedName(other_corrected_name)
-                        ce.add_tag(tag)
-                    else:
-                        yield message
+                    tag = ClassificationEntryTag.CorrectedName(other_corrected_name)
+                    yield append_to_field_issue(message, ce, "tags", tag)
                     return
         yield "cannot infer corrected name; add CorrectedName tag"
         return
@@ -1098,21 +1075,17 @@ def _should_look_for_page_links(ce: ClassificationEntry) -> bool:
 
 def _maybe_add_bhl_page(
     ce: ClassificationEntry, cfg: LintConfig, page_obj: bhl.PossiblePage
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     message = f"inferred BHL page {page_obj}"
-    if cfg.autofix:
-        print(f"{ce}: {message}")
-        tag = ClassificationEntryTag.PageLink(
-            url=page_obj.page_url, page=str(page_obj.page_number)
-        )
-        ce.add_tag(tag)
-    else:
-        yield message
+    tag = ClassificationEntryTag.PageLink(
+        url=page_obj.page_url, page=str(page_obj.page_number)
+    )
+    yield append_to_field_issue(message, ce, "tags", tag)
     print(page_obj.page_url)
 
 
 @LINT.add("infer_bhl_page", requires_network=True)
-def infer_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def infer_bhl_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]:
     if not _should_look_for_page_links(ce):
         if cfg.verbose:
             print(f"{ce}: Skip because no page or enough tags")
@@ -1192,7 +1165,7 @@ def get_candidate_bhl_pages(
 @LINT.add("infer_page_from_mapped_name")
 def infer_page_from_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not _should_look_for_page_links(ce):
         return
     if ce.mapped_name is None:
@@ -1208,18 +1181,13 @@ def infer_page_from_mapped_name(
     if not new_tags:
         return
     message = f"inferred page from mapped name {ce.mapped_name}: {new_tags}"
-    if cfg.autofix:
-        print(f"{ce}: {message}")
-        for tag in new_tags:
-            ce.add_tag(tag)
-    else:
-        yield message
+    yield field_issue(message, ce, "tags", (*ce.tags, *new_tags))
 
 
 @LINT.add("infer_page_from_other_names")
 def infer_page_from_other_names(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not _should_look_for_page_links(ce):
         if cfg.verbose:
             print(f"{ce}: not looking for BHL URL")
@@ -1261,17 +1229,13 @@ def infer_page_from_other_names(
                 print(f"{ce}: already has {tag}")
             continue
         message = f"inferred URL {url} from other names (add {tag})"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.add_tag(tag)
-        else:
-            yield message
+        yield append_to_field_issue(message, ce, "tags", tag)
 
 
 @LINT.add("bhl_page_from_article", requires_network=True)
 def infer_bhl_page_from_article(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not _should_look_for_page_links(ce):
         if cfg.verbose:
             print(f"{ce}: not looking for BHL URL")
@@ -1297,17 +1261,13 @@ def infer_bhl_page_from_article(
                 page=page_described,
             )
             message = f"inferred BHL page {page_id} from {message} (add {tag})"
-            if cfg.autofix:
-                print(f"{ce}: {message}")
-                ce.add_tag(tag)
-            else:
-                yield message
+            yield append_to_field_issue(message, ce, "tags", tag)
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
 def infer_bhl_page_from_other_names(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not _should_look_for_page_links(ce):
         if cfg.verbose:
             print(f"{ce}: not looking for BHL URL")
@@ -1366,11 +1326,7 @@ def infer_bhl_page_from_other_names(
                 print(f"{ce}: already has inferred tag {tag}")
             continue
         message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.add_tag(tag)
-        else:
-            yield message
+        yield append_to_field_issue(message, ce, "tags", tag)
 
 
 def _get_existing_page_links(ce: ClassificationEntry) -> set[str]:
@@ -1378,7 +1334,9 @@ def _get_existing_page_links(ce: ClassificationEntry) -> set[str]:
 
 
 @LINT.add("infer_page_from_name")
-def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def infer_page_from_name(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
     if ce.page is not None:
         return
     if ce.mapped_name is None:
@@ -1388,11 +1346,7 @@ def infer_page_from_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[s
     if ce.mapped_name.original_citation != ce.article:
         return
     message = f"inferred page from mapped name: {ce.mapped_name.page_described}"
-    if cfg.autofix:
-        print(f"{ce}: {message}")
-        ce.page = ce.mapped_name.page_described
-    else:
-        yield message
+    yield field_issue(message, ce, "page", ce.mapped_name.page_described)
 
 
 _EXCLUDED_RANKS = [Rank.informal, Rank.informal_species, *SYNONYM_RANKS]
@@ -1435,7 +1389,7 @@ def _get_ce_key(ce: ClassificationEntry) -> tuple[Rank, str] | None:
 @LINT.add("mapped_name_matches_other_ces")
 def check_mapped_name_matches_other_ces(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if ce.mapped_name is None or ce.rank is Rank.informal or ce.rank.is_synonym:
         return
     group = ce.get_group()
@@ -1469,11 +1423,7 @@ def check_mapped_name_matches_other_ces(
         ]
         if len(possibilities) == 1:
             message = f"change to map to {possibilities[0]}"
-            if cfg.autofix:
-                print(f"{ce}: {message}")
-                ce.mapped_name = possibilities[0]
-            else:
-                yield message
+            yield field_issue(message, ce, "mapped_name", possibilities[0])
 
 
 def get_applicable_nomenclature_statuses(
@@ -1524,7 +1474,7 @@ def check_maps_to_unavailable(
 @LINT.add("condition_from_mapped")
 def infer_condition_from_mapped(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
         return
     applicable_statuses = set(get_applicable_nomenclature_statuses(ce))
@@ -1536,18 +1486,16 @@ def infer_condition_from_mapped(
             continue
         new_tag = ClassificationEntryTag.CECondition(tag.status, comment=tag.comment)
         message = f"inferred CECondition tag from mapped name: {new_tag}"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.add_tag(new_tag)
-        else:
-            yield message
+        yield append_to_field_issue(message, ce, "tags", new_tag)
 
 
 # disabled for now because the ZooBank website is down and some of the entries
 # seem dubious (e.g. Sorex minutus minutus); we may want to do this only manually,
 # in cases where the ZooBank entry was manually verified to match the CE
 @LINT.add("lsid_from_mapped", disabled=True)
-def infer_lsid_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def infer_lsid_from_mapped(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
     if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
         return
     for tag in ce.mapped_name.type_tags:
@@ -1556,15 +1504,13 @@ def infer_lsid_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
             if new_tag in ce.tags:
                 continue
             message = f"inferred LSID from mapped name: {new_tag}"
-            if cfg.autofix:
-                print(f"{ce}: {message}")
-                ce.add_tag(new_tag)
-            else:
-                yield message
+            yield append_to_field_issue(message, ce, "tags", new_tag)
 
 
 @LINT.add("from_mapped")
-def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def infer_data_from_mapped(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
     if ce.mapped_name is None or ce.mapped_name.get_mapped_classification_entry() != ce:
         return
     if ce.type_locality is None:
@@ -1578,11 +1524,7 @@ def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
         if len(tags) == 1:
             tag = tags[0]
             message = f"inferred type locality from mapped name: {tag}"
-            if cfg.autofix:
-                print(f"{ce}: {message}")
-                ce.type_locality = tag.text
-            else:
-                yield message
+            yield field_issue(message, ce, "type_locality", tag.text)
         elif tags:
             message = f"multiple possible type localities from mapped name: {', '.join(f'"{tag.text}"' for tag in tags)}"
             yield message
@@ -1599,28 +1541,23 @@ def infer_data_from_mapped(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
         if tag.source == ce.article and tag.text not in existing_specimen_details
     ]
     if specimen_details:
-        for tag in specimen_details:
-            message = f"inferred type specimen detail from mapped name: {tag}"
-            if cfg.autofix:
-                print(f"{ce}: {message}")
-                ce.add_tag(ClassificationEntryTag.TypeSpecimenData(tag.text))
-            else:
-                yield message
+        new_tags = tuple(
+            ClassificationEntryTag.TypeSpecimenData(tag.text)
+            for tag in specimen_details
+        )
+        message = f"inferred type specimen details from mapped name: {specimen_details}"
+        yield field_issue(message, ce, "tags", (*ce.tags, *new_tags))
 
 
 @LINT.add("vacuous_type_locality")
 def check_vacuous_type_locality(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if ce.type_locality is None:
         return
     if models.name.lint.is_empty_location_detail(ce.type_locality):
         message = f"type locality is vacuous: {ce.type_locality!r}"
-        if cfg.autofix:
-            print(f"{ce}: {message}")
-            ce.type_locality = None
-        else:
-            yield message
+        yield field_issue(message, ce, "type_locality", None)
 
 
 @LINT.add("infer_duplicate")
@@ -1691,7 +1628,7 @@ def check_matches_citation(ce: ClassificationEntry, cfg: LintConfig) -> Iterable
 
 
 @LINT.add("parent_rank")
-def check_parent_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def check_parent_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]:
     if ce.parent is None:
         return
     if ce.has_tag(ClassificationEntryTag.AuxiliaryName):
@@ -1719,9 +1656,10 @@ def check_parent_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]
                     if len(possible_parents) == 1:
                         new_parent = possible_parents[0]
                         message += f"; change parent to {new_parent}"
-                yield message
-                if cfg.autofix and new_parent is not None:
-                    ce.parent = new_parent
+                if new_parent is not None:
+                    yield field_issue(message, ce, "parent", new_parent)
+                else:
+                    yield message
 
 
 def find_referenced_usage(ce: ClassificationEntry) -> ClassificationEntry | None:
@@ -1766,7 +1704,7 @@ def is_acceptable_year(
 @LINT.add("needs_referenced_usage")
 def check_needs_referenced_usage(
     ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     for tag in ce.get_tags(ce.tags, ClassificationEntryTag.ReferencedUsage):
         if ce.year is not None and ce.year.isnumeric():
             message = is_acceptable_year(int(ce.year), [tag.ce.article])
@@ -1786,9 +1724,14 @@ def check_needs_referenced_usage(
                 referenced_usage = find_referenced_usage(ce)
                 if referenced_usage is not None:
                     message += f" (maybe {referenced_usage}?)"
-                yield message
-                if referenced_usage is not None and cfg.autofix:
-                    ce.add_tag(ClassificationEntryTag.ReferencedUsage(referenced_usage))
+                    yield append_to_field_issue(
+                        message,
+                        ce,
+                        "tags",
+                        ClassificationEntryTag.ReferencedUsage(referenced_usage),
+                    )
+                else:
+                    yield message
 
 
 def _should_ignore_referenced_usage_check(

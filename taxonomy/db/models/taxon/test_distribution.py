@@ -86,4 +86,4 @@ def test_conflicting_statuses_for_same_region_are_linted() -> None:
     messages = list(check_regional_distribution_tags(taxon, LintConfig()))
 
     assert len(messages) == 1
-    assert "conflicting RegionalOrigin values" in messages[0]
+    assert "conflicting RegionalOrigin values" in str(messages[0])

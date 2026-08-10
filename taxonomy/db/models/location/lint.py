@@ -15,7 +15,8 @@ from taxonomy.apis import geonames, nominatim, plss
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import RegionKind, SpeciesGroupType
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import IgnoreLint, Lint, field_issue, fields_issue
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region, RegionTag
 from taxonomy.db.models.tags import LocationTag, is_coordinate_provenance_tag
@@ -1892,7 +1893,7 @@ def check_period(location: Location, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("coordinates")
-def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     if location.latitude is None and location.longitude is None:
         return
     if location.latitude is None:
@@ -1913,12 +1914,11 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
             f"coordinates should be {latitude}, {longitude}, not "
             f"{location.latitude}, {location.longitude}"
         )
-        if cfg.autofix and not LINT.is_ignoring_lint(location, "coordinates"):
-            print(f"{location}: {message}")
-            location.latitude = latitude
-            location.longitude = longitude
-        else:
-            yield message
+        yield fields_issue(
+            message,
+            (location, "latitude", latitude),
+            (location, "longitude", longitude),
+        )
     if location.is_general() and extent.point is not None:
         yield "general location should use a coordinate range, not point coordinates"
         return
@@ -2055,11 +2055,17 @@ def _get_linked_coordinate_candidates(
 
 
 def _add_coordinate_provenance(location: Location, tags: Iterable[Any]) -> None:
+    location.tags = _coordinate_provenance_tags(location, tags)  # type: ignore[assignment]
+
+
+def _coordinate_provenance_tags(
+    location: Location, tags: Iterable[Any]
+) -> tuple[Any, ...]:
     existing = tuple(location.tags or ())
     for tag in dict.fromkeys(tags):
         if tag not in existing:
-            location.add_tag(tag)
             existing = (*existing, tag)
+    return existing
 
 
 def _replace_location_tag(location: Location, old_tag: Any, new_tag: Any) -> None:
@@ -2079,7 +2085,9 @@ def _nominatim_provenance_tag(
 
 
 @LINT.add("linked_coordinates")
-def check_linked_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_linked_coordinates(
+    location: Location, cfg: LintConfig
+) -> Iterable[LintResult]:
     if location.latitude is not None or location.longitude is not None:
         return
     if not _should_infer_coordinates(location):
@@ -2111,13 +2119,15 @@ def check_linked_coordinates(location: Location, cfg: LintConfig) -> Iterable[st
     longitude = combined_extent.longitude.standardized_text
 
     message = f"coordinates should be {latitude}, {longitude}, inferred from {source}"
-    if cfg.autofix and not LINT.is_ignoring_lint(location, "linked_coordinates"):
-        print(f"{location}: {message}")
-        location.latitude = latitude
-        location.longitude = longitude
-        _add_coordinate_provenance(location, (item.provenance for item in evidence))
-    else:
-        yield message
+    provenance_tags = _coordinate_provenance_tags(
+        location, (item.provenance for item in evidence)
+    )
+    yield fields_issue(
+        message,
+        (location, "latitude", latitude),
+        (location, "longitude", longitude),
+        (location, "tags", provenance_tags),
+    )
 
 
 @cache
@@ -2438,7 +2448,9 @@ def check_geonames_alternate_name(location: Location, cfg: LintConfig) -> Iterab
     requires_network=True,
     clear_caches=_clear_geonames_lint_caches,
 )
-def check_geonames_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_geonames_coordinates(
+    location: Location, cfg: LintConfig
+) -> Iterable[LintResult]:
     if location.latitude is not None or location.longitude is not None:
         return
     if location.has_tag(LocationTag.PLSS):
@@ -2542,13 +2554,12 @@ def check_geonames_coordinates(location: Location, cfg: LintConfig) -> Iterable[
         provenance_tags = [
             LocationTag.CoordinatesFromGeoNames(reference.match.record.geoname_id)
         ]
-    if cfg.autofix and not LINT.is_ignoring_lint(location, "geonames_coordinates"):
-        print(f"{location}: {message}")
-        location.latitude = latitude
-        location.longitude = longitude
-        _add_coordinate_provenance(location, provenance_tags)
-    else:
-        yield message
+    yield fields_issue(
+        message,
+        (location, "latitude", latitude),
+        (location, "longitude", longitude),
+        (location, "tags", _coordinate_provenance_tags(location, provenance_tags)),
+    )
 
 
 @LINT.add("geonames_coordinate_consistency")
@@ -2615,7 +2626,9 @@ def check_geonames_coordinate_consistency(
 
 
 @LINT.add("nominatim_coordinates", requires_network=True)
-def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_nominatim_coordinates(
+    location: Location, cfg: LintConfig
+) -> Iterable[LintResult]:
     if location.latitude is not None or location.longitude is not None:
         return
     if location.has_tag(LocationTag.PLSS):
@@ -2680,19 +2693,18 @@ def check_nominatim_coordinates(location: Location, cfg: LintConfig) -> Iterable
             "has no stable OpenStreetMap identifier"
         )
         return
-    if cfg.autofix and not LINT.is_ignoring_lint(location, "nominatim_coordinates"):
-        print(f"{location}: {message}")
-        location.latitude = latitude
-        location.longitude = longitude
-        _add_coordinate_provenance(location, [provenance])
-    else:
-        yield message
+    yield fields_issue(
+        message,
+        (location, "latitude", latitude),
+        (location, "longitude", longitude),
+        (location, "tags", _coordinate_provenance_tags(location, [provenance])),
+    )
 
 
 @LINT.add("nominatim_general_coordinates", requires_network=True)
 def check_nominatim_general_coordinates(
     location: Location, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if (
         not location.is_general()
         or not is_recent_location(location)
@@ -2800,15 +2812,12 @@ def check_nominatim_general_coordinates(
             f"{location.longitude} manually"
         )
         return
-    if cfg.autofix and not LINT.is_ignoring_lint(
-        location, "nominatim_general_coordinates"
-    ):
-        print(f"{location}: {message}")
-        location.latitude = latitude
-        location.longitude = longitude
-        _add_coordinate_provenance(location, [provenance])
-    else:
-        yield message
+    yield fields_issue(
+        message,
+        (location, "latitude", latitude),
+        (location, "longitude", longitude),
+        (location, "tags", _coordinate_provenance_tags(location, [provenance])),
+    )
 
 
 def _get_nominatim_bounding_box_radius_km(
@@ -4050,7 +4059,9 @@ def _get_backfill_coordinate_provenance(
 
 
 @LINT.add("coordinate_provenance", requires_network=True)
-def check_coordinate_provenance(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_coordinate_provenance(
+    location: Location, cfg: LintConfig
+) -> Iterable[LintResult]:
     provenance_tags = [
         tag for tag in location.tags or () if is_coordinate_provenance_tag(tag)
     ]
@@ -4066,13 +4077,12 @@ def check_coordinate_provenance(location: Location, cfg: LintConfig) -> Iterable
         inferred = _get_backfill_coordinate_provenance(location, location_extent)
         if inferred:
             message = f"add coordinate provenance tags {inferred!r}"
-            if cfg.autofix and not LINT.is_ignoring_lint(
-                location, "coordinate_provenance"
-            ):
-                print(f"{location}: {message}")
-                _add_coordinate_provenance(location, inferred)
-            else:
-                yield message
+            yield field_issue(
+                message,
+                location,
+                "tags",
+                _coordinate_provenance_tags(location, inferred),
+            )
         else:
             yield (
                 "coordinates are not supported by a coordinate provenance tag; "
