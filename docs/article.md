@@ -9,7 +9,8 @@ but a few are of important works that I do not have a persistent copy of.
 Articles have the following fields:
 
 - _name_: Unique name for the citation. This matches the file name for files in my
-  electronic library, but mostly does not appear in the web version of the database.
+  electronic library, but mostly does not appear in the web version of the database. See
+  [article naming](/docs/article-naming) for the rules governing the name.
 - _author_tags_: The authors of the article, as references to [persons](/docs/person).
 - _year_: Year the article was published
 - _title_: Title of the article
