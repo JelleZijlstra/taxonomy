@@ -13,7 +13,9 @@ below. Treat a filename as valid only if `NameParser` reports no errors.
 - The extension, when present, consists of lowercase ASCII letters (normally `pdf`).
 - At most two trailing parenthesized modifiers are allowed.
 - A modifier ending in a four-digit year is authorship. Accepted forms include `(2016)`,
-  `(Verzi 2016)`, `(Verzi & Montalvo 2016)`, and `(Verzi et al. 2016)`.
+  `(Verzi 2016)`, `(Verzi & Montalvo 2016)`, and `(Verzi et al. 2016)`. Authorship
+  modifiers are common and desirable and should be preferred to non-informative topic
+  entries like "review".
 - One arbitrary, non-nested free modifier may follow the authorship, for example
   `(supplement)`, `(plates)`, or `(2-1)`. When both are present, authorship must come
   first: `(Smith 2020) (supplement)`. When both the final version of an Article and its
