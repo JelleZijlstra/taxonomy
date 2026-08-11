@@ -36,9 +36,12 @@ from taxonomy.db.models.issue_date import IssueDate
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
-    append_to_field_issue,
+    add_tag_fix,
+    add_tag_issue,
+    field_fix,
     field_issue,
     fields_issue,
+    fixes_issue,
 )
 from taxonomy.db.models.lint_types import LintIssue, LintResult
 from taxonomy.db.models.person import AuthorTag, is_more_specific_than
@@ -611,7 +614,7 @@ def add_internal_publication_date(
     if text_contains_date(art):
         tag = ArticleTag.PublicationDate(DateSource.internal, art.year)
         message = f"adding PublicationDate tag for {art.year}: {tag}"
-        yield append_to_field_issue(message, art, "tags", tag)
+        yield add_tag_issue(message, art, tag)
 
 
 _JSTOR_URL_REGEX = r"https?://www\.jstor\.org/stable/(\d+)"
@@ -623,10 +626,16 @@ def is_valid_hdl(hdl: str) -> bool:
 
 
 def _set_or_replace_url_issue(message: str, art: Article, url: str) -> LintIssue:
-    tags = tuple(art.tags or ())
+    fixes = [field_fix(art, "url", url)]
     if art.url:
-        tags = (*tags, ArticleTag.AlternativeURL(art.url))
-    return fields_issue(message, (art, "tags", tags), (art, "url", url))
+        fixes.append(add_tag_fix(art, ArticleTag.AlternativeURL(art.url)))
+    return fixes_issue(message, *fixes)
+
+
+def _clear_url_and_add_tag_issue(
+    message: str, art: Article, tag: ArticleTag
+) -> LintIssue:
+    return fixes_issue(message, add_tag_fix(art, tag), field_fix(art, "url", None))
 
 
 def is_valid_doi(doi: str) -> bool:
@@ -672,11 +681,7 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         case urlparse.HDLUrl(hdl, query=None):
             message = f"inferred HDL {hdl} from url {art.url}"
             if api_is_hdl_valid(hdl):
-                yield fields_issue(
-                    message,
-                    (art, "tags", (*(art.tags or ()), ArticleTag.HDL(hdl))),
-                    (art, "url", None),
-                )
+                yield _clear_url_and_add_tag_issue(message, art, ArticleTag.HDL(hdl))
             else:
                 yield message
             return
@@ -687,45 +692,24 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
                 urlappend = urllib.parse.unquote(urlappend_list[0])
                 message = f"inferred HDL {hdl} (with urlappend={urlappend}) from url {art.url}"
                 if api_is_hdl_valid(hdl):
-                    yield fields_issue(
-                        message,
-                        (
-                            art,
-                            "tags",
-                            (
-                                *(art.tags or ()),
-                                ArticleTag.HDL(hdl, urlappend=urlappend),
-                            ),
-                        ),
-                        (art, "url", None),
+                    yield _clear_url_and_add_tag_issue(
+                        message, art, ArticleTag.HDL(hdl, urlappend=urlappend)
                     )
                 else:
                     yield message
                 return
         case urlparse.JStorUrl(jstor_id):
             message = f"inferred JStor id {jstor_id} from url {art.url}"
-            yield fields_issue(
-                message,
-                (art, "tags", (*(art.tags or ()), ArticleTag.JSTOR(jstor_id))),
-                (art, "url", None),
-            )
+            yield _clear_url_and_add_tag_issue(message, art, ArticleTag.JSTOR(jstor_id))
         case urlparse.DOIURL(doi):
             message = f"inferred DOI {doi} from url {art.url}"
             yield fields_issue(message, (art, "doi", doi), (art, "url", None))
         case urlparse.PMCUrl(pmc_id):
             message = f"inferred PMC id {pmc_id} from url {art.url}"
-            yield fields_issue(
-                message,
-                (art, "tags", (*(art.tags or ()), ArticleTag.PMC(pmc_id))),
-                (art, "url", None),
-            )
+            yield _clear_url_and_add_tag_issue(message, art, ArticleTag.PMC(pmc_id))
         case urlparse.PubMedUrl(pmid):
             message = f"inferred PMID {pmid} from url {art.url}"
-            yield fields_issue(
-                message,
-                (art, "tags", (*(art.tags or ()), ArticleTag.PMID(pmid))),
-                (art, "url", None),
-            )
+            yield _clear_url_and_add_tag_issue(message, art, ArticleTag.PMID(pmid))
         case urlparse.BhlPart(part_id):
             if art.doi is None:
                 expected_doi = f"10.5962/bhl.part.{part_id}"
@@ -736,11 +720,7 @@ def check_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         case urlparse.DeepBlueUrl(handle, _):
             message = f"inferred HDL {handle} from url {art.url}"
             if api_is_hdl_valid(handle):
-                yield fields_issue(
-                    message,
-                    (art, "tags", (*(art.tags or ()), ArticleTag.HDL(handle))),
-                    (art, "url", None),
-                )
+                yield _clear_url_and_add_tag_issue(message, art, ArticleTag.HDL(handle))
             else:
                 yield message
 
@@ -773,9 +753,7 @@ def check_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
                 f"inferred JStor id {jstor_id} from doi {art.doi} (CG"
                 f" {art.citation_group})"
             )
-            yield append_to_field_issue(
-                message, art, "tags", ArticleTag.JSTOR(jstor_id)
-            )
+            yield add_tag_issue(message, art, ArticleTag.JSTOR(jstor_id))
 
 
 @LINT.add("bhl_item_from_bibliography", requires_network=True)
@@ -1624,12 +1602,8 @@ def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
             if tag not in cg.tags:
                 new_cg_tags.append(tag)
         if new_cg_tags:
-            yield field_issue(
-                f"adding ISSN tags {new_cg_tags} from JSTOR",
-                cg,
-                "tags",
-                (*cg.tags, *new_cg_tags),
-            )
+            for tag in new_cg_tags:
+                yield add_tag_issue(f"adding ISSN tag {tag} from JSTOR", cg, tag)
     # Title
     if art.title:
         jt = (row.get("title") or "").strip()
@@ -1658,7 +1632,7 @@ def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         if not has_same:
             tag = ArticleTag.PublicationDate(DateSource.jstor, pub_date)
             msg = f"adding PublicationDate {pub_date} from JSTOR"
-            yield append_to_field_issue(msg, art, "tags", tag)
+            yield add_tag_issue(msg, art, tag)
 
 
 @LINT.add("find_jstor")
@@ -1693,7 +1667,7 @@ def find_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
                 )
             return
     msg = f"inferred JSTOR id {jstor_id} (sim={cand.similarity:.2f}) via journal/volume/title"
-    yield append_to_field_issue(msg, art, "tags", ArticleTag.JSTOR(jstor_id))
+    yield add_tag_issue(msg, art, ArticleTag.JSTOR(jstor_id))
 
 
 def should_not_have_issue(art: Article) -> bool:
@@ -1907,12 +1881,8 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
                 if new_tag not in art.tags and new_tag not in inferred_tags:
                     inferred_tags.append(new_tag)
     if inferred_tags:
-        yield field_issue(
-            f"adding inferred LSIDs: {inferred_tags}",
-            art,
-            "tags",
-            (*art.tags, *inferred_tags),
-        )
+        for tag in inferred_tags:
+            yield add_tag_issue(f"adding inferred LSID: {tag}", art, tag)
 
 
 @LINT.add("lsid")
@@ -2465,9 +2435,8 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         if isbn_tag not in new_tags:
             new_tags.append(isbn_tag)
     if new_tags:
-        yield field_issue(
-            f"adding tags {new_tags} from DOI", art, "tags", (*art.tags, *new_tags)
-        )
+        for tag in new_tags:
+            yield add_tag_issue(f"adding tag {tag} from DOI", art, tag)
     yield from _check_doi_authors(art, data, cfg)
 
 
@@ -2648,7 +2617,7 @@ def infer_pmid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if pmid is None:
         return
     message = f"adding PMID {pmid} inferred from DOI"
-    yield append_to_field_issue(message, art, "tags", ArticleTag.PMID(pmid))
+    yield add_tag_issue(message, art, ArticleTag.PMID(pmid))
 
 
 @LINT.add("data_from_pubmed", requires_network=True)
@@ -2828,7 +2797,7 @@ def data_from_pmc(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         for tag in data.get("tags", []) or []:
             if isinstance(tag, ArticleTag.PMID):
                 message = f"adding PMID {tag.text} from PMC"
-                yield append_to_field_issue(message, art, "tags", tag)
+                yield add_tag_issue(message, art, tag)
 
 
 @LINT.add("infer_pmc", requires_network=True)
@@ -2871,7 +2840,7 @@ def infer_pmc(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if not pmcid:
         return
     message = f"adding PMCID {pmcid}"
-    yield append_to_field_issue(message, art, "tags", ArticleTag.PMC(pmcid))
+    yield add_tag_issue(message, art, ArticleTag.PMC(pmcid))
 
 
 def _check_zoobank_year(art: Article, data: dict[str, Any]) -> Iterable[str]:

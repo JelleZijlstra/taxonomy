@@ -15,8 +15,18 @@ from taxonomy.apis import geonames, nominatim, plss
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import RegionKind, SpeciesGroupType
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint, field_issue, fields_issue
-from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    add_tag_fix,
+    field_fix,
+    field_issue,
+    fields_issue,
+    fixes_issue,
+    replace_tag_fix,
+    replace_tag_issue,
+)
+from taxonomy.db.models.lint_types import LintIssue, LintResult
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region, RegionTag
 from taxonomy.db.models.tags import LocationTag, is_coordinate_provenance_tag
@@ -707,27 +717,27 @@ def _get_location_extent(location: Location) -> coordinate_lint.CoordinateExtent
     return coordinate_lint.make_extent(location.latitude, location.longitude)
 
 
-def _replace_plss_tag(
-    location: Location, old_tag: LocationTag.PLSS, new_tag: LocationTag.PLSS  # type: ignore[name-defined]
-) -> None:
+def _replace_plss_tag_issue(
+    message: str,
+    location: Location,
+    old_tag: LocationTag.PLSS,  # type: ignore[name-defined]
+    new_tag: LocationTag.PLSS,  # type: ignore[name-defined]
+) -> LintIssue:
     """Replace a PLSS tag and keep PLSS coordinate provenance attached to it."""
-    new_tags = []
-    for tag in location.tags or ():
-        if tag == old_tag:
-            tag = new_tag
-        elif (
-            isinstance(tag, LocationTag.CoordinatesFromPLSS)
-            and tag.plss_id == old_tag.plss_id
-            and old_tag.plss_id != new_tag.plss_id
-        ):
-            tag = LocationTag.CoordinatesFromPLSS(new_tag.plss_id)
-        if tag not in new_tags:
-            new_tags.append(tag)
-    location.tags = tuple(new_tags)  # type: ignore[assignment]
+    fixes = [replace_tag_fix(location, old_tag, new_tag)]
+    if old_tag.plss_id != new_tag.plss_id:
+        for tag in location.get_tags(location.tags, LocationTag.CoordinatesFromPLSS):
+            if tag.plss_id == old_tag.plss_id:
+                fixes.append(
+                    replace_tag_fix(
+                        location, tag, LocationTag.CoordinatesFromPLSS(new_tag.plss_id)
+                    )
+                )
+    return fixes_issue(message, *fixes)
 
 
 @LINT.add("plss_tag")
-def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     tags = list(location.get_tags(location.tags, LocationTag.PLSS))
     if len(tags) > 1:
         yield f"has multiple PLSS tags: {tags}"
@@ -744,13 +754,9 @@ def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[str]:
                     f"PLSS text {tag.text!r} is not canonical; use "
                     f"{canonical_text!r}"
                 )
-                if cfg.autofix and not LINT.is_ignoring_lint(location, "plss_tag"):
-                    print(f"{location}: {message}")
-                    new_tag = adt.replace(tag, text=canonical_text)
-                    _replace_plss_tag(location, tag, new_tag)
-                    tag = new_tag
-                else:
-                    yield message
+                new_tag = adt.replace(tag, text=canonical_text)
+                yield _replace_plss_tag_issue(message, location, tag, new_tag)
+                tag = new_tag
             else:
                 yield f"PLSS text {tag.text!r} does not contain one complete description"
                 continue
@@ -862,7 +868,7 @@ def _common_plss_description(
 
 
 @LINT.add("plss", requires_network=True)
-def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     tags = list(location.get_tags(location.tags, LocationTag.PLSS))
     evidence = [] if tags else _get_linked_plss_evidence(location)
     if not tags and not evidence:
@@ -903,30 +909,21 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
                 replacement = adt.replace(
                     tag, text=resolved_text, plss_id=tag_township.plss_id
                 )
+                messages = []
                 if tag.text != resolved_text:
-                    message = (
+                    messages.append(
                         f"PLSS tag uses meridian text {parsed_tag.meridian!r}; use the "
                         f"BLM name in {resolved_text!r}"
                     )
-                    if not cfg.autofix or LINT.is_ignoring_lint(location, "plss"):
-                        yield message
-                    else:
-                        print(f"{location}: {message}")
                 if tag.plss_id != tag_township.plss_id:
-                    message = (
+                    messages.append(
                         f"PLSS tag identifier is {tag.plss_id!r}, but {tag.text!r} "
                         f"resolves to {tag_township.plss_id!r}"
                     )
-                    if not cfg.autofix or LINT.is_ignoring_lint(location, "plss"):
-                        yield message
-                    else:
-                        print(f"{location}: {message}")
-                if (
-                    replacement != tag
-                    and cfg.autofix
-                    and not LINT.is_ignoring_lint(location, "plss")
-                ):
-                    _replace_plss_tag(location, tag, replacement)
+                if replacement != tag:
+                    yield _replace_plss_tag_issue(
+                        "; ".join(messages), location, tag, replacement
+                    )
                     tag = replacement
                 try:
                     resolved_geometry = plss.get_description_geometry(
@@ -957,19 +954,18 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
                             f"coordinate bounds could be {bounds_text}, inferred from "
                             f"the {resolved_geometry.level} polygon for {tag.text!r}"
                         )
-                        if (
-                            cfg.autofix
-                            and location.latitude is None
-                            and location.longitude is None
-                            and not LINT.is_ignoring_lint(location, "plss")
-                        ):
-                            print(f"{location}: {message}")
+                        if location.latitude is None and location.longitude is None:
                             latitude, longitude = bounds_text.split(", ", maxsplit=1)
-                            location.latitude = latitude
-                            location.longitude = longitude
-                            _add_coordinate_provenance(
-                                location,
-                                [LocationTag.CoordinatesFromPLSS(tag_township.plss_id)],
+                            yield fixes_issue(
+                                message,
+                                field_fix(location, "latitude", latitude),
+                                field_fix(location, "longitude", longitude),
+                                add_tag_fix(
+                                    location,
+                                    LocationTag.CoordinatesFromPLSS(
+                                        tag_township.plss_id
+                                    ),
+                                ),
                             )
                         else:
                             yield message
@@ -1082,42 +1078,41 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
         )
         return
     message = f"add {expected!r}, inferred from {first_item.source}"
-    if cfg.autofix and not LINT.is_ignoring_lint(location, "plss"):
-        print(f"{location}: {message}")
-        location.add_tag(expected)
-        if location.latitude is None and location.longitude is None:
-            try:
-                resolved_geometry = plss.get_description_geometry(
-                    most_specific_township, most_specific
+    fixes = [add_tag_fix(location, expected)]
+    if location.latitude is None and location.longitude is None:
+        try:
+            resolved_geometry = plss.get_description_geometry(
+                most_specific_township, most_specific
+            )
+        except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
+            yield f"could not retrieve PLSS polygon: {exc}"
+        else:
+            bounds_text = _format_plss_bounds(resolved_geometry.geometries)
+            if bounds_text is not None:
+                coordinate_message = (
+                    f"coordinate bounds could be {bounds_text}, inferred from "
+                    f"the {resolved_geometry.level} polygon for {expected.text!r}"
                 )
-            except (httpx.HTTPError, plss.PLSSUnavailableError) as exc:
-                yield f"could not retrieve PLSS polygon: {exc}"
-            else:
-                bounds_text = _format_plss_bounds(resolved_geometry.geometries)
-                if bounds_text is not None:
-                    coordinate_message = (
-                        f"coordinate bounds could be {bounds_text}, inferred from "
-                        f"the {resolved_geometry.level} polygon for {expected.text!r}"
-                    )
-                    print(f"{location}: {coordinate_message}")
-                    latitude, longitude = bounds_text.split(", ", maxsplit=1)
-                    location.latitude = latitude
-                    location.longitude = longitude
-                    _add_coordinate_provenance(
-                        location,
-                        [
+                latitude, longitude = bounds_text.split(", ", maxsplit=1)
+                message = f"{message}; {coordinate_message}"
+                fixes.extend(
+                    (
+                        field_fix(location, "latitude", latitude),
+                        field_fix(location, "longitude", longitude),
+                        add_tag_fix(
+                            location,
                             LocationTag.CoordinatesFromPLSS(
                                 most_specific_township.plss_id
-                            )
-                        ],
+                            ),
+                        ),
                     )
-                elif cfg.verbose:
-                    yield (
-                        f"BLM has no {resolved_geometry.level} polygon for "
-                        f"{expected.text!r}"
-                    )
-    else:
-        yield message
+                )
+            elif cfg.verbose:
+                yield (
+                    f"BLM has no {resolved_geometry.level} polygon for "
+                    f"{expected.text!r}"
+                )
+    yield fixes_issue(message, *fixes)
 
 
 @LINT.add("fully_divided_region")
@@ -1602,20 +1597,13 @@ def _is_location_name_taken(name: str) -> bool:
 
 
 def _maybe_autofix_name(
-    location: Location,
-    cfg: LintConfig,
-    *,
-    lint_label: str,
-    proposed_name: str,
-    message: str,
-) -> str | None:
-    if not cfg.autofix or LINT.is_ignoring_lint(location, lint_label):
+    location: Location, *, lint_label: str, proposed_name: str, message: str
+) -> LintResult:
+    if LINT.is_ignoring_lint(location, lint_label):
         return message
     if _is_location_name_taken(proposed_name):
         return f"{message}; cannot autofix because that name is already in use"
-    print(f"{location}: {message}")
-    location.name = proposed_name
-    return None
+    return field_issue(message, location, "name", proposed_name)
 
 
 @LINT.add("location_name")
@@ -1634,20 +1622,15 @@ def check_location_name(location: Location, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("offset_name")
-def check_offset_name(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_offset_name(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     search_plan = get_nominatim_search_plan(location)
     proposed_name = search_plan.standardized_name
     if not search_plan.offsets or location.name == proposed_name:
         return
     message = f"distance-offset name should be {proposed_name!r}"
-    if issue := _maybe_autofix_name(
-        location,
-        cfg,
-        lint_label="offset_name",
-        proposed_name=proposed_name,
-        message=message,
-    ):
-        yield issue
+    yield _maybe_autofix_name(
+        location, lint_label="offset_name", proposed_name=proposed_name, message=message
+    )
 
 
 def _looks_like_coordinate_pair(text: str) -> bool:
@@ -1702,7 +1685,9 @@ def _coordinate_extents_are_equal(
 
 
 @LINT.add("coordinate_modifier")
-def check_coordinate_modifier(location: Location, cfg: LintConfig) -> Iterable[str]:
+def check_coordinate_modifier(
+    location: Location, cfg: LintConfig
+) -> Iterable[LintResult]:
     plan = _get_coordinate_modifier_plan(location.name)
     if plan is None:
         return
@@ -1715,14 +1700,12 @@ def check_coordinate_modifier(location: Location, cfg: LintConfig) -> Iterable[s
     assert proposed_name is not None
     if location.name != proposed_name:
         message = f"coordinate-offset name should be {proposed_name!r}"
-        if issue := _maybe_autofix_name(
+        yield _maybe_autofix_name(
             location,
-            cfg,
             lint_label="coordinate_modifier",
             proposed_name=proposed_name,
             message=message,
-        ):
-            yield issue
+        )
 
     for issue in coordinate_lint.check_extent_in_region(extent, location.region):
         yield f"coordinate modifier {latitude} {longitude}: {issue}"
@@ -2054,10 +2037,6 @@ def _get_linked_coordinate_candidates(
     ]
 
 
-def _add_coordinate_provenance(location: Location, tags: Iterable[Any]) -> None:
-    location.tags = _coordinate_provenance_tags(location, tags)  # type: ignore[assignment]
-
-
 def _coordinate_provenance_tags(
     location: Location, tags: Iterable[Any]
 ) -> tuple[Any, ...]:
@@ -2066,12 +2045,6 @@ def _coordinate_provenance_tags(
         if tag not in existing:
             existing = (*existing, tag)
     return existing
-
-
-def _replace_location_tag(location: Location, old_tag: Any, new_tag: Any) -> None:
-    location.tags = tuple(  # type: ignore[assignment]
-        dict.fromkeys(new_tag if tag == old_tag else tag for tag in location.tags or ())
-    )
 
 
 def _nominatim_provenance_tag(
@@ -4119,13 +4092,7 @@ def check_coordinate_provenance(
                     f"{provenance.osm_type} {provenance.osm_id} now has category "
                     f"{current_result.category!r}"
                 )
-                if cfg.autofix and not LINT.is_ignoring_lint(
-                    location, "coordinate_provenance"
-                ):
-                    print(f"{location}: {message}")
-                    _replace_location_tag(location, provenance, replacement)
-                else:
-                    yield message
+                yield replace_tag_issue(message, location, provenance, replacement)
                 provenance = replacement
                 provenance_tags[index] = replacement
                 if parsed is None:

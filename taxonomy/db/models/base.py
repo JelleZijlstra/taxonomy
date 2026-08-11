@@ -262,11 +262,12 @@ class BaseModel(Model):
                 if not result.fix.is_virtual_safe:
                     yield result
                     continue
-            result.fix.apply()
-            if cfg.fix_callback is not None:
-                cfg.fix_callback(result)
-            if cfg.autofix:
-                print(result)
+            changed = result.fix.apply()
+            if changed:
+                if cfg.fix_callback is not None:
+                    cfg.fix_callback(result)
+                if cfg.autofix:
+                    print(result)
 
     def check_renderable(self) -> Iterable[str]:
         try:
@@ -290,6 +291,9 @@ class BaseModel(Model):
         return getinput.edit_by_word(text, callbacks=callbacks)
 
     def check_all_fields(self, cfg: LintConfig) -> Iterable[LintResult]:
+        # Imported lazily to avoid the base/lint module cycle.
+        from .lint import field_issue, replace_tag_issue
+
         is_invalid = self.is_invalid()
         message: str | None
         for field in self.fields():
@@ -310,9 +314,6 @@ class BaseModel(Model):
                         f"{self}: references redirected object {value} -> {target} in"
                         f" field {field}"
                     )
-                    # Imported lazily to avoid the base/lint module cycle.
-                    from .lint import field_issue
-
                     yield field_issue(message, self, field, target)
                 # We don't care if invalid objects reference other invalid objects
                 elif not is_invalid and value.is_invalid():
@@ -337,188 +338,116 @@ class BaseModel(Model):
                             f"{self}: field {field}: raw data does not match serialized"
                             f" data"
                         )
-                if cfg.autofix:
-                    new_tags = []
-                    made_change = False
-                    for tag in value:
-                        tag_type = type(tag)
-                        overrides: dict[str, Any] = {}
-                        for attr_name in tag_type._attributes:
-                            attr_value = getattr(tag, attr_name)
-                            if (
-                                attr_value is None
-                                and attr_name in tag_type.__required_attrs__
-                            ):
-                                yield (
-                                    f"{self}: missing required attribute {attr_name} on"
-                                    f" {field} tag {tag}"
-                                )
-                            if isinstance(attr_value, BaseModel):
-                                target = attr_value.get_redirect_target()
-                                if target is not None:
-                                    print(
-                                        f"{self}: references redirected object"
-                                        f" {attr_value} -> {target}"
-                                    )
-                                    overrides[attr_name] = target
-                                elif not is_invalid and attr_value.is_invalid():
-                                    yield (
-                                        f"{self}: references invalid object"
-                                        f" {attr_value} in {field} tag {tag}"
-                                    )
-                            elif isinstance(attr_value, str):
-                                cleaned = helpers.interactive_clean_string(
-                                    attr_value,
-                                    clean_whitespace=True,
-                                    interactive=cfg.interactive,
-                                )
-                                if cleaned != attr_value:
-                                    print(
-                                        f"{self}: in tags: clean {attr_value!r} ->"
-                                        f" {cleaned!r}"
-                                    )
-                                    overrides[attr_name] = cleaned
-                                if (
-                                    attr_value == ""
-                                    and attr_name in tag_type.__optional_attrs__
-                                ):
-                                    print(
-                                        f"{self}: in tags: empty attribute {attr_name}"
-                                        f" on {field} tag {tag}"
-                                    )
-                                    overrides[attr_name] = None
-                                if not is_invalid:
-                                    if message := helpers.is_string_clean(cleaned):
-                                        yield f"{self}: in tags: {message} in {cleaned!r}"
-                                    if not cleaned.isprintable():
-                                        message = (
-                                            f"{self}: contains unprintable characters:"
-                                            f" {cleaned!r}"
-                                        )
-                                        if cfg.interactive:
-                                            self.display()
-                                            print(message)
-                                            overrides[attr_name] = self._edit_by_word(
-                                                cleaned
-                                            )
-                                        yield message
-
-                                    match helpers.get_string_kind(
-                                        tag_type.__annotations__[attr_name]
-                                    ):
-                                        case StringKind.markdown:
-                                            cleaned_value = yield from models.article.lint.lint_referenced_text(
-                                                attr_value, prefix=f"{self}: "
-                                            )
-                                            if cleaned_value != attr_value:
-                                                print(
-                                                    f"{self} (#{self.id}): field {field}: clean"
-                                                    f" {attr_value!r} -> {cleaned_value!r}"
-                                                )
-                                                overrides[attr_name] = cleaned_value
-                                        case StringKind.url:
-                                            parsed = urllib.parse.urlparse(attr_value)
-                                            if (
-                                                parsed.scheme not in ("http", "https")
-                                                or not parsed.netloc
-                                            ):
-                                                yield (
-                                                    f"{self}: field {field}: invalid URL: {attr_value!r}"
-                                                )
-                                        case StringKind.regex:
-                                            try:
-                                                re.compile(attr_value)
-                                            except re.error:
-                                                yield (
-                                                    f"{self}: field {field}: invalid regex: {attr_value!r}"
-                                                )
-                                        case StringKind.managed:
-                                            pass
-                        if overrides:
-                            made_change = True
-                            new_tags.append(adt.replace(tag, **overrides))
-                        else:
-                            new_tags.append(tag)
-                    if not field_obj.is_ordered:
-                        new_tags = sorted(set(new_tags))
-                        if tuple(new_tags) != value:
-                            made_change = True
-                    if made_change:
-                        setattr(self, field, tuple(new_tags))
-                else:
-                    for tag in value:
-                        tag_type = type(tag)
-                        for attr_name in tag_type._attributes:
-                            attr_value = getattr(tag, attr_name)
-                            if isinstance(attr_value, BaseModel):
-                                if not is_invalid and attr_value.is_invalid():
-                                    yield (
-                                        f"{self}: references invalid object"
-                                        f" {attr_value} in {field} tag {tag}"
-                                    )
-                            elif isinstance(attr_value, str):
-                                cleaned = helpers.interactive_clean_string(
-                                    attr_value,
-                                    clean_whitespace=True,
-                                    interactive=cfg.interactive,
-                                )
-                                if cleaned != attr_value:
-                                    yield (
-                                        f"{self}: in tags: clean {attr_value!r} ->"
-                                        f" {cleaned!r}"
-                                    )
-                                if (
-                                    attr_value == ""
-                                    and attr_name in tag_type.__optional_attrs__
-                                ):
-                                    yield (
-                                        f"{self}: in tags: empty attribute {attr_name}"
-                                        f" on {field} tag {tag}"
-                                    )
-                                if not is_invalid:
-                                    if message := helpers.is_string_clean(cleaned):
-                                        yield f"{self}: in tags: {message} in {cleaned!r}"
-                                    if not cleaned.isprintable():
-                                        yield (
-                                            f"{self}: contains unprintable characters:"
-                                            f" {cleaned!r}"
-                                        )
-                                    match helpers.get_string_kind(
-                                        tag_type.__annotations__[attr_name]
-                                    ):
-                                        case StringKind.markdown:
-                                            cleaned_value = yield from models.article.lint.lint_referenced_text(
-                                                attr_value, prefix=f"{self}: "
-                                            )
-                                            if cleaned_value != attr_value:
-                                                yield (
-                                                    f"{self} (#{self.id}): field {field}: clean"
-                                                    f" {attr_value!r} -> {cleaned_value!r}"
-                                                )
-                                        case StringKind.url:
-                                            parsed = urllib.parse.urlparse(attr_value)
-                                            if (
-                                                parsed.scheme not in ("http", "https")
-                                                or not parsed.netloc
-                                            ):
-                                                yield (
-                                                    f"{self}: field {field}: invalid URL: {attr_value!r}"
-                                                )
-                                        case StringKind.regex:
-                                            try:
-                                                re.compile(attr_value)
-                                            except re.error:
-                                                yield (
-                                                    f"{self}: field {field}: invalid regex: {attr_value!r}"
-                                                )
-                                        case StringKind.managed:
-                                            pass
-                    if not field_obj.is_ordered:
-                        if list(value) != sorted(set(value)):
+                made_change = False
+                for tag in value:
+                    tag_type = type(tag)
+                    overrides: dict[str, Any] = {}
+                    changes: list[str] = []
+                    for attr_name in tag_type._attributes:
+                        attr_value = getattr(tag, attr_name)
+                        if (
+                            attr_value is None
+                            and attr_name in tag_type.__required_attrs__
+                        ):
                             yield (
-                                f"{self}: contains duplicate or unsorted tags in"
-                                f" {field}"
+                                f"{self}: missing required attribute {attr_name} on"
+                                f" {field} tag {tag}"
                             )
+                        if isinstance(attr_value, BaseModel):
+                            target = attr_value.get_redirect_target()
+                            if target is not None:
+                                overrides[attr_name] = target
+                                changes.append(
+                                    f"redirect {attr_name} {attr_value} -> {target}"
+                                )
+                            elif not is_invalid and attr_value.is_invalid():
+                                yield (
+                                    f"{self}: references invalid object"
+                                    f" {attr_value} in {field} tag {tag}"
+                                )
+                        elif isinstance(attr_value, str):
+                            cleaned = helpers.interactive_clean_string(
+                                attr_value,
+                                clean_whitespace=True,
+                                interactive=cfg.interactive,
+                            )
+                            if cleaned != attr_value:
+                                overrides[attr_name] = cleaned
+                                changes.append(
+                                    f"clean {attr_name} {attr_value!r} -> {cleaned!r}"
+                                )
+                            if (
+                                attr_value == ""
+                                and attr_name in tag_type.__optional_attrs__
+                            ):
+                                overrides[attr_name] = None
+                                changes.append(f"clear empty {attr_name}")
+                            if not is_invalid:
+                                if issue := helpers.is_string_clean(cleaned):
+                                    yield f"{self}: in tags: {issue} in {cleaned!r}"
+                                if not cleaned.isprintable():
+                                    issue = (
+                                        f"{self}: contains unprintable characters:"
+                                        f" {cleaned!r}"
+                                    )
+                                    if cfg.interactive:
+                                        self.display()
+                                        print(issue)
+                                        overrides[attr_name] = self._edit_by_word(
+                                            cleaned
+                                        )
+                                        changes.append(f"edit unprintable {attr_name}")
+                                    yield issue
+
+                                match helpers.get_string_kind(
+                                    tag_type.__annotations__[attr_name]
+                                ):
+                                    case StringKind.markdown:
+                                        cleaned_value = yield from models.article.lint.lint_referenced_text(
+                                            cleaned, prefix=f"{self}: "
+                                        )
+                                        if cleaned_value != cleaned:
+                                            overrides[attr_name] = cleaned_value
+                                            changes.append(
+                                                f"clean references in {attr_name}"
+                                            )
+                                    case StringKind.url:
+                                        parsed = urllib.parse.urlparse(attr_value)
+                                        if (
+                                            parsed.scheme not in ("http", "https")
+                                            or not parsed.netloc
+                                        ):
+                                            yield (
+                                                f"{self}: field {field}: invalid URL: {attr_value!r}"
+                                            )
+                                    case StringKind.regex:
+                                        try:
+                                            re.compile(attr_value)
+                                        except re.error:
+                                            yield (
+                                                f"{self}: field {field}: invalid regex: {attr_value!r}"
+                                            )
+                                    case StringKind.managed:
+                                        pass
+                    if overrides:
+                        made_change = True
+                        new_tag = adt.replace(tag, **overrides)
+                        yield replace_tag_issue(
+                            f"{self}: in {field} tag {tag}: {', '.join(changes)}",
+                            self,
+                            tag,
+                            new_tag,
+                            field=field,
+                        )
+                if not field_obj.is_ordered and not made_change:
+                    new_value = tuple(sorted(set(value)))
+                    if new_value != value:
+                        yield field_issue(
+                            f"{self}: contains duplicate or unsorted tags in {field}",
+                            self,
+                            field,
+                            new_value,
+                        )
             elif field_obj.type_object is str:
                 if self.should_exempt_from_string_cleaning(field):
                     continue
@@ -529,58 +458,50 @@ class BaseModel(Model):
                     verbose=True,
                     interactive=cfg.interactive,
                 )
+                if not is_invalid:
+                    if message := helpers.is_string_clean(cleaned):
+                        yield f"{self}: field {field}: {message} in {cleaned!r}"
+                    if not cleaned.isprintable():
+                        if not (
+                            allow_newlines and cleaned.replace("\n", "").isprintable()
+                        ):
+                            message = (
+                                f"{self}: field {field}: contains unprintable"
+                                f" characters: {cleaned!r}"
+                            )
+                            if cfg.interactive:
+                                self.display()
+                                print(message)
+                                if allow_newlines:
+                                    self.fill_field(field)
+                                else:
+                                    cleaned = self._edit_by_word(cleaned)
+                            yield message
+                    unredirected = yield from models.article.lint.lint_referenced_text(
+                        cleaned, prefix=f"{self}: "
+                    )
+                    cleaned = unredirected
                 if cleaned != value:
                     message = (
                         f"{self} (#{self.id}): field {field}: clean {value!r} ->"
                         f" {cleaned!r}"
                     )
-                    if cfg.autofix:
-                        print(message)
-                        try:
-                            setattr(self, field, cleaned)
-                        except sqlite3.IntegrityError:
-                            if (
-                                self.get_redirect_target() is not None
-                                or field == "pattern"
-                            ):
-                                print(f"{self}: adding '(merged)'")
-                                setattr(self, field, f"{cleaned} (merged)")
-                            else:
-                                raise
-                    else:
-                        yield message
-                if not is_invalid:
-                    if message := helpers.is_string_clean(cleaned):
-                        yield f"{self}: field {field}: {message} in {cleaned!r}"
-                    if not cleaned.isprintable():
-                        if allow_newlines and cleaned.replace("\n", "").isprintable():
-                            continue
-                        message = (
-                            f"{self}: field {field}: contains unprintable characters:"
-                            f" {cleaned!r}"
-                        )
-                        if cfg.interactive:
-                            self.display()
-                            print(message)
-                            if allow_newlines:
-                                self.fill_field(field)
-                            else:
-                                new_value = self._edit_by_word(cleaned)
-                                setattr(self, field, new_value)
-                        yield message
-                    unredirected = yield from models.article.lint.lint_referenced_text(
-                        value, prefix=f"{self}: "
-                    )
-                    if unredirected != value:
-                        message = (
-                            f"{self} (#{self.id}): field {field}: clean {value!r} ->"
-                            f" {unredirected!r}"
-                        )
+                    redirect_target = self.get_redirect_target() if is_invalid else None
+                    if field == "pattern" or redirect_target is not None:
+                        # Legacy autofix: setting a unique field may fail, in which
+                        # case this path computes a different fallback value. A
+                        # guarded field assignment cannot express that yet.
                         if cfg.autofix:
                             print(message)
-                            setattr(self, field, unredirected)
+                            try:
+                                setattr(self, field, cleaned)
+                            except sqlite3.IntegrityError:
+                                print(f"{self}: adding '(merged)'")
+                                setattr(self, field, f"{cleaned} (merged)")
                         else:
                             yield message
+                    else:
+                        yield field_issue(message, self, field, cleaned)
         if is_invalid:
             target = self.get_redirect_target()
             if target is not None:

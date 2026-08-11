@@ -1,10 +1,9 @@
 import re
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Generator, Iterable, Sequence
 from dataclasses import dataclass
 
 from taxonomy import urlparse
 from taxonomy.db import helpers
-from taxonomy.db.models.base import LintConfig
 
 
 @dataclass(frozen=True)
@@ -130,15 +129,10 @@ def is_valid_page_number(part: str) -> bool:
 
 
 def check_page(
-    page_text: str | None,
-    *,
-    set_page: Callable[[str], None],
-    obj: object,
-    cfg: LintConfig,
-    get_raw_page_regex: Callable[[], str | None] | None = None,
-) -> Iterable[str]:
+    page_text: str | None, *, get_raw_page_regex: Callable[[], str | None] | None = None
+) -> Generator[str, None, str | None]:
     if page_text is None:
-        return
+        return None
     parts = list(parse_page_text(page_text))
     for part in parts:
         yield from part.lint()
@@ -152,10 +146,7 @@ def check_page(
     new_text = ", ".join(str(part) for part in sorteed_parts)
     if new_text != page_text:
         message = f"Fixed page {page_text!r} -> {new_text!r}"
-        if cfg.autofix and len(", ".join(str(part) for part in parts)) >= len(
-            page_text
-        ):
-            print(f"{obj}: {message}")
-            set_page(new_text)
-        else:
-            yield message
+        if len(", ".join(str(part) for part in parts)) >= len(page_text):
+            return new_text
+        yield message
+    return page_text

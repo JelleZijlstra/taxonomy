@@ -19,9 +19,12 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
-    append_to_field_issue,
+    add_tag_fix,
+    add_tag_issue,
+    field_fix,
     field_issue,
-    fields_issue,
+    fixes_issue,
+    replace_tag_fix,
 )
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.name import Name, NameTag, TypeTag
@@ -262,15 +265,16 @@ def check_needs_auxiliary_name(
         return
 
     message = f"convert to AuxiliaryName under sibling CE {correct_ce}"
-    changes: list[tuple[ClassificationEntry, str, object]] = [
-        (ce, "tags", (*ce.tags, ClassificationEntryTag.AuxiliaryName)),
-        (ce, "parent", correct_ce),
+    fixes = [
+        add_tag_fix(ce, ClassificationEntryTag.AuxiliaryName),
+        field_fix(ce, "parent", correct_ce),
     ]
     for child in children:
         new_tag = ClassificationEntryTag.VerbatimParent(ce)
-        new_tags = child.tags if new_tag in child.tags else (*child.tags, new_tag)
-        changes.extend([(child, "tags", new_tags), (child, "parent", correct_ce)])
-    yield fields_issue(message, *changes)
+        fixes.extend(
+            [add_tag_fix(child, new_tag), field_fix(child, "parent", correct_ce)]
+        )
+    yield fixes_issue(message, *fixes)
 
 
 def articles_match(child_art: Article, parent_art: Article) -> bool:
@@ -953,7 +957,7 @@ def check_corrected_name(
                         f"infer corrected name from other CE: {other_corrected_name}"
                     )
                     tag = ClassificationEntryTag.CorrectedName(other_corrected_name)
-                    yield append_to_field_issue(message, ce, "tags", tag)
+                    yield add_tag_issue(message, ce, tag)
                     return
         yield "cannot infer corrected name; add CorrectedName tag"
         return
@@ -1080,7 +1084,7 @@ def _maybe_add_bhl_page(
     tag = ClassificationEntryTag.PageLink(
         url=page_obj.page_url, page=str(page_obj.page_number)
     )
-    yield append_to_field_issue(message, ce, "tags", tag)
+    yield add_tag_issue(message, ce, tag)
     print(page_obj.page_url)
 
 
@@ -1180,8 +1184,9 @@ def infer_page_from_mapped_name(
     new_tags = [tag for tag in new_tags if tag not in ce.tags]
     if not new_tags:
         return
-    message = f"inferred page from mapped name {ce.mapped_name}: {new_tags}"
-    yield field_issue(message, ce, "tags", (*ce.tags, *new_tags))
+    for tag in new_tags:
+        message = f"inferred page from mapped name {ce.mapped_name}: {tag}"
+        yield add_tag_issue(message, ce, tag)
 
 
 @LINT.add("infer_page_from_other_names")
@@ -1229,7 +1234,7 @@ def infer_page_from_other_names(
                 print(f"{ce}: already has {tag}")
             continue
         message = f"inferred URL {url} from other names (add {tag})"
-        yield append_to_field_issue(message, ce, "tags", tag)
+        yield add_tag_issue(message, ce, tag)
 
 
 @LINT.add("bhl_page_from_article", requires_network=True)
@@ -1261,7 +1266,7 @@ def infer_bhl_page_from_article(
                 page=page_described,
             )
             message = f"inferred BHL page {page_id} from {message} (add {tag})"
-            yield append_to_field_issue(message, ce, "tags", tag)
+            yield add_tag_issue(message, ce, tag)
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
@@ -1326,7 +1331,7 @@ def infer_bhl_page_from_other_names(
                 print(f"{ce}: already has inferred tag {tag}")
             continue
         message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
-        yield append_to_field_issue(message, ce, "tags", tag)
+        yield add_tag_issue(message, ce, tag)
 
 
 def _get_existing_page_links(ce: ClassificationEntry) -> set[str]:
@@ -1486,7 +1491,7 @@ def infer_condition_from_mapped(
             continue
         new_tag = ClassificationEntryTag.CECondition(tag.status, comment=tag.comment)
         message = f"inferred CECondition tag from mapped name: {new_tag}"
-        yield append_to_field_issue(message, ce, "tags", new_tag)
+        yield add_tag_issue(message, ce, new_tag)
 
 
 # disabled for now because the ZooBank website is down and some of the entries
@@ -1504,7 +1509,7 @@ def infer_lsid_from_mapped(
             if new_tag in ce.tags:
                 continue
             message = f"inferred LSID from mapped name: {new_tag}"
-            yield append_to_field_issue(message, ce, "tags", new_tag)
+            yield add_tag_issue(message, ce, new_tag)
 
 
 @LINT.add("from_mapped")
@@ -1541,12 +1546,10 @@ def infer_data_from_mapped(
         if tag.source == ce.article and tag.text not in existing_specimen_details
     ]
     if specimen_details:
-        new_tags = tuple(
-            ClassificationEntryTag.TypeSpecimenData(tag.text)
-            for tag in specimen_details
-        )
-        message = f"inferred type specimen details from mapped name: {specimen_details}"
-        yield field_issue(message, ce, "tags", (*ce.tags, *new_tags))
+        for detail in specimen_details:
+            new_tag = ClassificationEntryTag.TypeSpecimenData(detail.text)
+            message = f"inferred type specimen detail from mapped name: {detail}"
+            yield add_tag_issue(message, ce, new_tag)
 
 
 @LINT.add("vacuous_type_locality")
@@ -1604,20 +1607,23 @@ def infer_duplicate(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("check_page")
-def check_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def check_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]:
     if ce.page is not None:
-
-        def set_page(page: str) -> None:
-            print(f"set page to {page} on {ce}")
-            ce.set_page(page)
-
-        yield from models.name.page.check_page(
-            ce.page,
-            set_page=set_page,
-            obj=ce,
-            cfg=cfg,
-            get_raw_page_regex=ce.article.get_raw_page_regex,
+        new_page = yield from models.name.page.check_page(
+            ce.page, get_raw_page_regex=ce.article.get_raw_page_regex
         )
+        if new_page != ce.page:
+            fixes = [field_fix(ce, "page", new_page)]
+            for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink):
+                if tag.page == ce.page:
+                    fixes.append(
+                        replace_tag_fix(
+                            ce,
+                            tag,
+                            ClassificationEntryTag.PageLink(url=tag.url, page=new_page),
+                        )
+                    )
+            yield fixes_issue(f"fixed page {ce.page!r} -> {new_page!r}", *fixes)
 
 
 @LINT.add("matches_citation")
@@ -1724,10 +1730,9 @@ def check_needs_referenced_usage(
                 referenced_usage = find_referenced_usage(ce)
                 if referenced_usage is not None:
                     message += f" (maybe {referenced_usage}?)"
-                    yield append_to_field_issue(
+                    yield add_tag_issue(
                         message,
                         ce,
-                        "tags",
                         ClassificationEntryTag.ReferencedUsage(referenced_usage),
                     )
                 else:

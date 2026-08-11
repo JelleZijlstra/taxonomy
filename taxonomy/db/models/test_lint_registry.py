@@ -1,10 +1,20 @@
+import ast
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, ClassVar, cast
 
 import pytest
 
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import Lint, count_lint_codes, field_issue
+from taxonomy.db.models.lint import (
+    Lint,
+    LintFixError,
+    add_tag_issue,
+    count_lint_codes,
+    field_issue,
+    remove_tag_issue,
+    replace_tag_issue,
+)
 from taxonomy.db.models.lint_types import LintIssue
 
 
@@ -213,3 +223,158 @@ def test_structured_autofix_only_changes_virtual_objects() -> None:
     assert persisted.needs_ignore is True
     assert isinstance(unresolved, LintIssue)
     assert unresolved.code == "problem"
+
+
+def _apply_issue(issue: LintIssue) -> bool:
+    assert issue.fix is not None
+    return issue.fix.apply()
+
+
+def test_tag_operations_preserve_intervening_unrelated_edits() -> None:
+    first = FakeIgnore("first", "")
+    second = FakeIgnore("second", "")
+    added = FakeIgnore("added", "")
+    external = FakeIgnore("external", "")
+    obj = FakeObject(1, needs_ignore=False, tags=[first, second])
+    add_issue = add_tag_issue("add tag", cast(Any, obj), added)
+    remove_issue = remove_tag_issue("remove tag", cast(Any, obj), first)
+
+    obj.tags.append(external)
+
+    assert _apply_issue(add_issue) is True
+    assert _apply_issue(remove_issue) is True
+    assert tuple(obj.tags) == (second, external, added)
+
+
+def test_tag_operations_are_idempotent() -> None:
+    tag = FakeIgnore("tag", "")
+    obj = FakeObject(1, needs_ignore=False)
+    add_issue = add_tag_issue("add tag", cast(Any, obj), tag)
+    remove_issue = remove_tag_issue("remove tag", cast(Any, obj), tag)
+
+    assert _apply_issue(add_issue) is True
+    assert _apply_issue(add_issue) is False
+    assert _apply_issue(remove_issue) is True
+    assert _apply_issue(remove_issue) is False
+    assert tuple(obj.tags) == ()
+
+
+def test_replace_tag_preserves_other_tags_and_removes_duplicates() -> None:
+    old = FakeIgnore("old", "")
+    new = FakeIgnore("new", "")
+    other = FakeIgnore("other", "")
+    obj = FakeObject(1, needs_ignore=False, tags=[old, other, old])
+    issue = replace_tag_issue("replace tag", cast(Any, obj), old, new)
+
+    assert _apply_issue(issue) is True
+    assert tuple(obj.tags) == (new, other, new)
+    assert _apply_issue(issue) is False
+
+
+def test_replace_tag_fails_when_neither_precondition_nor_postcondition_holds() -> None:
+    old = FakeIgnore("old", "")
+    new = FakeIgnore("new", "")
+    obj = FakeObject(1, needs_ignore=False, tags=[old])
+    issue = replace_tag_issue("replace tag", cast(Any, obj), old, new)
+    obj.tags = [FakeIgnore("external", "")]
+
+    with pytest.raises(LintFixError, match="is no longer present"):
+        _apply_issue(issue)
+
+
+def test_already_satisfied_tag_fix_does_not_call_fix_callback() -> None:
+    obj = FakeObject(1, needs_ignore=False, is_virtual=True)
+    lint = make_lint([obj])
+    tag = FakeIgnore("extra", "")
+    lint.linters[0].linter = lambda item, _cfg: [
+        add_tag_issue("add tag", cast(Any, item), tag),
+        add_tag_issue("add tag again", cast(Any, item), tag),
+    ]
+    applied: list[LintIssue] = []
+    cfg = LintConfig(
+        autofix=False,
+        structured_autofix=True,
+        fix_callback=applied.append,
+        interactive=False,
+    )
+
+    assert list(lint.linters[0](obj, cfg)) == []
+    assert tuple(obj.tags) == (tag,)
+    assert len(applied) == 1
+
+
+_LEGACY_AUTOFIX_BRANCHES = {
+    (
+        "base.py",
+        "check_all_fields",
+    ): "handles a database uniqueness error with a dynamic fallback value",
+    (
+        "lint.py",
+        "run",
+    ): "uses the registry's generic model-specific remove-unused-ignores callback",
+    ("article/lint.py", "journal_specific_cleanup"): "creates a CitationGroup",
+    ("article/lint.py", "specify_authors"): "creates or resolves Person records",
+    ("classification_entry/lint.py", "infer_duplicate"): "merges records",
+    ("name/lint.py", "_check_species_name_gender"): "creates a NameComment",
+    ("name/lint.py", "remove_duplicates"): "interactively merges records",
+    ("name/lint.py", "_maybe_add_name_variant"): "creates and edits a Name",
+    ("name/lint.py", "maybe_take_over_name"): "runs interactive cleanup methods",
+    ("name/lint.py", "infer_name_variants"): "creates a Name through a CE method",
+    ("name/lint.py", "_infer_name_variants_of_status"): "merges Name records",
+    ("name/lint.py", "check_duplicate_variants"): "merges Name records",
+    ("name/lint.py", "remove_redundant_name"): "redirects a Name",
+    ("taxon/lint.py", "check_base_name"): "switches the Taxon-Name base-name cycle",
+    (
+        "taxon/lint.py",
+        "check_conservative_expected_base_name",
+    ): "switches the Taxon-Name base-name cycle",
+}
+
+
+def test_legacy_autofix_branches_are_explicitly_allowlisted() -> None:
+    """Keep model lints on structured fixes unless an operation is unsupported."""
+    models_dir = Path(__file__).parent
+    paths = [
+        models_dir / "base.py",
+        models_dir / "lint.py",
+        *models_dir.glob("*/lint.py"),
+        models_dir / "name/page.py",
+    ]
+    actual: set[tuple[str, str]] = set()
+    for path in paths:
+        tree = ast.parse(path.read_text())
+        parents = {
+            child: parent
+            for parent in ast.walk(tree)
+            for child in ast.iter_child_nodes(parent)
+        }
+        for node in ast.walk(tree):
+            if not (
+                isinstance(node, ast.Attribute)
+                and node.attr == "autofix"
+                and isinstance(node.value, ast.Name)
+                and node.value.id == "cfg"
+            ):
+                continue
+            parent = parents.get(node)
+            while parent is not None and not isinstance(
+                parent, (ast.FunctionDef, ast.AsyncFunctionDef)
+            ):
+                parent = parents.get(parent)
+            assert parent is not None
+            branch = (str(path.relative_to(models_dir)), parent.name)
+            if branch in {
+                ("base.py", "_process_lint_results"),
+                ("lint.py", "__call__"),
+            }:
+                # This is the central structured-fix consumer, not a lint rule.
+                continue
+            actual.add(branch)
+
+    assert actual == set(_LEGACY_AUTOFIX_BRANCHES), {
+        branch: _LEGACY_AUTOFIX_BRANCHES.get(
+            branch, "unsupported reason not documented"
+        )
+        for branch in actual | set(_LEGACY_AUTOFIX_BRANCHES)
+        if branch not in actual or branch not in _LEGACY_AUTOFIX_BRANCHES
+    }

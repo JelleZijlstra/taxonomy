@@ -15,7 +15,13 @@ from taxonomy.apis import bhl
 from taxonomy.apis.util import RateLimiter
 from taxonomy.db import constants, helpers, models
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint, append_to_field_issue, field_issue
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    add_tag_issue,
+    field_issue,
+    replace_tag_issue,
+)
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.url_cache import CacheDomain, cached
 
@@ -212,15 +218,10 @@ def infer_bhl_biblio_from_children(
         bibliographies.pop(biblio, None)
     if not bibliographies:
         return
-    message = f"inferred BHL tags {bibliographies} from child articles and names"
-    new_tags = (
-        *cg.tags,
-        *(
-            CitationGroupTag.BHLBibliography(text=str(biblio))
-            for biblio in bibliographies
-        ),
-    )
-    yield field_issue(message, cg, "tags", new_tags)
+    for biblio, sources in bibliographies.items():
+        tag = CitationGroupTag.BHLBibliography(text=str(biblio))
+        message = f"inferred BHL tag {tag} from child articles and names {sources}"
+        yield add_tag_issue(message, cg, tag)
 
 
 @LINT.add("infer_bhl_biblio")
@@ -286,8 +287,8 @@ def infer_bhl_biblio(cg: CitationGroup, cfg: LintConfig) -> Iterable[LintResult]
             )
             return
     message = f"inferred BHL tag {data['TitleID']}"
-    yield append_to_field_issue(
-        message, cg, "tags", CitationGroupTag.BHLBibliography(text=str(data["TitleID"]))
+    yield add_tag_issue(
+        message, cg, CitationGroupTag.BHLBibliography(text=str(data["TitleID"]))
     )
 
 
@@ -322,9 +323,7 @@ def populate_abbreviated_title(
     if not abbr:
         return
     msg = f"add AbbreviatedTitle: {abbr}"
-    yield append_to_field_issue(
-        msg, cg, "tags", CitationGroupTag.AbbreviatedTitle(abbr)
-    )
+    yield add_tag_issue(msg, cg, CitationGroupTag.AbbreviatedTitle(abbr))
 
 
 @cached(CacheDomain.pubmed_nlmcatalog_abbrev)
@@ -441,7 +440,7 @@ def infer_bhl_year_range(cg: CitationGroup, cfg: LintConfig) -> Iterable[LintRes
         start=str(min(years) - 1), end=str(max(years) + 1)
     )
     message = f"add tag {tag}"
-    yield append_to_field_issue(message, cg, "tags", tag)
+    yield add_tag_issue(message, cg, tag)
 
 
 @LINT.add("have_identifier")
@@ -480,7 +479,7 @@ def add_have_identifier_tags(
             # static analysis: ignore[incompatible_call]
             new_tag = tag_cls(ident, min_year=desired_min, max_year=desired_max)
             message = f"add tag {new_tag}"
-            yield append_to_field_issue(message, cg, "tags", new_tag)
+            yield add_tag_issue(message, cg, new_tag)
             return
         # Expand existing tag if possible
         # static analysis: ignore[attribute_is_never_set]
@@ -506,8 +505,7 @@ def add_have_identifier_tags(
         # static analysis: ignore[incompatible_call]
         updated = tag_cls(ident, min_year=new_min, max_year=new_max)
         message = f"expand tag {existing} -> {updated}"
-        tags = tuple(t for t in cg.tags if t != existing)
-        yield field_issue(message, cg, "tags", (*tags, updated))
+        yield replace_tag_issue(message, cg, existing, updated)
 
     for ident in constants.ArticleIdentifier:
         # Count per year and total across group for this identifier

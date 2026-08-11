@@ -10,7 +10,7 @@ from typing import Self
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import AgeClass, Group, NomenclatureStatus, Rank, Status
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint, append_to_field_issue, field_issue
+from taxonomy.db.models.lint import IgnoreLint, Lint, add_tag_issue, field_issue
 from taxonomy.db.models.lint_types import LintResult
 
 from .taxon import Taxon
@@ -141,8 +141,8 @@ def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
             )
             if len(candidates) == 1:
                 tag = models.tags.TaxonTag.NominalGenus(genus=candidates[0])
-                yield append_to_field_issue(
-                    f"adding NominalGenus tag: {candidates[0]}", taxon, "tags", tag
+                yield add_tag_issue(
+                    f"adding NominalGenus tag: {candidates[0]}", taxon, tag
                 )
                 return
         yield "should have NominalGenus tag"

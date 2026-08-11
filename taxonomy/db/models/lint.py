@@ -24,6 +24,23 @@ class LintFixError(RuntimeError):
     """Raised when a structured lint fix is no longer safe to apply."""
 
 
+class FixOperation(Protocol):
+    """One independently guarded operation within a structured lint fix."""
+
+    @property
+    def target(self) -> BaseModel:
+        """Return the model mutated by this operation."""
+        ...
+
+    def validate(self) -> bool:
+        """Validate the operation and return whether it still needs applying."""
+        ...
+
+    def apply(self) -> None:
+        """Apply the previously validated operation."""
+        ...
+
+
 @dataclass(frozen=True)
 class FieldChange:
     """One guarded field assignment in a structured lint fix."""
@@ -33,39 +50,110 @@ class FieldChange:
     expected: Any
     new: Any
 
-    def validate(self) -> None:
+    def validate(self) -> bool:
         current = getattr(self.target, self.field)
+        if current == self.new:
+            return False
         if current != self.expected:
             raise LintFixError(
                 f"{self.target}: field {self.field} changed from "
                 f"{self.expected!r} to {current!r} before autofix"
             )
+        return True
 
     def apply(self) -> None:
         setattr(self.target, self.field, self.new)
 
 
+def _get_tags(target: BaseModel, field: str) -> tuple[Any, ...]:
+    current = getattr(target, field)
+    return () if current is None else tuple(current)
+
+
+@dataclass(frozen=True)
+class AddTag:
+    """Add one tag without guarding or replacing the complete tags field."""
+
+    target: BaseModel
+    tag: Any
+    field: str = "tags"
+
+    def validate(self) -> bool:
+        return self.tag not in _get_tags(self.target, self.field)
+
+    def apply(self) -> None:
+        tags = _get_tags(self.target, self.field)
+        if self.tag not in tags:
+            setattr(self.target, self.field, (*tags, self.tag))
+
+
+@dataclass(frozen=True)
+class RemoveTag:
+    """Remove every occurrence of one exact tag, preserving unrelated tags."""
+
+    target: BaseModel
+    tag: Any
+    field: str = "tags"
+
+    def validate(self) -> bool:
+        return self.tag in _get_tags(self.target, self.field)
+
+    def apply(self) -> None:
+        tags = _get_tags(self.target, self.field)
+        setattr(self.target, self.field, tuple(tag for tag in tags if tag != self.tag))
+
+
+@dataclass(frozen=True)
+class ReplaceTag:
+    """Replace every occurrence of one exact tag, preserving unrelated tags."""
+
+    target: BaseModel
+    old: Any
+    new: Any
+    field: str = "tags"
+
+    def validate(self) -> bool:
+        if self.old == self.new:
+            return False
+        tags = _get_tags(self.target, self.field)
+        if self.old in tags:
+            return True
+        if self.new in tags:
+            return False
+        raise LintFixError(
+            f"{self.target}: tag {self.old!r} is no longer present and replacement "
+            f"{self.new!r} is not present"
+        )
+
+    def apply(self) -> None:
+        tags = _get_tags(self.target, self.field)
+        setattr(
+            self.target,
+            self.field,
+            tuple(self.new if tag == self.old else tag for tag in tags),
+        )
+
+
 @dataclass(frozen=True)
 class LintFix:
-    """A deterministic, guarded collection of field assignments."""
+    """A deterministic, guarded collection of model operations."""
 
-    changes: tuple[FieldChange, ...]
+    operations: tuple[FixOperation, ...]
 
     @property
     def is_virtual_safe(self) -> bool:
-        return all(change.target.is_virtual for change in self.changes)
+        return all(operation.target.is_virtual for operation in self.operations)
 
-    def apply(self) -> None:
+    def apply(self) -> bool:
+        """Apply the fix and return whether it materially changed any target."""
         # Validate the complete plan before the first mutation so multi-object fixes
         # fail closed instead of leaving a partial state.
-        if not self.changes or all(
-            change.expected == change.new for change in self.changes
-        ):
-            raise LintFixError("structured lint fix would make no changes")
-        for change in self.changes:
-            change.validate()
-        for change in self.changes:
-            change.apply()
+        pending = tuple(
+            operation for operation in self.operations if operation.validate()
+        )
+        for operation in pending:
+            operation.apply()
+        return bool(pending)
 
 
 def field_fix(target: BaseModel, field: str, new: Any) -> LintFix:
@@ -75,67 +163,86 @@ def field_fix(target: BaseModel, field: str, new: Any) -> LintFix:
 
 def combine_fixes(*fixes: LintFix) -> LintFix:
     """Combine guarded fixes into one all-or-nothing plan."""
-    return LintFix(tuple(change for fix in fixes for change in fix.changes))
+    return LintFix(tuple(operation for fix in fixes for operation in fix.operations))
+
+
+def fixes_issue(message: str, *fixes: LintFix, code: str | None = None) -> LintIssue:
+    """Create one issue from independently guarded primitive fixes."""
+    return LintIssue(message, code=code, fix=combine_fixes(*fixes))
 
 
 def field_issue(
     message: str, target: BaseModel, field: str, new: Any, *, code: str | None = None
 ) -> LintIssue:
     """Create the common one-field autofixable lint issue."""
-    return LintIssue(message, code=code, fix=field_fix(target, field, new))
+    return fixes_issue(message, field_fix(target, field, new), code=code)
 
 
 def fields_issue(
     message: str, *changes: tuple[BaseModel, str, Any], code: str | None = None
 ) -> LintIssue:
     """Create one guarded issue that assigns several model fields."""
-    return LintIssue(
+    return fixes_issue(
         message,
+        *(field_fix(target, field, new) for target, field, new in changes),
         code=code,
-        fix=combine_fixes(
-            *(field_fix(target, field, new) for target, field, new in changes)
-        ),
     )
 
 
-def append_to_field_issue(
-    message: str, target: BaseModel, field: str, value: Any, *, code: str | None = None
-) -> LintIssue:
-    """Create a guarded issue that appends to a tuple-like model field."""
-    current = getattr(target, field)
-    values = () if current is None else tuple(current)
-    return field_issue(message, target, field, (*values, value), code=code)
+def add_tag_fix(target: BaseModel, tag: Any, *, field: str = "tags") -> LintFix:
+    """Build an idempotent operation that adds one exact tag."""
+    return LintFix((AddTag(target, tag, field),))
 
 
-def replace_in_field_issue(
+def remove_tag_fix(target: BaseModel, tag: Any, *, field: str = "tags") -> LintFix:
+    """Build an idempotent operation that removes one exact tag."""
+    return LintFix((RemoveTag(target, tag, field),))
+
+
+def replace_tag_fix(
+    target: BaseModel, old: Any, new: Any, *, field: str = "tags"
+) -> LintFix:
+    """Build a guarded operation that replaces one exact tag."""
+    return LintFix((ReplaceTag(target, old, new, field),))
+
+
+def add_tag_issue(
     message: str,
     target: BaseModel,
-    field: str,
+    tag: Any,
+    *,
+    field: str = "tags",
+    code: str | None = None,
+) -> LintIssue:
+    """Create an issue that adds one tag without snapshotting all tags."""
+    return fixes_issue(message, add_tag_fix(target, tag, field=field), code=code)
+
+
+def replace_tag_issue(
+    message: str,
+    target: BaseModel,
     old: Any,
     new: Any,
     *,
+    field: str = "tags",
     code: str | None = None,
 ) -> LintIssue:
-    """Create a guarded replacement within a tuple-like model field."""
-    current = getattr(target, field)
-    values = () if current is None else tuple(current)
-    replaced = tuple(new if value == old else value for value in values)
-    return field_issue(message, target, field, replaced, code=code)
+    """Create an issue that replaces one tag without snapshotting all tags."""
+    return fixes_issue(
+        message, replace_tag_fix(target, old, new, field=field), code=code
+    )
 
 
-def remove_from_field_issue(
+def remove_tag_issue(
     message: str,
     target: BaseModel,
-    field: str,
-    values_to_remove: Collection[Any],
+    tag: Any,
     *,
+    field: str = "tags",
     code: str | None = None,
 ) -> LintIssue:
-    """Create a guarded removal from a tuple-like model field."""
-    current = getattr(target, field)
-    values = () if current is None else tuple(current)
-    remaining = tuple(value for value in values if value not in values_to_remove)
-    return field_issue(message, target, field, remaining, code=code)
+    """Create an issue that removes one tag without snapshotting all tags."""
+    return fixes_issue(message, remove_tag_fix(target, tag, field=field), code=code)
 
 
 def count_lint_codes(issues: Iterable[LintResult]) -> Counter[str]:
@@ -226,11 +333,12 @@ class LintWrapper(Generic[ModelT]):
                     if not issue.fix.is_virtual_safe:
                         yield formatted
                         continue
-                issue.fix.apply()
-                if cfg.fix_callback is not None:
-                    cfg.fix_callback(formatted)
-                if cfg.autofix:
-                    print(formatted)
+                changed = issue.fix.apply()
+                if changed:
+                    if cfg.fix_callback is not None:
+                        cfg.fix_callback(formatted)
+                    if cfg.autofix:
+                        print(formatted)
                 continue
             yield formatted
         return set()

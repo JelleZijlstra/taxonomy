@@ -13,7 +13,17 @@ from taxonomy.db.constants import (
     Rank,
 )
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint, field_issue, fields_issue
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    add_tag_fix,
+    add_tag_issue,
+    field_fix,
+    field_issue,
+    fixes_issue,
+    remove_tag_fix,
+    replace_tag_issue,
+)
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import Location, LocationStatus
 from taxonomy.db.models.location.age import (
@@ -181,13 +191,15 @@ def check_missing_location(
         yield "cannot infer location"
     else:
         message = f"location should be {inferred}"
-        new_tags = tuple(
+        hints = tuple(
             tag
             for tag in record.tags
-            if not isinstance(tag, OccurrenceRecordTag.LocationHint)
+            if isinstance(tag, OccurrenceRecordTag.LocationHint)
         )
-        yield fields_issue(
-            message, (record, "location", inferred), (record, "tags", new_tags)
+        yield fixes_issue(
+            message,
+            field_fix(record, "location", inferred),
+            *(remove_tag_fix(record, tag) for tag in hints),
         )
 
 
@@ -203,12 +215,7 @@ def check_location_hint(
     inferred = get_inferred_location(record)
     if inferred == record.location:
         message = "remove resolved LocationHint"
-        new_tags = tuple(
-            tag
-            for tag in record.tags
-            if not isinstance(tag, OccurrenceRecordTag.LocationHint)
-        )
-        yield field_issue(message, record, "tags", new_tags)
+        yield fixes_issue(message, *(remove_tag_fix(record, tag) for tag in hints))
 
 
 @LINT.add("location_mapping")
@@ -264,20 +271,6 @@ def check_basis_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]
         OccurrenceRecordTag.SpecimenDetail
     ):
         yield "SpecimenDetail requires voucher basis"
-
-
-def _replace_tag(
-    record: OccurrenceRecord, old_tag: OccurrenceRecordTag, new_tag: OccurrenceRecordTag
-) -> None:
-    replaced = False
-    new_tags = []
-    for tag in record.tags:
-        if not replaced and tag == old_tag:
-            new_tags.append(new_tag)
-            replaced = True
-        else:
-            new_tags.append(tag)
-    record.tags = tuple(new_tags)  # type: ignore[assignment]
 
 
 def parse_verbatim_coordinates(text: str) -> tuple[str, str] | None:
@@ -422,18 +415,14 @@ def _add_inferred_tag(
     tag: OccurrenceRecordTag,
     source_tag: OccurrenceRecordTag,
     cfg: LintConfig,
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     message = f"add {tag} inferred from {source_tag}"
-    if cfg.autofix:
-        print(f"{record}: {message}")
-        record.add_tag(tag)
-    else:
-        yield message
+    yield add_tag_issue(message, record, tag)
 
 
 def _check_verbatim_coordinates(
     record: OccurrenceRecord, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     normalized = list(record.get_tags(record.tags, OccurrenceRecordTag.Coordinates))
     for tag in record.get_tags(record.tags, OccurrenceRecordTag.VerbatimCoordinates):
         parsed = parse_verbatim_coordinates(tag.text)
@@ -449,8 +438,7 @@ def _check_verbatim_coordinates(
             continue
         if not normalized:
             yield from _add_inferred_tag(record, expected, tag, cfg)
-            if cfg.autofix:
-                normalized.append(expected)
+            normalized.append(expected)
             continue
 
         expected_extent = coordinate_lint.make_extent(*parsed)
@@ -494,17 +482,13 @@ def _check_verbatim_coordinates(
                 f"replace {closest} with {expected} to preserve source coordinate "
                 "format"
             )
-            if cfg.autofix:
-                print(f"{record}: {message}")
-                _replace_tag(record, closest, expected)
-                normalized[index] = expected
-            else:
-                yield message
+            yield replace_tag_issue(message, record, closest, expected)
+            normalized[index] = expected
 
 
 def _check_verbatim_elevations(
     record: OccurrenceRecord, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     normalized = list(record.get_tags(record.tags, OccurrenceRecordTag.Elevation))
     for tag in record.get_tags(record.tags, OccurrenceRecordTag.VerbatimElevation):
         parsed = parse_verbatim_elevation(tag.text)
@@ -533,21 +517,18 @@ def _check_verbatim_elevations(
                 f"replace {normalized_tag} with {expected} to preserve source "
                 "elevation precision"
             )
-            if cfg.autofix:
-                print(f"{record}: {message}")
-                _replace_tag(record, normalized_tag, expected)
-                normalized[index] = expected
-            else:
-                yield message
+            yield replace_tag_issue(message, record, normalized_tag, expected)
+            normalized[index] = expected
         elif normalized:
             yield f"{tag} parses as {expected}, inconsistent with {normalized}"
         else:
             yield from _add_inferred_tag(record, expected, tag, cfg)
-            if cfg.autofix:
-                normalized.append(expected)
+            normalized.append(expected)
 
 
-def _check_verbatim_dates(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+def _check_verbatim_dates(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[LintResult]:
     normalized = list(record.get_tags(record.tags, OccurrenceRecordTag.Date))
     for tag in record.get_tags(record.tags, OccurrenceRecordTag.VerbatimDate):
         parsed = parse_verbatim_date(tag.text)
@@ -565,18 +546,13 @@ def _check_verbatim_dates(record: OccurrenceRecord, cfg: LintConfig) -> Iterable
                         f"replace {normalized[0]} with {expected} to preserve source "
                         "date precision"
                     )
-                    if cfg.autofix:
-                        print(f"{record}: {message}")
-                        _replace_tag(record, normalized[0], expected)
-                        normalized[0] = expected
-                    else:
-                        yield message
+                    yield replace_tag_issue(message, record, normalized[0], expected)
+                    normalized[0] = expected
                 else:
                     yield f"{tag} parses as {expected}, inconsistent with {normalized}"
             else:
                 yield from _add_inferred_tag(record, expected, tag, cfg)
-                if cfg.autofix:
-                    normalized.append(expected)
+                normalized.append(expected)
 
 
 def _is_date_refinement(expected: str, existing: str) -> bool:
@@ -588,7 +564,7 @@ def _is_date_refinement(expected: str, existing: str) -> bool:
 
 def _standardize_normalized_tags(
     record: OccurrenceRecord, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Coordinates)):
         try:
             latitude, _ = coordinate_lint.standardize_coordinate_interval(
@@ -603,11 +579,7 @@ def _standardize_normalized_tags(
         expected = OccurrenceRecordTag.Coordinates(latitude, longitude)
         if tag != expected:
             message = f"replace {tag} with {expected}"
-            if cfg.autofix:
-                print(f"{record}: {message}")
-                _replace_tag(record, tag, expected)
-            else:
-                yield message
+            yield replace_tag_issue(message, record, tag, expected)
     for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Elevation)):
         elevation_parsed = parse_verbatim_elevation(f"{tag.elevation} {tag.unit.name}")
         if elevation_parsed is None:
@@ -616,11 +588,7 @@ def _standardize_normalized_tags(
         expected = OccurrenceRecordTag.Elevation(*elevation_parsed)
         if tag != expected:
             message = f"replace {tag} with {expected}"
-            if cfg.autofix:
-                print(f"{record}: {message}")
-                _replace_tag(record, tag, expected)
-            else:
-                yield message
+            yield replace_tag_issue(message, record, tag, expected)
     for tag in tuple(record.get_tags(record.tags, OccurrenceRecordTag.Date)):
         date_parsed = parse_verbatim_date(tag.date.removeprefix("<"))
         if date_parsed is None:
@@ -631,15 +599,13 @@ def _standardize_normalized_tags(
         expected = OccurrenceRecordTag.Date(date_parsed)
         if tag != expected:
             message = f"replace {tag} with {expected}"
-            if cfg.autofix:
-                print(f"{record}: {message}")
-                _replace_tag(record, tag, expected)
-            else:
-                yield message
+            yield replace_tag_issue(message, record, tag, expected)
 
 
 @LINT.add("source_data")
-def check_source_data_tags(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
+def check_source_data_tags(
+    record: OccurrenceRecord, cfg: LintConfig
+) -> Iterable[LintResult]:
     if LINT.is_ignoring_lint(record, "source_data"):
         cfg = replace(cfg, autofix=False, interactive=False)
     yield from _standardize_normalized_tags(record, cfg)
@@ -815,15 +781,10 @@ def check_distribution_rules(
             f"Reassigned from {taxon} to {target} under "
             f"RedirectOccurrences ({sources})."
         )
-        new_tags: object = record.tags
-        if not any(
-            isinstance(tag, OccurrenceRecordTag.CommentFromDatabase)
-            and tag.text == comment
-            for tag in record.tags
-        ):
-            new_tags = (*record.tags, OccurrenceRecordTag.CommentFromDatabase(comment))
-        yield fields_issue(
-            message, (record, "taxon", target), (record, "tags", new_tags)
+        yield fixes_issue(
+            message,
+            field_fix(record, "taxon", target),
+            add_tag_fix(record, OccurrenceRecordTag.CommentFromDatabase(comment)),
         )
         return
 
@@ -901,14 +862,10 @@ def check_duplicate(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[LintR
         for field in OccurrenceRecord.fields()
     )
     if fields_match:
-        yield fields_issue(
+        yield fixes_issue(
             message,
-            (
-                record,
-                "tags",
-                (*record.tags, OccurrenceRecordTag.RedirectTarget(primary)),
-            ),
-            (record, "status", OccurrenceRecordStatus.alias),
+            add_tag_fix(record, OccurrenceRecordTag.RedirectTarget(primary)),
+            field_fix(record, "status", OccurrenceRecordStatus.alias),
         )
     else:
         yield message

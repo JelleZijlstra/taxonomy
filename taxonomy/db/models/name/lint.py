@@ -74,9 +74,15 @@ from taxonomy.db.models.item_file import ItemFile
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
-    append_to_field_issue,
+    add_tag_fix,
+    add_tag_issue,
+    field_fix,
     field_issue,
     fields_issue,
+    fixes_issue,
+    remove_tag_fix,
+    remove_tag_issue,
+    replace_tag_issue,
 )
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location.age import (
@@ -401,17 +407,12 @@ class TagWithPage(Protocol):
 
 def check_selection_tag[Tag: SelectionTag](
     tag: Tag, source: Article | None, cfg: LintConfig, owner: object
-) -> Generator[str, None, Tag]:
+) -> Generator[LintResult, None, Tag]:
     tag = yield from check_tag_with_page(tag, source, cfg, owner)
     if source is not None and (
         tag.verbatim_citation is not None or tag.citation_group is not None
     ):
-        message = f"{tag} has redundant citation information"
-        if cfg.autofix:
-            tag = tag.replace(verbatim_citation=None, citation_group=None)
-            print(f"{owner}: {message}")
-        else:
-            yield message
+        tag = tag.replace(verbatim_citation=None, citation_group=None)
     if tag.verbatim_citation is not None and tag.citation_group is None:
         yield f"{tag} has verbatim_citation but no citation_group"
     if source is None and tag.verbatim_citation is None:
@@ -432,7 +433,7 @@ def check_tag_with_page[Tag: TagWithPage](
     owner: object,
     *,
     allow_missing_page: bool = False,
-) -> Generator[str, None, Tag]:
+) -> Generator[LintResult, None, Tag]:
     if (
         source is not None
         and tag.page is not None
@@ -442,51 +443,28 @@ def check_tag_with_page[Tag: TagWithPage](
         page_described = get_unique_page_text(tag.page)[0]
         maybe_pair = infer_bhl_page_id(page_described, tag, source, cfg)
         if maybe_pair is not None:
-            page_id, context = maybe_pair
+            page_id, _context = maybe_pair
             url = f"https://www.biodiversitylibrary.org/page/{page_id}"
-            message = (
-                f"inferred BHL page {page_id} from {context} for {tag} (add {url})"
-            )
-            if cfg.autofix:
-                tag = tag.replace(page_link=url)
-                print(f"{owner}: {message}")
-            else:
-                yield message
+            tag = tag.replace(page_link=url)
     if tag.page is None and tag.comment is not None:
         if match := re.fullmatch(r"pp?\. (\d+(-\d+)?(?:, \d+(-\d+)?)*)", tag.comment):
             page = match.group(1)
-            message = f"extracted page {page} from comment in {tag}"
-            if cfg.autofix:
-                tag = tag.replace(page=page, comment=None)
-                print(f"{owner}: {message}")
-            else:
-                yield message
+            tag = tag.replace(page=page, comment=None)
         # mypy bug?
         elif match := re.search(r"^p\. (\d+(?:, \d+)*)\. ", tag.comment):  # type: ignore[arg-type]
             page = match.group(1)
             _, end_span = match.span()
             new_comment = tag.comment[end_span:]  # type: ignore[index]
-            message = f"extracted page {page} from comment in {tag} (change comment to {new_comment!r})"
-            if cfg.autofix:
-                tag = tag.replace(page=page, comment=new_comment)
-                print(f"{owner}: {message}")
-            else:
-                yield message
+            tag = tag.replace(page=page, comment=new_comment)
     if tag.page is not None:
-
-        def set_page(page: str) -> None:
-            nonlocal tag
-            tag = tag.replace(page=page)
-
-        yield from check_page(
+        new_page = yield from check_page(
             tag.page,
-            set_page=set_page,
-            obj=owner,
-            cfg=cfg,
             get_raw_page_regex=(
                 source.get_raw_page_regex if source is not None else None
             ),
         )
+        if new_page != tag.page:
+            tag = tag.replace(page=new_page)
         if source is not None and tag.page is not None:
             yield from check_page_matches_citation(source, tag.page)
 
@@ -526,21 +504,21 @@ def _is_comparable_to_type(specimen_text: str, nam: Name) -> bool:
 
 type TagsByType = Mapping[type[TypeTag], Sequence[TypeTag]]
 type TypeTagChecker = Callable[
-    [TypeTag, Name, LintConfig, TagsByType], Generator[str, None, Sequence[TypeTag]]
+    [TypeTag, Name, LintConfig, TagsByType],
+    Generator[LintResult, None, Sequence[TypeTag]],
 ]
 
 
 def _check_links_in_type_tag(
     tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
-) -> Generator[str, None, Sequence[TypeTag]]:
+) -> Generator[LintResult, None, Sequence[TypeTag]]:
     for arg_name, art in get_tag_fields_of_type(tag, Article):
         if art.kind is ArticleKind.removed:
             yield f"bad article in tag {tag}"
         elif art.kind is ArticleKind.redirect:
             if art.parent is None or art.parent.should_skip():
                 yield f"bad redirected article in tag {tag}"
-            elif cfg.autofix:
-                print(f"{nam} references a redirected Article in {tag} -> {art.parent}")
+            else:
                 tag = replace_arg(tag, arg_name, art.parent)
     for arg_name, tag_nam in get_tag_fields_of_type(tag, Name):
         if tag_nam.is_invalid():
@@ -551,7 +529,8 @@ def _check_links_in_type_tag(
 
 def _check_detail_type_tag(
     tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
-) -> Generator[str, None, Sequence[TypeTag]]:
+) -> Generator[LintResult, None, Sequence[TypeTag]]:
+    yield from ()
     if (
         isinstance(
             tag,
@@ -566,18 +545,13 @@ def _check_detail_type_tag(
         and not tag.text
         and tag.source is None
     ):
-        message = f"{tag} has no text and no source"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            return []
-        else:
-            yield message
+        return []
     return [tag]
 
 
 def _check_designation_type_tag(
     tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
-) -> Generator[str, None, Sequence[TypeTag]]:
+) -> Generator[LintResult, None, Sequence[TypeTag]]:
     if isinstance(
         tag,
         (
@@ -597,7 +571,7 @@ def _check_designation_type_tag(
 
 def _check_all_type_tags(
     tag: TypeTag, nam: Name, cfg: LintConfig, by_type: TagsByType
-) -> Generator[str, None, Sequence[TypeTag]]:
+) -> Generator[LintResult, None, Sequence[TypeTag]]:
     tags: list[TypeTag] = []
     match tag:
         case (
@@ -613,65 +587,40 @@ def _check_all_type_tags(
 
         case TypeTag.ProbableRepository() | TypeTag.GuessedRepository():
             if nam.collection is not None:
-                message = f"has {tag} but collection is set to {nam.collection}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    return []
-                else:
-                    yield message
+                return []
 
         case TypeTag.CommissionTypeDesignation():
             if nam.type != tag.type:
-                print(
-                    f"{nam} has {nam.type} as its type, but the Commission has"
-                    f" designated {tag.type}"
+                yield field_issue(
+                    f"Commission designated type {tag.type}", nam, "type", tag.type
                 )
-                if cfg.autofix:
-                    nam.type = tag.type
             if (
                 nam.genus_type_kind
                 != TypeSpeciesDesignation.designated_by_the_commission
             ):
-                print(
-                    f"{nam} has {nam.genus_type_kind}, but its type was set by the"
-                    " Commission"
+                yield field_issue(
+                    "set genus type kind from Commission designation",
+                    nam,
+                    "genus_type_kind",
+                    TypeSpeciesDesignation.designated_by_the_commission,
                 )
-                if cfg.autofix:
-                    nam.genus_type_kind = (
-                        TypeSpeciesDesignation.designated_by_the_commission
-                    )
 
         case TypeTag.LectotypeDesignation():
             if tag.lectotype != nam.type_specimen and _is_comparable_to_type(
                 tag.lectotype, nam
             ):
-                message = f"in lectotype designation, change {tag.lectotype!r} to {nam.type_specimen!r}"
-                if cfg.autofix:
-                    tag = tag.replace(lectotype=nam.type_specimen)
-                    print(f"{nam}: {message}")
-                else:
-                    yield message
+                tag = tag.replace(lectotype=nam.type_specimen)
             if tag.optional_source is None and tag.year is None:
                 yield f"lectotype designation has no source or year: {tag}"
             validity = _is_lectotype_designation_valid(nam, tag)
             if validity is not None and tag.valid is not validity:
-                message = f"lectotype designation validity should be {validity}, not {tag.valid}"
-                if cfg.autofix:
-                    tag = tag.replace(valid=validity)
-                    print(f"{nam}: {message}")
-                else:
-                    yield message
+                tag = tag.replace(valid=validity)
 
         case TypeTag.NeotypeDesignation():
             if tag.neotype != nam.type_specimen and _is_comparable_to_type(
                 tag.neotype, nam
             ):
-                message = f"in neotype designation, change {tag.neotype!r} to {nam.type_specimen!r}"
-                if cfg.autofix:
-                    tag = tag.replace(neotype=nam.type_specimen)
-                    print(f"{nam}: {message}")
-                else:
-                    yield message
+                tag = tag.replace(neotype=nam.type_specimen)
 
         case TypeTag.IncludedSpecies():
             tag = yield from check_tag_with_page(
@@ -730,12 +679,7 @@ def _check_all_type_tags(
             )
             if is_empty_location_detail(tag.text):
                 new_tag = TypeTag.NoLocation(source=tag.source)
-                message = f"replace {tag} with {new_tag}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    return [new_tag]
-                else:
-                    yield message
+                return [new_tag]
 
             if tag.classification_entry is not None:
                 ce = tag.classification_entry
@@ -1561,7 +1505,7 @@ TYPE_TAG_CHECKERS: list[TypeTagChecker] = [
 
 
 @LINT.add("type_tags")
-def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if not nam.type_tags:
         return
     original_tags = list(nam.type_tags)
@@ -1593,8 +1537,7 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if set(tags) != set(original_tags):
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
-        if cfg.autofix:
-            nam.type_tags = tags  # type: ignore[assignment]
+        yield field_issue("changing type tags", nam, "type_tags", tuple(tags))
 
 
 def _get_collection_year(date_text: str) -> int | None:
@@ -1634,7 +1577,9 @@ def check_collector_lifespan(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("location_detail_coordinates")
-def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_location_detail_coordinates(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     extracted: list[  # type: ignore[name-defined]
         tuple[TypeTag.LocationDetail, str, str, coordinate_lint.CoordinateExtent]
     ] = []
@@ -1731,11 +1676,7 @@ def check_location_detail_coordinates(nam: Name, cfg: LintConfig) -> Iterable[st
     _, latitude, longitude, _ = extracted[0]
     expected = TypeTag.Coordinates(latitude, longitude)
     message = f"add {expected} inferred from LocationDetail"
-    if cfg.autofix and not LINT.is_ignoring_lint(nam, "location_detail_coordinates"):
-        print(f"{nam}: {message}")
-        nam.type_tags = [*nam.type_tags, expected]  # type: ignore[assignment]
-    else:
-        yield message
+    yield add_tag_issue(message, nam, expected, field="type_tags")
 
 
 @LINT.add("location_detail_plss")
@@ -1875,7 +1816,7 @@ def check_page_link(
 
 
 @LINT.add("dedupe_tags")
-def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     original_tags = list(nam.type_tags)
     organ_tags_to_merge = defaultdict(list)
     all_tags = set()
@@ -1899,9 +1840,9 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if set(tags) != set(original_tags):
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
-        if cfg.autofix:
-            nam.type_tags = tags  # type: ignore[assignment]
-    return []
+        yield field_issue(
+            "deduplicate and sort type tags", nam, "type_tags", tuple(tags)
+        )
 
 
 def fix_type_specimen_link(url: str) -> str:
@@ -1917,25 +1858,20 @@ def fix_type_specimen_link(url: str) -> str:
 
 
 @LINT.add("coordinates")
-def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     coordinate_tags = list(nam.get_tags(nam.type_tags, TypeTag.Coordinates))
     if nam.type_locality is None:
         for tag in coordinate_tags:
             yield f"{tag} is present, but type locality is not set"
         return
     location = nam.type_locality
-    redundant_tags: list[TypeTag.Coordinates] = []  # type: ignore[name-defined]
     for tag in coordinate_tags:
         if (tag.latitude, tag.longitude) == (location.latitude, location.longitude):
             message = (
                 f"remove redundant {tag}: coordinates exactly match Location "
                 f"{location}"
             )
-            if cfg.autofix and not LINT.is_ignoring_lint(nam, "coordinates"):
-                print(f"{nam}: {message}")
-                redundant_tags.append(tag)
-            else:
-                yield message
+            yield remove_tag_issue(message, nam, tag, field="type_tags")
             continue
 
         extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)
@@ -1957,8 +1893,6 @@ def check_coordinates(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 f"{distance:.1f} km from Location {location} coordinates "
                 f"{location.latitude}, {location.longitude}"
             )
-    if redundant_tags:
-        nam.type_tags = [tag for tag in nam.type_tags if tag not in redundant_tags]  # type: ignore[assignment]
 
 
 @LINT.add("type_locality_age")
@@ -2223,7 +2157,7 @@ _BMNH_REGEXES = [
 
 
 @LINT.add("bmnh_types")
-def check_bmnh_type_specimens(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_bmnh_type_specimens(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     """Fix some simple issues with BMNH type specimens."""
     if nam.type_specimen is None:
         return
@@ -2242,11 +2176,9 @@ def check_bmnh_type_specimens(nam: Name, cfg: LintConfig) -> Iterable[str]:
         new_spec = clean_up_bmnh_type(text)
         if new_spec != text:
             message = f"replace {text!r} with {new_spec!r}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.type_specimen = nam.type_specimen.replace(text, new_spec)
-            else:
-                yield message
+            yield field_issue(
+                message, nam, "type_specimen", nam.type_specimen.replace(text, new_spec)
+            )
 
 
 def get_all_type_specimen_texts(nam: Name) -> Iterable[str]:
@@ -2583,7 +2515,7 @@ def _normalize_ii(name: str) -> str:
 
 def _check_variant_tag(
     tag: NameTag, nam: Name, cfg: LintConfig
-) -> Generator[str, None, NameTag | None]:
+) -> Generator[LintResult, None, NameTag | None]:
     if not isinstance(
         tag,
         (
@@ -2616,9 +2548,13 @@ def _check_variant_tag(
         and nam.get_tag_target(NameTag.MisidentificationOf) is None
     ):
         yield f"{nam} is not assigned to the same name as {tag.name}"
-        if nam.status is Status.synonym and cfg.autofix:
-            print(f"{nam}: changing taxon to {tag.name.taxon} to match {tag.name}")
-            nam.taxon = tag.name.taxon
+        if nam.status is Status.synonym:
+            yield field_issue(
+                f"change taxon to {tag.name.taxon} to match {tag.name}",
+                nam,
+                "taxon",
+                tag.name.taxon,
+            )
     if (
         not isinstance(
             tag,
@@ -2632,8 +2568,7 @@ def _check_variant_tag(
         and nam.corrected_original_name == tag.name.corrected_original_name
     ):
         yield f"{nam} has the same corrected original name as {tag.name}, but is marked as {type(tag).__name__}"
-        if cfg.autofix and isinstance(tag, NameTag.NameCombinationOf):
-            print(f"{nam}: changing NameCombinationOf to SubsequentUsageOf")
+        if isinstance(tag, NameTag.NameCombinationOf):
             new_tag = NameTag.SubsequentUsageOf(tag.name, comment=tag.comment)
     if not isinstance(
         tag,
@@ -2671,7 +2606,7 @@ def _check_variant_tag(
 
 def _check_all_tags(
     tag: NameTag, nam: Name, cfg: LintConfig
-) -> Generator[str, None, NameTag | None]:
+) -> Generator[LintResult, None, NameTag | None]:
     match tag:
         case NameTag.RerankingOf():
             if nam.group is not Group.family:
@@ -2698,9 +2633,13 @@ def _check_all_tags(
                 and not tag.name.has_name_tag(NameTag.AsEmendedBy)
             ):
                 message = f"{nam} ({nam.species_name_complex}) is a name combination of {tag.name} ({tag.name.species_name_complex}), but has a different name complex"
-                if cfg.autofix and tag.name.species_name_complex is not None:
-                    print(f"{nam}: {message}")
-                    nam.species_name_complex = tag.name.species_name_complex
+                if tag.name.species_name_complex is not None:
+                    yield field_issue(
+                        message,
+                        nam,
+                        "species_name_complex",
+                        tag.name.species_name_complex,
+                    )
                 else:
                     yield message
             if nam.root_name not in _get_extended_root_name_forms(tag.name):
@@ -2782,10 +2721,7 @@ def _check_all_tags(
                     and nam.group is not Group.family
                 ):
                     yield f"{nam} has the same root name as {tag.name}, but is marked as an incorrect subsequent spelling"
-                    if cfg.autofix and nam.group is Group.species:
-                        print(
-                            f"{nam}: changing IncorrectSubsequentSpellingOf to NameCombinationOf"
-                        )
+                    if nam.group is Group.species:
                         tag = NameTag.NameCombinationOf(
                             name=tag.name, comment=tag.comment
                         )
@@ -2926,7 +2862,7 @@ def _check_all_tags(
 
 
 type TagChecker = Callable[
-    [NameTag, Name, LintConfig], Generator[str, None, NameTag | None]
+    [NameTag, Name, LintConfig], Generator[LintResult, None, NameTag | None]
 ]
 
 TAG_CHECKERS: list[TagChecker] = [
@@ -2937,7 +2873,7 @@ TAG_CHECKERS: list[TagChecker] = [
 
 
 @LINT.add("tags")
-def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     """Looks at all tags set on names and applies related changes."""
     try:
         tags = nam.tags
@@ -2962,11 +2898,7 @@ def check_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if tuple(new_tags) != tags:
         message = f"changing tags from {tags} to {new_tags}"
         getinput.print_diff(tags, new_tags)
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.tags = new_tags  # type: ignore[assignment]
-        else:
-            yield message
+        yield field_issue(message, nam, "tags", tuple(new_tags))
 
 
 def _get_parent(nam: Name, rank: Rank = Rank.genus) -> Taxon | None:
@@ -3166,7 +3098,7 @@ def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
 
 # disabled because it keeps timing out
 @LINT.add("lsid", requires_network=True, disabled=True)
-def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     # ICZN Art. 8.5.1: ZooBank is relevant to availability only starting in 2012
     if (
         nam.numeric_year() < 2012
@@ -3211,15 +3143,12 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[str]:
             art_tags.append(art_tag)
     if not type_tags and not art_tags:
         return
-    message = f"Inferred ZooBank data: {type_tags}, {art_tags}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        for tag in type_tags:
-            nam.add_type_tag(tag)
-        for tag in art_tags:
-            nam.original_citation.add_tag(tag)
-    else:
-        yield message
+    for tag in type_tags:
+        yield add_tag_issue(
+            f"inferred ZooBank name LSID: {tag}", nam, tag, field="type_tags"
+        )
+    for tag in art_tags:
+        yield add_tag_issue(f"inferred ZooBank article LSID: {tag}", art, tag)
 
 
 @LINT.add("year")
@@ -3619,38 +3548,41 @@ def check_name_complex(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("verbatim")
-def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def clean_up_verbatim(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.verbatim_citation is not None and nam.original_citation is not None:
         message = (
             f"cleaning up verbatim citation: {nam.original_citation.name},"
             f" {nam.verbatim_citation}"
         )
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_data(
-                "verbatim_citation", nam.verbatim_citation, concat_duplicate=True
-            )
-            nam.verbatim_citation = None
-        else:
-            yield message
+        data = nam._load_data()
+        value: object = nam.verbatim_citation
+        if "verbatim_citation" in data:
+            existing = data["verbatim_citation"]
+            if isinstance(existing, list):
+                value = [*existing, value]
+            else:
+                value = [existing, value]
+        data["verbatim_citation"] = value
+        yield fields_issue(
+            message, (nam, "data", json.dumps(data)), (nam, "verbatim_citation", None)
+        )
     if nam.citation_group is not None and nam.original_citation is not None:
         message = (
             f"cleaning up citation group: {nam.original_citation.name},"
             f" {nam.citation_group}"
         )
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.citation_group = None
-        else:
-            yield message
+        yield field_issue(message, nam, "citation_group", None)
 
 
 @LINT.add("verbatim_to_citation_detail")
-def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.verbatim_citation is None:
         return
+    original = nam.verbatim_citation
+    remaining = original
+    new_tags: list[TypeTag.CitationDetail] = []  # type: ignore[name-defined]
     for whole_match, source, text in re.findall(
-        r"(\[From \{([^}]+)\}: ([^\]]+)\])", nam.verbatim_citation
+        r"(\[From \{([^}]+)\}: ([^\]]+)\])", remaining
     ):
         try:
             source_art = (
@@ -3659,18 +3591,10 @@ def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[str]:
         except clirm.DoesNotExist:
             continue
         tag = TypeTag.CitationDetail(text, source_art)
-        message = (
-            f"converting verbatim citation to citation detail: {whole_match} -> {tag}"
-        )
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_type_tag(tag)
-            nam.verbatim_citation = nam.verbatim_citation.replace(whole_match, "")
-        else:
-            yield message
+        new_tags.append(tag)
+        remaining = remaining.replace(whole_match, "")
     match = re.fullmatch(
-        r"([^\]]+(?: \[[^\[\]\{\}]+\])?|[^{]+) \[from \{([^\}]+)\}\]",
-        nam.verbatim_citation,
+        r"([^\]]+(?: \[[^\[\]\{\}]+\])?|[^{]+) \[from \{([^\}]+)\}\]", remaining
     )
     if match:
         text, source = match.groups()
@@ -3682,13 +3606,15 @@ def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[str]:
             pass
         else:
             tag = TypeTag.CitationDetail(text, source_art)
-            message = f"converting verbatim citation to citation detail: {nam.verbatim_citation} -> {tag}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.add_type_tag(tag)
-                nam.verbatim_citation = None
-            else:
-                yield message
+            new_tags.append(tag)
+            remaining = ""
+
+    if new_tags:
+        yield fixes_issue(
+            f"convert verbatim citation to CitationDetail tags: {new_tags}",
+            *(add_tag_fix(nam, tag, field="type_tags") for tag in new_tags),
+            field_fix(nam, "verbatim_citation", remaining or None),
+        )
 
     # if nam.verbatim_citation is not None and "{" in nam.verbatim_citation:
     #     yield f"unhandled verbatim citation: {nam.verbatim_citation}"
@@ -3835,9 +3761,17 @@ def check_justified_emendations(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("autoset_original_rank")
-def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    nam.autoset_original_rank(dry_run=not cfg.autofix)
-    return []
+def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    if nam.original_rank is not None:
+        return
+    inferred = nam.infer_original_rank()
+    if inferred is not None:
+        yield field_issue(
+            f"inferred original_rank to be {inferred!r} from {nam.original_name!r}",
+            nam,
+            "original_rank",
+            inferred,
+        )
 
 
 @LINT.add("corrected_original_name")
@@ -3968,23 +3902,23 @@ def infer_page_described(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
 
 
 @LINT.add("page_described")
-def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_page_described(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.page_described is None:
         return
     # For now ignore names without a citation
     if nam.original_citation is None:
         return
 
-    def set_page(page_described: str) -> None:
-        nam.page_described = page_described
-
-    yield from check_page(
-        nam.page_described,
-        set_page=set_page,
-        obj=nam,
-        cfg=cfg,
-        get_raw_page_regex=nam.original_citation.get_raw_page_regex,
+    new_page = yield from check_page(
+        nam.page_described, get_raw_page_regex=nam.original_citation.get_raw_page_regex
     )
+    if new_page != nam.page_described:
+        yield field_issue(
+            f"fixed page {nam.page_described!r} -> {new_page!r}",
+            nam,
+            "page_described",
+            new_page,
+        )
 
 
 _JG2015 = "{Mammalia Australia (Jackson & Groves 2015).pdf}"
@@ -4032,7 +3966,7 @@ def _maybe_add_publication_date(
     if tag in (article.tags or ()):
         return
     message = f'inferred date for {article} from raw date "{raw_date}": {parsed}'
-    yield append_to_field_issue(message, article, "tags", tag)
+    yield add_tag_issue(message, article, tag)
 
 
 USNM_RGX = re.compile(
@@ -4180,7 +4114,7 @@ def has_accessible_original_citation(nam: Name) -> bool:
 
 
 @LINT.add("required_fields")
-def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.verbatim_citation and not nam.citation_group:
         yield "has verbatim citation but no citation group"
     if has_accessible_original_citation(nam):
@@ -4200,18 +4134,18 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[str]:
             yield "has original citation but no original_rank"
         if nam.author_tags is None:
             message = "has original citation but no author_tags"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.copy_authors()
+            citation = nam.original_citation
+            if citation.issupplement() and citation.parent is not None:
+                authors = citation.parent.author_tags
             else:
+                authors = citation.author_tags
+            if authors is None:
                 yield message
+            else:
+                yield field_issue(message, nam, "author_tags", authors)
         if nam.year is None:
             message = "has original citation but no year"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.copy_year()
-            else:
-                yield message
+            yield field_issue(message, nam, "year", nam.original_citation.year)
         if (
             nam.name_complex is None
             and nam.group is Group.genus
@@ -4702,7 +4636,7 @@ def resolve_usage(nam: Name, *, resolve_unavailable_version_of: bool) -> Name:
 
 
 @LINT.add("check_original_parent")
-def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_parent is None:
         return
 
@@ -4731,21 +4665,13 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if len(candidates) == 1:
             alternative = candidates[0]
             message = f"original_parent {nam.original_parent} is younger than {nam} (change to {alternative})"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.original_parent = alternative
-            else:
-                yield message
+            yield field_issue(message, nam, "original_parent", alternative)
 
     if (
         target := nam.original_parent.get_tag_target(NameTag.UnavailableVersionOf)
     ) is not None and nam.get_date_object() >= target.get_date_object():
         message = f"original_parent is an unavailable version of {target}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.original_parent = target
-        else:
-            yield message
+        yield field_issue(message, nam, "original_parent", target)
 
     if nam.original_parent.nomenclature_status in (
         NomenclatureStatus.subsequent_usage,
@@ -4755,9 +4681,8 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
             nam.original_parent, resolve_unavailable_version_of=False
         )
         message = f"original_parent is a subsequent usage or misidentification: {nam.original_parent} (change to {target})"
-        if cfg.autofix and nam.original_parent != target:
-            print(f"{nam}: {message}")
-            nam.original_parent = target
+        if nam.original_parent != target:
+            yield field_issue(message, nam, "original_parent", target)
         else:
             yield message
 
@@ -4780,11 +4705,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
         ]
         if alternatives:
             message = f"original_parent is not an available name: {nam.original_parent} (alternatives: {alternatives})"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.original_parent = alternatives[0]
-            else:
-                yield message
+            yield field_issue(message, nam, "original_parent", alternatives[0])
 
     if nam.group is Group.species and nam.corrected_original_name is not None:
         original_genus, *_ = nam.corrected_original_name.split()
@@ -4804,11 +4725,7 @@ def check_original_parent(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     and emended_version.root_name == original_genus
                 ):
                     message = f"original_parent {nam.original_parent} does not match corrected original name {nam.corrected_original_name} (change to {emended_version})"
-                    if cfg.autofix:
-                        print(f"{nam}: {message}")
-                        nam.original_parent = emended_version
-                    else:
-                        yield message
+                    yield field_issue(message, nam, "original_parent", emended_version)
 
 
 @LINT.add("infer_original_parent")
@@ -4953,7 +4870,7 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         if nam.has_name_tag(NameTag.VarietyOrForm):
             return
         message = "should be marked as variety or form"
-        yield append_to_field_issue(message, nam, "tags", NameTag.VarietyOrForm())
+        yield add_tag_issue(message, nam, NameTag.VarietyOrForm())
     else:
         if any(
             isinstance(tag, NameTag.Condition)
@@ -4966,8 +4883,8 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         ) or nam.has_name_tag(NameTag.VarietyOrForm):
             return
         message = "should be infrasubspecific but is not"
-        yield append_to_field_issue(
-            message, nam, "tags", NameTag.Condition(NomenclatureStatus.infrasubspecific)
+        yield add_tag_issue(
+            message, nam, NameTag.Condition(NomenclatureStatus.infrasubspecific)
         )
 
 
@@ -4999,7 +4916,7 @@ def check_must_have_authority_page_link(nam: Name, cfg: LintConfig) -> Iterable[
 
 
 @LINT.add("check_bhl_page", requires_network=True)
-def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_bhl_page(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_citation is None:
         return
     wrong_bhl_pages = nam.original_citation.has_tag(ArticleTag.BHLWrongPageNumbers)
@@ -5129,7 +5046,7 @@ def _check_bhl_item_matches(
     nam: Name,
     tag: TypeTag.AuthorityPageLink,  # type: ignore[name-defined]
     cfg: LintConfig,
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     item_id = bhl.get_bhl_item_from_url(tag.url)
     if item_id is None:
         yield f"cannot find BHL item for {tag.url}"
@@ -5175,22 +5092,16 @@ def _check_bhl_item_matches(
 
 def _replace_page_link(
     nam: Name, existing_tag: TypeTag, new_tag: TypeTag, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     message = f"replace {existing_tag} with {new_tag}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        nam.type_tags = [  # type: ignore[assignment]
-            (tag if tag != existing_tag else new_tag) for tag in nam.type_tags
-        ]
-    else:
-        yield message
+    yield replace_tag_issue(message, nam, existing_tag, new_tag, field="type_tags")
 
 
 def _check_bhl_bibliography_matches(
     nam: Name,
     tag: TypeTag.AuthorityPageLink,  # type: ignore[name-defined]
     cfg: LintConfig,
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     bibliography_id = bhl.get_bhl_bibliography_from_url(tag.url)
     if bibliography_id is None:
         if not bhl.is_item_missing_bibliography(tag.url):
@@ -5209,21 +5120,16 @@ def _check_bhl_bibliography_matches(
             if page.item_id in citation_biblio_ids and page.is_confident
         ]
         if len(replacement) == 1:
-            message = f"replace {tag.url} with {replacement[0].page_url}"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.type_tags = [  # type: ignore[assignment]
-                    (
-                        existing_tag
-                        if existing_tag != tag
-                        else TypeTag.AuthorityPageLink(
-                            url=replacement[0].page_url, confirmed=True, page=tag.page
-                        )
-                    )
-                    for existing_tag in nam.type_tags
-                ]
-            else:
-                yield message
+            new_tag = TypeTag.AuthorityPageLink(
+                url=replacement[0].page_url, confirmed=True, page=tag.page
+            )
+            yield replace_tag_issue(
+                f"replace {tag.url} with {replacement[0].page_url}",
+                nam,
+                tag,
+                new_tag,
+                field="type_tags",
+            )
 
 
 def _get_pages_with_links(nam: Name) -> set[str]:
@@ -5240,23 +5146,19 @@ def _should_look_for_page_links(nam: Name) -> bool:
 
 def _maybe_add_bhl_page(
     nam: Name, cfg: LintConfig, page_obj: bhl.PossiblePage
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     message = f"inferred BHL page {page_obj}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        tag = TypeTag.AuthorityPageLink(
-            url=page_obj.page_url, confirmed=True, page=str(page_obj.page_number)
-        )
-        nam.add_type_tag(tag)
-    else:
-        yield message
+    tag = TypeTag.AuthorityPageLink(
+        url=page_obj.page_url, confirmed=True, page=str(page_obj.page_number)
+    )
+    yield add_tag_issue(message, nam, tag, field="type_tags")
     print(page_obj.page_url)
 
 
 @LINT.add("infer_bhl_page", requires_network=True)
 def infer_bhl_page(
     nam: Name, cfg: LintConfig = LintConfig(autofix=False, interactive=False)
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
             print(f"{nam}: Skip because no page or enough tags")
@@ -5432,7 +5334,7 @@ def maybe_infer_page_from_other_name(
 
 
 @LINT.add("infer_page_from_other_names")
-def infer_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
             print(f"{nam}: not looking for BHL URL")
@@ -5478,15 +5380,13 @@ def infer_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 print(f"{nam}: already has {tag}")
             continue
         message = f"inferred URL {url} from other names (add {tag})"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_type_tag(tag)
-        else:
-            yield message
+        yield add_tag_issue(message, nam, tag, field="type_tags")
 
 
 @LINT.add("structured_verbatim_citation")
-def add_structured_verbatim_citation(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def add_structured_verbatim_citation(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     """Add or update a StructuredVerbatimCitation tag based on verbatim_citation.
 
     Uses regex heuristics in parse_citations.py to extract series/volume/issue/pages
@@ -5511,11 +5411,7 @@ def add_structured_verbatim_citation(nam: Name, cfg: LintConfig) -> Iterable[str
 
     if existing is None:
         msg = f"add StructuredVerbatimCitation from verbatim_citation: {new_tag}"
-        if cfg.autofix:
-            print(f"{nam}: {msg}")
-            nam.add_type_tag(new_tag)
-        else:
-            yield msg
+        yield add_tag_issue(msg, nam, new_tag, field="type_tags")
         return
     else:
         # Only re-add series if the journal supports it
@@ -5539,20 +5435,13 @@ def add_structured_verbatim_citation(nam: Name, cfg: LintConfig) -> Iterable[str
         )
         if merged != existing:
             msg = f"update StructuredVerbatimCitation from {existing} to {merged}"
-            if cfg.autofix:
-                print(f"{nam}: {msg}")
-                nam.type_tags = [  # type: ignore[assignment]
-                    (merged if isinstance(t, TypeTag.StructuredVerbatimCitation) else t)
-                    for t in nam.type_tags
-                ]
-            else:
-                yield msg
+            yield replace_tag_issue(msg, nam, existing, merged, field="type_tags")
 
 
 @LINT.add("structured_verbatim_citation_fields")
 def check_structured_verbatim_citation_fields(
     nam: Name, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     """Validate StructuredVerbatimCitation fields against CitationGroup rules.
 
     - Series/volume/issue must match the CitationGroup's regex tags when present;
@@ -5583,22 +5472,15 @@ def check_structured_verbatim_citation_fields(
                 msg = (
                     f"normalize SVC volume dash {tag.volume!r} -> {normalized_volume!r}"
                 )
-                if cfg.autofix:
-                    print(f"{nam}: {msg}")
-                    # Replace the tag with a normalized one
-                    new_tag = TypeTag.StructuredVerbatimCitation(
-                        volume=normalized_volume,
-                        issue=tag.issue,
-                        start_page=tag.start_page,
-                        end_page=tag.end_page,
-                        series=tag.series,
-                    )
-                    nam.type_tags = [  # type: ignore[assignment]
-                        (new_tag if t == tag else t) for t in nam.type_tags
-                    ]
-                    tag = new_tag
-                else:
-                    yield msg
+                new_tag = TypeTag.StructuredVerbatimCitation(
+                    volume=normalized_volume,
+                    issue=tag.issue,
+                    start_page=tag.start_page,
+                    end_page=tag.end_page,
+                    series=tag.series,
+                )
+                yield replace_tag_issue(msg, nam, tag, new_tag, field="type_tags")
+                tag = new_tag
             rgx = cg_lint.get_volume_regex(cg)
             if not re.fullmatch(rgx, tag.volume):
                 yield (
@@ -5611,21 +5493,15 @@ def check_structured_verbatim_citation_fields(
             normalized_issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", normalized_issue)
             if normalized_issue != tag.issue:
                 msg = f"normalize SVC issue formatting {tag.issue!r} -> {normalized_issue!r}"
-                if cfg.autofix:
-                    print(f"{nam}: {msg}")
-                    new_tag = TypeTag.StructuredVerbatimCitation(
-                        volume=tag.volume,
-                        issue=normalized_issue,
-                        start_page=tag.start_page,
-                        end_page=tag.end_page,
-                        series=tag.series,
-                    )
-                    nam.type_tags = [  # type: ignore[assignment]
-                        (new_tag if t == tag else t) for t in nam.type_tags
-                    ]
-                    tag = new_tag
-                else:
-                    yield msg
+                new_tag = TypeTag.StructuredVerbatimCitation(
+                    volume=tag.volume,
+                    issue=normalized_issue,
+                    start_page=tag.start_page,
+                    end_page=tag.end_page,
+                    series=tag.series,
+                )
+                yield replace_tag_issue(msg, nam, tag, new_tag, field="type_tags")
+                tag = new_tag
             rgx = cg_lint.get_issue_regex(cg)
             if not re.fullmatch(rgx, tag.issue):
                 yield (
@@ -5648,22 +5524,18 @@ def check_structured_verbatim_citation_fields(
                     candidate = prefix + end_page
                     if int(candidate) > int(start_page):
                         msg = f"expand SVC end_page {end_page!r} -> {candidate!r}"
-                        if cfg.autofix:
-                            print(f"{nam}: {msg}")
-                            new_tag = TypeTag.StructuredVerbatimCitation(
-                                volume=tag.volume,
-                                issue=tag.issue,
-                                start_page=start_page,
-                                end_page=candidate,
-                                series=tag.series,
-                            )
-                            nam.type_tags = [  # type: ignore[assignment]
-                                (new_tag if t == tag else t) for t in nam.type_tags
-                            ]
-                            tag = new_tag
-                            end_page = candidate
-                        else:
-                            yield msg
+                        new_tag = TypeTag.StructuredVerbatimCitation(
+                            volume=tag.volume,
+                            issue=tag.issue,
+                            start_page=start_page,
+                            end_page=candidate,
+                            series=tag.series,
+                        )
+                        yield replace_tag_issue(
+                            msg, nam, tag, new_tag, field="type_tags"
+                        )
+                        tag = new_tag
+                        end_page = candidate
                 except ValueError:
                     pass
             if int(end_page) < int(start_page):
@@ -5673,7 +5545,7 @@ def check_structured_verbatim_citation_fields(
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
-def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
             print(f"{nam}: not looking for BHL URL")
@@ -5737,17 +5609,13 @@ def infer_bhl_page_from_other_names(nam: Name, cfg: LintConfig) -> Iterable[str]
                 print(f"{nam}: already has {tag}")
             continue
         message = f"inferred BHL page {inferred_page_id} from other names (add {tag})"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_type_tag(tag)
-        else:
-            yield message
+        yield add_tag_issue(message, nam, tag, field="type_tags")
 
 
 @LINT.add("bhl_page_from_classification_entries", requires_network=True)
 def infer_bhl_page_from_classification_entries(
     nam: Name, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not _should_look_for_page_links(nam):
         return
     ce = nam.get_mapped_classification_entry()
@@ -5760,17 +5628,17 @@ def infer_bhl_page_from_classification_entries(
     ]
     if not new_tags:
         return
-    message = f"inferred BHL page from classification entry {ce}: {new_tags}"
-    if cfg.autofix:
-        print(f"{nam}: {message}")
-        for tag in new_tags:
-            nam.add_type_tag(tag)
-    else:
-        yield message
+    for tag in new_tags:
+        yield add_tag_issue(
+            f"inferred BHL page from classification entry {ce}: {tag}",
+            nam,
+            tag,
+            field="type_tags",
+        )
 
 
 @LINT.add("bhl_page_from_article", requires_network=True)
-def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if not _should_look_for_page_links(nam):
         if cfg.verbose:
             print(f"{nam}: not looking for BHL URL")
@@ -5797,11 +5665,7 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 page=page_described,
             )
             message = f"inferred BHL page {page_id} from {message} (add {tag})"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                nam.add_type_tag(tag)
-            else:
-                yield message
+            yield add_tag_issue(message, nam, tag, field="type_tags")
 
 
 def infer_bhl_page_id(
@@ -6595,14 +6459,18 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
             expected_tag = NameTag.NameCombinationOf(earliest)
         if expected_tag not in nam.tags:
             message = f"changing to name combination of {earliest}"
-            new_tags = [
+            old_tags = [
                 tag
                 for tag in nam.tags
-                if not isinstance(
+                if isinstance(
                     tag, (NameTag.SubsequentUsageOf, NameTag.NameCombinationOf)
                 )
-            ] + [expected_tag]
-            yield field_issue(message, nam, "tags", new_tags)
+            ]
+            yield fixes_issue(
+                message,
+                *(remove_tag_fix(nam, tag) for tag in old_tags),
+                add_tag_fix(nam, expected_tag),
+            )
 
 
 @LINT.add("family_group_subsequent_usage")
@@ -6636,7 +6504,7 @@ def mark_family_group_subsequent_usage(
     earliest_name = min(same_name, key=lambda name: name.numeric_year())
     tag = NameTag.SubsequentUsageOf(earliest_name)
     message = f"marking as subsequent usage of {earliest_name}"
-    yield append_to_field_issue(message, nam, "tags", tag)
+    yield add_tag_issue(message, nam, tag)
 
 
 @dataclass(frozen=True)
@@ -6723,7 +6591,7 @@ def _get_extended_root_name_forms(nam: Name) -> set[str]:
 
 
 @LINT.add("infer_included_species")
-def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.group is not Group.genus:
         return
     if nam.original_citation is None:
@@ -6771,11 +6639,7 @@ def infer_included_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
             classification_entry=child_ce,
         )
         message = f"adding included species {child_ce.mapped_name} from {ce}: {tag}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.add_type_tag(tag)
-        else:
-            yield message
+        yield add_tag_issue(message, nam, tag, field="type_tags")
 
 
 @LINT.add("duplicate_included_species")
@@ -6891,7 +6755,7 @@ def _location_detail_covers_classification_entry(
 
 
 @LINT.add("infer_tags_from_mapped_entries")
-def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     ces = list(nam.get_classification_entries())
     if not ces:
         return
@@ -6907,11 +6771,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     location, ce.article, classification_entry=ce
                 )
                 message = f"adding location detail from {ce} to {tag_name}: {tag}"
-                if cfg.autofix:
-                    print(f"{tag_name}: {message}")
-                    tag_name.add_type_tag(tag)
-                else:
-                    yield message
+                yield add_tag_issue(message, tag_name, tag, field="type_tags")
             type_specimen = None
             for tag in ce.tags:
                 if isinstance(tag, ClassificationEntryTag.TypeSpecimenData):
@@ -6925,11 +6785,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     type_specimen, ce.article, classification_entry=ce
                 )
                 message = f"adding specimen detail from {ce} to {tag_name}: {tag}"
-                if cfg.autofix:
-                    print(f"{tag_name}: {message}")
-                    tag_name.add_type_tag(tag)
-                else:
-                    yield message
+                yield add_tag_issue(message, tag_name, tag, field="type_tags")
         if (
             tag_name.original_citation is None
             and ce.citation is not None
@@ -6938,11 +6794,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
             tag = TypeTag.CitationDetail(ce.citation, ce.article)
             if tag not in tag_name.type_tags:
                 message = f"adding verbatim citation from {ce} to {nam}: {tag}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    tag_name.add_type_tag(tag)
-                else:
-                    yield message
+                yield add_tag_issue(message, tag_name, tag, field="type_tags")
 
     ce = nam.get_mapped_classification_entry()
     # Don't copy page links until we've aligned the page that it's on
@@ -6955,11 +6807,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 if expected_tag in nam.type_tags:
                     continue
                 message = f"adding page link from {ce} to {nam}: {tag}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    nam.add_type_tag(expected_tag)
-                else:
-                    yield message
+                yield add_tag_issue(message, nam, expected_tag, field="type_tags")
 
 
 @LINT.add("remove_redundant_name")
@@ -7124,11 +6972,7 @@ def check_matches_mapped_classification_entry(
             if not nam_tags:
                 tag = TypeTag.TextualOriginalRank(ce_tags[0].text)
                 message = f"inferred textual rank from {ce}: {tag}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    nam.add_type_tag(tag)
-                else:
-                    yield message
+                yield add_tag_issue(message, nam, tag, field="type_tags")
             elif ce_tags[0].text != nam_tags[0].text:
                 yield f"mapped to {ce}, but textual ranks do not match: {ce_tags[0].text=} != {nam_tags[0].text=}"
     conditions = list(ce.get_tags(ce.tags, ClassificationEntryTag.CECondition))
@@ -7145,30 +6989,18 @@ def check_matches_mapped_classification_entry(
         tag for tag in conditions if tag.status not in applicable_statuses
     ]
     if new_conditions:
-        message = f"mapped {ce} has conditions {new_conditions}; add to name"
-        yield field_issue(
-            message,
-            nam,
-            "tags",
-            (
-                *nam.tags,
-                *(
-                    NameTag.Condition(tag.status, comment=tag.comment)
-                    for tag in new_conditions
-                ),
-            ),
-        )
+        for condition in new_conditions:
+            tag = NameTag.Condition(condition.status, comment=condition.comment)
+            yield add_tag_issue(
+                f"mapped {ce} has condition {condition}; add to name", nam, tag
+            )
 
     for tag in ce.tags:
         if isinstance(tag, ClassificationEntryTag.LSIDCE):
             new_tag = TypeTag.LSIDName(tag.text)
             if new_tag not in nam.type_tags:
                 message = f"adding LSID from {ce} to {nam}: {new_tag}"
-                if cfg.autofix:
-                    print(f"{nam}: {message}")
-                    nam.add_type_tag(new_tag)
-                else:
-                    yield message
+                yield add_tag_issue(message, nam, new_tag, field="type_tags")
 
 
 def _check_matching_original_parent(
@@ -7317,7 +7149,7 @@ def infer_unavailable_version(nam: Name, cfg: LintConfig) -> Iterable[LintResult
         return
     tag = NameTag.UnavailableVersionOf(candidates[0])
     message = f"add UnavailableVersionOf tag: {tag}"
-    yield append_to_field_issue(message, nam, "tags", tag)
+    yield add_tag_issue(message, nam, tag)
 
 
 @LINT.add("should_be_variant")
@@ -7523,7 +7355,7 @@ def infer_reranking(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         return
     tag = NameTag.RerankingOf(best_candidate)
     message = f"add RerankingOf tag: {tag}"
-    yield append_to_field_issue(message, nam, "tags", tag)
+    yield add_tag_issue(message, nam, tag)
 
 
 @LINT.add("must_have")
