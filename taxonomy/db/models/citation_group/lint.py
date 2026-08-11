@@ -5,7 +5,7 @@ import re
 import subprocess
 import xml.etree.ElementTree as ET
 from collections import Counter, defaultdict
-from collections.abc import Container, Iterable
+from collections.abc import Iterable
 from datetime import UTC, datetime
 
 import httpx
@@ -61,19 +61,6 @@ def get_series_regex(cg: CitationGroup) -> str | None:
     return tag.text if tag is not None else None
 
 
-def remove_unused_ignores(cg: CitationGroup, unused: Container[str]) -> None:
-    new_tags = []
-    for tag in cg.tags:
-        if (
-            isinstance(tag, CitationGroupTag.IgnoreLintCitationGroup)
-            and tag.label in unused
-        ):
-            print(f"{cg}: removing unused IgnoreLint tag: {tag}")
-        else:
-            new_tags.append(tag)
-    cg.tags = new_tags  # type: ignore[assignment]
-
-
 def get_ignores(cg: CitationGroup) -> Iterable[IgnoreLint]:
     return cg.get_tags(cg.tags, CitationGroupTag.IgnoreLintCitationGroup)
 
@@ -82,7 +69,7 @@ def add_ignore(cg: CitationGroup, label: str, comment: str) -> None:
     cg.add_tag(CitationGroupTag.IgnoreLintCitationGroup(label, comment=comment))
 
 
-LINT = Lint(CitationGroup, get_ignores, remove_unused_ignores, add_ignore)
+LINT = Lint(CitationGroup, get_ignores, add_ignore)
 
 
 @functools.cache

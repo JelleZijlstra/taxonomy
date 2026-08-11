@@ -1,3 +1,4 @@
+import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from types import SimpleNamespace
@@ -7,6 +8,49 @@ import pytest
 from taxonomy.db import models
 from taxonomy.db.models.base import BaseModel, LintConfig
 from taxonomy.db.models.tags import LocationTag
+
+
+class _IntegrityErrorOnEdit:
+    _run_field_edit = BaseModel._run_field_edit
+
+    def __init__(self) -> None:
+        self._name = "original"
+        self.reload_count = 0
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    @name.setter
+    def name(self, value: str) -> None:
+        # Match clirm's behavior: its cache is changed before SQLite rejects
+        # the UPDATE.
+        self._name = value
+        raise sqlite3.IntegrityError("UNIQUE constraint failed: location.name")
+
+    def get_value_for_field(self, field: str) -> str:
+        assert field == "name"
+        return "duplicate"
+
+    def reload(self) -> _IntegrityErrorOnEdit:
+        self._name = "original"
+        self.reload_count += 1
+        return self
+
+
+def test_fill_field_rejects_integrity_error_and_restores_state(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    obj = _IntegrityErrorOnEdit()
+
+    BaseModel.fill_field(obj, "name")  # type: ignore[arg-type]
+
+    assert obj.name == "original"
+    assert obj.reload_count == 1
+    assert (
+        capsys.readouterr().out
+        == "Edit rejected: UNIQUE constraint failed: location.name\n"
+    )
 
 
 def test_lint_all_uses_read_only_context_without_autofix(

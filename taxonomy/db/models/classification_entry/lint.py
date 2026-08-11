@@ -36,20 +36,7 @@ from taxonomy.db.models.name.lint import (
 from taxonomy.db.models.name.name import clean_original_name
 from taxonomy.db.models.taxon import Taxon
 
-from .ce import ClassificationEntry, ClassificationEntryTag
-
-
-def remove_unused_ignores(ce: ClassificationEntry, unused: Container[str]) -> None:
-    new_tags = []
-    for tag in ce.tags:
-        if (
-            isinstance(tag, ClassificationEntryTag.IgnoreLintClassificationEntry)
-            and tag.label in unused
-        ):
-            print(f"{ce}: removing unused IgnoreLint tag: {tag}")
-        else:
-            new_tags.append(tag)
-    ce.tags = new_tags  # type: ignore[assignment]
+from .ce import ClassificationEntry, ClassificationEntryStatus, ClassificationEntryTag
 
 
 def get_ignores(ce: ClassificationEntry) -> Iterable[IgnoreLint]:
@@ -62,7 +49,7 @@ def add_ignore(ce: ClassificationEntry, label: str, comment: str) -> None:
     )
 
 
-LINT = Lint(ClassificationEntry, get_ignores, remove_unused_ignores, add_ignore)
+LINT = Lint(ClassificationEntry, get_ignores, add_ignore)
 
 
 @LINT.add("rank")
@@ -1564,7 +1551,7 @@ def check_vacuous_type_locality(
 
 
 @LINT.add("infer_duplicate")
-def infer_duplicate(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
+def infer_duplicate(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]:
     possible_dupes = list(
         # Wrong type inference for <
         ClassificationEntry.select_valid().filter(  # static analysis: ignore[incompatible_argument]
@@ -1592,18 +1579,18 @@ def infer_duplicate(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
         return
     dupe = possible_dupes[0]
     message = f"merge into {dupe}"
-    if cfg.autofix:
-        print(f"{ce}: {message}")
-        parts = []
-        if dupe.page is not None:
-            parts.append(dupe.page)
-        if ce.page is not None:
-            parts.append(ce.page)
-        dupe.page = ", ".join(parts)
-        dupe.tags += ce.tags
-        ce.merge(dupe)
-    else:
-        yield message
+    parts = []
+    if dupe.page is not None:
+        parts.append(dupe.page)
+    if ce.page is not None:
+        parts.append(ce.page)
+    yield fixes_issue(
+        message,
+        field_fix(dupe, "page", ", ".join(parts)),
+        *(add_tag_fix(dupe, tag) for tag in ce.tags),
+        field_fix(ce, "parent", dupe),
+        field_fix(ce, "status", ClassificationEntryStatus.redirect),
+    )
 
 
 @LINT.add("check_page")

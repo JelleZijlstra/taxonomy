@@ -36,7 +36,6 @@ from taxonomy.db.models.occurrence_record.lint import (
     parse_verbatim_coordinates,
     parse_verbatim_date,
     parse_verbatim_elevation,
-    remove_unused_ignores,
 )
 from taxonomy.db.models.taxon import Taxon
 
@@ -741,16 +740,6 @@ def test_occurrence_record_lint_can_be_ignored() -> None:
     )
 
     assert list(check_basis_tags(record, LintConfig())) == []
-
-
-def test_remove_unused_occurrence_record_ignore() -> None:
-    record = _record(
-        tags=(OccurrenceRecordTag.IgnoreLintOccurrenceRecord("basis_tags"),)
-    )
-
-    remove_unused_ignores(record, {"basis_tags"})
-
-    assert record.tags == []
 
 
 def test_duplicate_lint_skips_lower_id_record(monkeypatch: pytest.MonkeyPatch) -> None:

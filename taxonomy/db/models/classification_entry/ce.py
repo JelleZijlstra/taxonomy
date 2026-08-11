@@ -602,9 +602,13 @@ class ClassificationEntry(BaseModel):
             print("No mapped classification entry.")
         if not getinput.yes_no("Take over mapped name?"):
             return
-        models.name.lint.take_over_name(
-            self.mapped_name, self, LintConfig(interactive=True)
+        issue = models.name.lint.take_over_name_issue(
+            f"changing original citation of {self.mapped_name} to {self.article}",
+            self.mapped_name,
+            self,
         )
+        assert issue.fix is not None
+        issue.fix.apply()
 
     @classmethod
     def get_parent_completion(

@@ -321,7 +321,7 @@ def set_multi(
                     print(f"{art}: ignoring journal {value}")
                 continue
             print(f"{art}: set citation group to {value}")
-            art.citation_group = CitationGroup.get_or_create(value)
+            art.citation_group = CitationGroup.get_or_prompt(value)
         elif attr == "isbn":
             existing = art.get_identifier(ArticleTag.ISBN)
             if existing:

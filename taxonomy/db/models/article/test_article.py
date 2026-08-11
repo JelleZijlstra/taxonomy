@@ -10,6 +10,7 @@ from taxonomy.db.constants import ArticleKind, ArticleType
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus, api_data
 from taxonomy.db.models.article import lint as article_lint
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.citation_group import CitationGroup
 from taxonomy.db.models.lint_types import LintIssue
 
 
@@ -43,6 +44,42 @@ def test_title_lint_merges_adjacent_italics() -> None:
     assert issues[0].fix is not None
     issues[0].fix.apply()
     assert article.title == "The status of _Nycticebus coucang brachycephalus_ Sody"
+
+
+def test_journal_specific_cleanup_uses_noninteractive_citation_group_lookup(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = SimpleNamespace(
+        name="Journal of Natural History Series 3",
+        type=ArticleType.BOOK,
+        tags=(),
+        get_tag=lambda tag_cls: None,
+        is_year_in_range=lambda year: None,
+    )
+    target = object()
+    article = cast(
+        Article,
+        SimpleNamespace(
+            citation_group=source,
+            series=None,
+            volume=None,
+            issue=None,
+            numeric_year=lambda: 1900,
+        ),
+    )
+    lookup = Mock(return_value=target)
+    monkeypatch.setattr(CitationGroup, "select_one", lookup)
+
+    issues = list(article_lint.journal_specific_cleanup.linter(article, LintConfig()))
+
+    assert len(issues) == 1
+    issue = issues[0]
+    assert isinstance(issue, LintIssue)
+    assert issue.fix is not None
+    assert issue.fix.apply() is True
+    assert article.series == "3"
+    assert article.citation_group is target
+    lookup.assert_called_once_with(name="Annals and Magazine of Natural History")
 
 
 def test_clear_zoobank_caches_clears_article_lsids(

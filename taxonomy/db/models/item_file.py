@@ -292,7 +292,7 @@ class ItemFile(BaseModel):
                 volume = verdict.get("volume") or None
                 issue = verdict.get("issue") or None
                 if allow_interactive_cg:
-                    cg = CitationGroup.get_or_create(journal_name)
+                    cg = CitationGroup.get_or_prompt(journal_name)
                 else:
                     cg = CitationGroup.select_one(name=journal_name)
                 if cg is None:
@@ -644,12 +644,7 @@ def _get_ignores(_: ItemFile) -> Iterable[IgnoreLint]:
     return ()
 
 
-def _remove_unused_ignores(_: ItemFile, __: Iterable[str]) -> None:
-    # No-op: no IgnoreLint tags in ItemFile.
-    return
-
-
-LINT = Lint(ItemFile, _get_ignores, _remove_unused_ignores)
+LINT = Lint(ItemFile, _get_ignores)
 
 
 @LINT.add("roman_volume")

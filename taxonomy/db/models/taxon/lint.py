@@ -2,7 +2,7 @@
 
 import enum
 from collections import Counter, defaultdict
-from collections.abc import Callable, Container, Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass
 from datetime import date
 from typing import Self
@@ -16,19 +16,6 @@ from taxonomy.db.models.lint_types import LintResult
 from .taxon import Taxon
 
 
-def remove_unused_ignores(taxon: Taxon, unused: Container[str]) -> None:
-    new_tags = []
-    for tag in taxon.tags:
-        if (
-            isinstance(tag, models.tags.TaxonTag.IgnoreLintTaxon)
-            and tag.label in unused
-        ):
-            print(f"{taxon}: removing unused IgnoreLint tag: {tag}")
-        else:
-            new_tags.append(tag)
-    taxon.tags = new_tags  # type: ignore[assignment]
-
-
 def get_ignores(taxon: Taxon) -> Iterable[IgnoreLint]:
     return taxon.get_tags(taxon.tags, models.tags.TaxonTag.IgnoreLintTaxon)
 
@@ -37,7 +24,7 @@ def add_ignore(taxon: Taxon, label: str, comment: str) -> None:
     taxon.add_tag(models.tags.TaxonTag.IgnoreLintTaxon(label, comment=comment))
 
 
-LINT = Lint(Taxon, get_ignores, remove_unused_ignores, add_ignore)
+LINT = Lint(Taxon, get_ignores, add_ignore)
 
 
 @LINT.add("parent")

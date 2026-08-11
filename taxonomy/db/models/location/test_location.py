@@ -5842,12 +5842,3 @@ def test_location_lint_can_be_ignored() -> None:
     assert list(location_lint.check_linked_coordinates(loc, LintConfig())) == []
     assert loc.latitude is None
     assert loc.longitude is None
-
-
-def test_remove_unused_location_ignore() -> None:
-    loc = _location_without_coordinates()
-    loc.tags = (LocationTag.IgnoreLintLocation("period"),)  # type: ignore[assignment]
-
-    location_lint.remove_unused_ignores(loc, {"period"})
-
-    assert loc.tags == ()

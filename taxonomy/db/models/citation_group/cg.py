@@ -124,7 +124,8 @@ class CitationGroup(BaseModel):
         return obj
 
     @classmethod
-    def get_or_create(cls, name: str) -> "CitationGroup | None":
+    def get_or_prompt(cls, name: str) -> "CitationGroup | None":
+        """Return the named group, or interactively prompt for a replacement."""
         try:
             return cls.get(name=name)
         except cls.DoesNotExist:

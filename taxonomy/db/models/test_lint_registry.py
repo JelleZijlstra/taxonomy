@@ -8,6 +8,7 @@ import pytest
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import (
     Lint,
+    LintFix,
     LintFixError,
     add_tag_issue,
     count_lint_codes,
@@ -31,9 +32,14 @@ class FakeObject:
     tags: list[FakeIgnore] = field(default_factory=list)
     raises: bool = False
     is_virtual: bool = False
+    reload_count: int = 0
 
     def __repr__(self) -> str:
         return f"FakeObject({self.id})"
+
+    def reload(self) -> FakeObject:
+        self.reload_count += 1
+        return self
 
 
 class FakeModel:
@@ -44,23 +50,28 @@ class FakeModel:
         return cls.objects
 
 
+@dataclass(frozen=True)
+class FailingOperation:
+    target: Any
+
+    def validate(self) -> bool:
+        return True
+
+    def apply(self) -> None:
+        raise ValueError("rejected change")
+
+
 def make_lint(objects: list[FakeObject]) -> Lint[Any]:
     FakeModel.objects = objects
 
     def get_ignores(obj: FakeObject) -> list[FakeIgnore]:
         return obj.tags
 
-    def remove_unused_ignores(obj: FakeObject, unused: set[str]) -> None:
-        obj.tags = [tag for tag in obj.tags if tag.label not in unused]
-
     def add_ignore(obj: FakeObject, label: str, comment: str) -> None:
         obj.tags.append(FakeIgnore(label, comment))
 
     lint: Lint[Any] = Lint(
-        cast(Any, FakeModel),
-        cast(Any, get_ignores),
-        cast(Any, remove_unused_ignores),
-        cast(Any, add_ignore),
+        cast(Any, FakeModel), cast(Any, get_ignores), cast(Any, add_ignore)
     )
 
     @lint.add("problem")
@@ -143,6 +154,47 @@ def test_linter_error_preserves_ignore() -> None:
         "FakeObject(1): error running problem linter: broken linter"
     ]
     assert obj.tags == [FakeIgnore("problem", "earlier review")]
+
+
+def test_autofix_error_becomes_non_autofixable_issue() -> None:
+    obj = FakeObject(1, needs_ignore=True)
+    lint = make_lint([obj])
+    lint.linters[0].linter = lambda item, _cfg: [
+        LintIssue(
+            "change rejected field", fix=LintFix((FailingOperation(cast(Any, item)),))
+        )
+    ]
+
+    (issue,) = lint.run(obj, LintConfig(autofix=True, interactive=False))
+
+    assert isinstance(issue, LintIssue)
+    assert issue.fix is None
+    assert issue.code == "problem"
+    assert "autofix failed with ValueError: rejected change" in issue.message
+    assert obj.reload_count == 1
+
+
+def test_unused_ignore_is_removed_with_structured_tag_fix() -> None:
+    unused = FakeIgnore("unused", "old suppression")
+    obj = FakeObject(1, needs_ignore=False, tags=[unused])
+    lint = make_lint([obj])
+    applied: list[LintIssue] = []
+
+    assert (
+        list(
+            lint.run(
+                obj,
+                LintConfig(
+                    autofix=True, interactive=False, fix_callback=applied.append
+                ),
+            )
+        )
+        == []
+    )
+
+    assert tuple(obj.tags) == ()
+    assert len(applied) == 1
+    assert applied[0].code == "unused_ignore"
 
 
 def test_ignored_linter_does_not_receive_autofix() -> None:
@@ -304,25 +356,10 @@ def test_already_satisfied_tag_fix_does_not_call_fix_callback() -> None:
 
 
 _LEGACY_AUTOFIX_BRANCHES = {
-    (
-        "base.py",
-        "check_all_fields",
-    ): "handles a database uniqueness error with a dynamic fallback value",
-    (
-        "lint.py",
-        "run",
-    ): "uses the registry's generic model-specific remove-unused-ignores callback",
-    ("article/lint.py", "journal_specific_cleanup"): "creates a CitationGroup",
     ("article/lint.py", "specify_authors"): "creates or resolves Person records",
-    ("classification_entry/lint.py", "infer_duplicate"): "merges records",
-    ("name/lint.py", "_check_species_name_gender"): "creates a NameComment",
     ("name/lint.py", "remove_duplicates"): "interactively merges records",
     ("name/lint.py", "_maybe_add_name_variant"): "creates and edits a Name",
-    ("name/lint.py", "maybe_take_over_name"): "runs interactive cleanup methods",
     ("name/lint.py", "infer_name_variants"): "creates a Name through a CE method",
-    ("name/lint.py", "_infer_name_variants_of_status"): "merges Name records",
-    ("name/lint.py", "check_duplicate_variants"): "merges Name records",
-    ("name/lint.py", "remove_redundant_name"): "redirects a Name",
     ("taxon/lint.py", "check_base_name"): "switches the Taxon-Name base-name cycle",
     (
         "taxon/lint.py",
@@ -365,7 +402,9 @@ def test_legacy_autofix_branches_are_explicitly_allowlisted() -> None:
             branch = (str(path.relative_to(models_dir)), parent.name)
             if branch in {
                 ("base.py", "_process_lint_results"),
+                ("lint.py", "apply_lint_fix"),
                 ("lint.py", "__call__"),
+                ("lint.py", "run"),
             }:
                 # This is the central structured-fix consumer, not a lint rule.
                 continue

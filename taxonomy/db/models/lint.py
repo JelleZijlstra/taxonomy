@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import traceback
 from collections import Counter
-from collections.abc import Callable, Collection, Generator, Hashable, Iterable
+from collections.abc import Callable, Generator, Hashable, Iterable
 from dataclasses import dataclass, field, replace
 from functools import cache
 from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
@@ -253,6 +253,34 @@ def count_lint_codes(issues: Iterable[LintResult]) -> Counter[str]:
     )
 
 
+def apply_lint_fix(issue: LintIssue, cfg: LintConfig) -> tuple[bool, LintIssue | None]:
+    """Apply a structured fix, returning any issue that remains unresolved."""
+    if issue.fix is None or not (cfg.autofix or cfg.structured_autofix):
+        return False, issue
+    if cfg.structured_autofix and not cfg.autofix and not issue.fix.is_virtual_safe:
+        return False, issue
+    try:
+        changed = issue.fix.apply()
+    except Exception as exc:
+        reloaded: set[int] = set()
+        for operation in issue.fix.operations:
+            target = operation.target
+            if target.is_virtual or id(target) in reloaded:
+                continue
+            reload_method = getattr(target, "reload", None)
+            if reload_method is not None:
+                try:
+                    reload_method()
+                except Exception:
+                    pass
+            reloaded.add(id(target))
+        return False, LintIssue(
+            f"{issue.message}; autofix failed with {type(exc).__name__}: {exc}",
+            code=issue.code,
+        )
+    return changed, None
+
+
 Linter = Callable[[ModelT, LintConfig], Iterable[LintResult]]
 DuplicateKey = Callable[[ModelT], Hashable | None]
 DuplicateFixer = Callable[[Hashable, list[ModelT], LintConfig], None]
@@ -327,20 +355,15 @@ class LintWrapper(Generic[ModelT]):
             formatted = issue.with_message(
                 f"{self._format_object(obj)}: {issue} [{code}]"
             )
-            should_apply = cfg.autofix or cfg.structured_autofix
-            if issue.fix is not None and should_apply:
-                if cfg.structured_autofix and not cfg.autofix:
-                    if not issue.fix.is_virtual_safe:
-                        yield formatted
-                        continue
-                changed = issue.fix.apply()
-                if changed:
-                    if cfg.fix_callback is not None:
-                        cfg.fix_callback(formatted)
-                    if cfg.autofix:
-                        print(formatted)
+            changed, remaining = apply_lint_fix(formatted, cfg)
+            if remaining is not None:
+                yield remaining
                 continue
-            yield formatted
+            if changed:
+                if cfg.fix_callback is not None:
+                    cfg.fix_callback(formatted)
+                if cfg.autofix:
+                    print(formatted)
         return set()
 
 
@@ -348,8 +371,8 @@ class LintWrapper(Generic[ModelT]):
 class Lint(Generic[ModelT]):
     model_cls: type[ModelT]
     get_ignores: Callable[[ModelT], Iterable[IgnoreLint]]
-    remove_unused_ignores: Callable[[ModelT, Collection[str]], None]
     add_ignore: Callable[[ModelT, str, str], None] | None = None
+    ignore_field: str = "tags"
 
     linters: list[LintWrapper[ModelT]] = field(default_factory=list)
     disabled_linters: list[LintWrapper[ModelT]] = field(default_factory=list)
@@ -567,10 +590,24 @@ class Lint(Generic[ModelT]):
             # Don't remove IgnoreLints for disabled linters
             unused -= {linter.label for linter in self.disabled_linters}
         if unused:
-            if cfg.autofix:
-                self.remove_unused_ignores(obj, unused)
-            else:
-                yield f"{obj}: has unused IgnoreLint tags {', '.join(unused)}"
+            for tag in tuple(self.get_ignores(obj)):
+                if tag.label not in unused:
+                    continue
+                issue = remove_tag_issue(
+                    f"{obj}: remove unused IgnoreLint tag {tag}",
+                    obj,
+                    tag,
+                    field=self.ignore_field,
+                    code="unused_ignore",
+                )
+                changed, remaining = apply_lint_fix(issue, cfg)
+                if remaining is not None:
+                    yield remaining
+                elif changed:
+                    if cfg.fix_callback is not None:
+                        cfg.fix_callback(issue)
+                    if cfg.autofix:
+                        print(issue)
 
     def is_ignoring_lint(self, obj: ModelT, label: str) -> bool:
         ignored_lints = self.get_ignored_lints(obj)

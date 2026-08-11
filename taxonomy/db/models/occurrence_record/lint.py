@@ -1,6 +1,6 @@
 import datetime
 import re
-from collections.abc import Collection, Iterable
+from collections.abc import Iterable
 from dataclasses import replace
 from typing import Protocol
 
@@ -51,19 +51,6 @@ _RECENT_TAXON_AGES = frozenset({AgeClass.extant, AgeClass.recently_extinct})
 _SOURCE_COORDINATE_REWRITE_TOLERANCE_KM = 0.001
 
 
-def remove_unused_ignores(record: OccurrenceRecord, unused: Collection[str]) -> None:
-    new_tags = []
-    for tag in record.tags:
-        if (
-            isinstance(tag, OccurrenceRecordTag.IgnoreLintOccurrenceRecord)
-            and tag.label in unused
-        ):
-            print(f"{record}: removing unused IgnoreLint tag: {tag}")
-        else:
-            new_tags.append(tag)
-    record.tags = new_tags  # type: ignore[assignment]
-
-
 def get_ignores(record: OccurrenceRecord) -> Iterable[IgnoreLint]:
     return record.get_tags(record.tags, OccurrenceRecordTag.IgnoreLintOccurrenceRecord)
 
@@ -74,7 +61,7 @@ def add_ignore(record: OccurrenceRecord, label: str, comment: str) -> None:
     )
 
 
-LINT = Lint(OccurrenceRecord, get_ignores, remove_unused_ignores, add_ignore)
+LINT = Lint(OccurrenceRecord, get_ignores, add_ignore)
 
 
 def get_inferred_taxon(record: OccurrenceRecord) -> Taxon | None:

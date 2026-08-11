@@ -537,16 +537,6 @@ class GeoNamesCoordinateCandidate:
         return not self.region_issues
 
 
-def remove_unused_ignores(location: Location, unused: Collection[str]) -> None:
-    new_tags = []
-    for tag in location.tags:
-        if isinstance(tag, LocationTag.IgnoreLintLocation) and tag.label in unused:
-            print(f"{location}: removing unused IgnoreLint tag: {tag}")
-        else:
-            new_tags.append(tag)
-    location.tags = tuple(new_tags)  # type: ignore[assignment]
-
-
 def get_ignores(location: Location) -> Iterable[IgnoreLint]:
     return location.get_tags(location.tags, LocationTag.IgnoreLintLocation)
 
@@ -555,7 +545,7 @@ def add_ignore(location: Location, label: str, comment: str) -> None:
     location.add_tag(LocationTag.IgnoreLintLocation(label, comment=comment))
 
 
-LINT = Lint(Location, get_ignores, remove_unused_ignores, add_ignore)
+LINT = Lint(Location, get_ignores, add_ignore)
 
 
 @dataclass(frozen=True, slots=True)

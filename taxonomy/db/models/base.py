@@ -250,19 +250,16 @@ class BaseModel(Model):
     def _process_lint_results(
         results: Iterable[LintResult], cfg: LintConfig
     ) -> Iterable[LintResult]:
+        from .lint import apply_lint_fix
+
         for result in results:
-            if not isinstance(result, LintIssue) or result.fix is None:
+            if not isinstance(result, LintIssue):
                 yield result
                 continue
-            should_apply = cfg.autofix or cfg.structured_autofix
-            if not should_apply:
-                yield result
+            changed, remaining = apply_lint_fix(result, cfg)
+            if remaining is not None:
+                yield remaining
                 continue
-            if cfg.structured_autofix and not cfg.autofix:
-                if not result.fix.is_virtual_safe:
-                    yield result
-                    continue
-            changed = result.fix.apply()
             if changed:
                 if cfg.fix_callback is not None:
                     cfg.fix_callback(result)
@@ -486,22 +483,7 @@ class BaseModel(Model):
                         f"{self} (#{self.id}): field {field}: clean {value!r} ->"
                         f" {cleaned!r}"
                     )
-                    redirect_target = self.get_redirect_target() if is_invalid else None
-                    if field == "pattern" or redirect_target is not None:
-                        # Legacy autofix: setting a unique field may fail, in which
-                        # case this path computes a different fallback value. A
-                        # guarded field assignment cannot express that yet.
-                        if cfg.autofix:
-                            print(message)
-                            try:
-                                setattr(self, field, cleaned)
-                            except sqlite3.IntegrityError:
-                                print(f"{self}: adding '(merged)'")
-                                setattr(self, field, f"{cleaned} (merged)")
-                        else:
-                            yield message
-                    else:
-                        yield field_issue(message, self, field, cleaned)
+                    yield field_issue(message, self, field, cleaned)
         if is_invalid:
             target = self.get_redirect_target()
             if target is not None:
@@ -1223,7 +1205,7 @@ class BaseModel(Model):
             print(f"{self}: {chosen} is already None")
             return
         print(f"Current value: {value}")
-        setattr(self, chosen, None)
+        self._run_field_edit(lambda: setattr(self, chosen, None))
 
     def edit(self) -> None:
         getinput.get_with_completion(
@@ -1396,8 +1378,19 @@ class BaseModel(Model):
                         return None
         assert False, "should never get here"
 
+    def _run_field_edit(self, edit: Callable[[], None]) -> None:
+        try:
+            edit()
+        except sqlite3.IntegrityError as exc:
+            # clirm updates its instance cache before saving, so restore the
+            # database-backed state as well as keeping the editor open.
+            self.reload()
+            print(f"Edit rejected: {exc}")
+
     def fill_field(self, field: str) -> None:
-        setattr(self, field, self.get_value_for_field(field))
+        self._run_field_edit(
+            lambda: setattr(self, field, self.get_value_for_field(field))
+        )
 
     @classmethod
     def get_field_names(cls) -> list[str]:

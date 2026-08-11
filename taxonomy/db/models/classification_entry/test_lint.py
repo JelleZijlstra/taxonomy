@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+from typing import Any, cast
 from unittest.mock import patch
 
 from taxonomy.db.constants import Group, Rank, Status
@@ -5,6 +7,7 @@ from taxonomy.db.models import Article, Taxon
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
+    ClassificationEntryStatus,
     ClassificationEntryTag,
 )
 from taxonomy.db.models.classification_entry.lint import (
@@ -15,10 +18,17 @@ from taxonomy.db.models.classification_entry.lint import (
     check_parent_cycle,
     check_parent_rank,
     check_verbatim_parent,
+    infer_duplicate,
 )
+from taxonomy.db.models.lint_types import LintIssue
 from taxonomy.db.models.name import Name, NameTag
 
 _ARTICLE = Article.virtual(name="classification source")
+
+
+class _FakeQuery(list[Any]):
+    def filter(self, *conditions: object) -> _FakeQuery:
+        return self
 
 
 def _make_ce(
@@ -56,6 +66,52 @@ def _make_name(root_name: str, *tags: NameTag) -> Name:
         author_tags=(),
         tags=tags,
     )
+
+
+def test_infer_duplicate_uses_structured_merge_fix() -> None:
+    article = object()
+    parent = object()
+    mapped_name = object()
+    tag = ClassificationEntryTag.PageLink("https://example.com", "2")
+    dupe = SimpleNamespace(
+        id=1,
+        article=article,
+        name="Example",
+        parent=parent,
+        mapped_name=mapped_name,
+        rank=Rank.genus,
+        authority=None,
+        year=None,
+        page="1",
+        tags=(),
+    )
+    ce = SimpleNamespace(
+        id=2,
+        article=article,
+        name="Example",
+        parent=parent,
+        mapped_name=mapped_name,
+        rank=Rank.genus,
+        authority=None,
+        year=None,
+        page="2",
+        tags=(tag,),
+        status=ClassificationEntryStatus.valid,
+    )
+    with patch.object(
+        ClassificationEntry, "select_valid", return_value=_FakeQuery([dupe])
+    ):
+        (issue,) = infer_duplicate.linter(
+            cast(ClassificationEntry, ce), LintConfig(autofix=False)
+        )
+
+    assert isinstance(issue, LintIssue)
+    assert issue.fix is not None
+    assert issue.fix.apply() is True
+    assert dupe.page == "1, 2"
+    assert dupe.tags == (tag,)
+    assert ce.parent is dupe
+    assert ce.status is ClassificationEntryStatus.redirect
 
 
 def test_verbatim_parent_is_valid() -> None:

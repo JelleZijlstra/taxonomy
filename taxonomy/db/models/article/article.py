@@ -1539,7 +1539,7 @@ class Article(BaseModel):
         if attr == "author_tags":
             self.set_author_tags_from_raw(value)
         elif attr == "journal":
-            self.citation_group = CitationGroup.get_or_create(value)
+            self.citation_group = CitationGroup.get_or_prompt(value)
         elif attr in self.fields():
             setattr(self, attr, value)
 

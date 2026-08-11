@@ -9,7 +9,7 @@ import subprocess
 import unicodedata
 import urllib.parse
 from collections import defaultdict
-from collections.abc import Collection, Generator, Hashable, Iterable, Sequence
+from collections.abc import Generator, Hashable, Iterable, Sequence
 from typing import Any
 
 import Levenshtein
@@ -51,16 +51,6 @@ from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .name_parser import get_name_parser
 
 
-def remove_unused_ignores(art: Article, unused: Collection[str]) -> None:
-    new_tags = []
-    for tag in art.tags:
-        if isinstance(tag, ArticleTag.IgnoreLint) and tag.label in unused:
-            print(f"{art}: removing unused IgnoreLint tag: {tag}")
-        else:
-            new_tags.append(tag)
-    art.tags = new_tags  # type: ignore[assignment]
-
-
 def get_ignores(art: Article) -> Iterable[IgnoreLint]:
     return art.get_tags(art.tags, ArticleTag.IgnoreLint)
 
@@ -69,7 +59,7 @@ def add_ignore(art: Article, label: str, comment: str) -> None:
     art.add_tag(ArticleTag.IgnoreLint(label, comment=comment))
 
 
-LINT = Lint(Article, get_ignores, remove_unused_ignores, add_ignore)
+LINT = Lint(Article, get_ignores, add_ignore)
 
 
 @LINT.add("tags")
@@ -1536,14 +1526,15 @@ def journal_specific_cleanup(art: Article, cfg: LintConfig) -> Iterable[LintResu
     jnh = "Journal of Natural History Series "
     if cg.name.startswith(jnh):
         message = "fixing Annals and Magazine citation group"
-        if cfg.autofix:
-            art.series = str(int(cg.name.removeprefix(jnh)))
-            art.citation_group = CitationGroup.get_or_create(
-                "Annals and Magazine of Natural History"
-            )
-            print(f"{art}: {message}")
+        target = CitationGroup.select_one(name="Annals and Magazine of Natural History")
+        if target is None:
+            yield f"{message}; target CitationGroup does not exist"
         else:
-            yield message
+            yield fields_issue(
+                message,
+                (art, "series", str(int(cg.name.removeprefix(jnh)))),
+                (art, "citation_group", target),
+            )
     if art.issue and should_not_have_issue(art):
         message = f"{cg} article should not have issue {art.issue}"
         yield field_issue(message, art, "issue", None)

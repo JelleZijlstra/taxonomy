@@ -13,15 +13,7 @@ import json
 import re
 import subprocess
 from collections import defaultdict
-from collections.abc import (
-    Callable,
-    Container,
-    Generator,
-    Iterable,
-    Iterator,
-    Mapping,
-    Sequence,
-)
+from collections.abc import Callable, Generator, Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from functools import cache
@@ -84,7 +76,7 @@ from taxonomy.db.models.lint import (
     remove_tag_issue,
     replace_tag_issue,
 )
-from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.models.lint_types import LintIssue, LintResult
 from taxonomy.db.models.location.age import (
     is_non_recent_location,
     is_pre_pleistocene_location,
@@ -135,16 +127,6 @@ ADTT = TypeVar("ADTT", bound=adt.ADT)
 _RECENT_TAXON_AGES = frozenset({AgeClass.extant, AgeClass.recently_extinct})
 
 
-def remove_unused_ignores(nam: Name, unused: Container[str]) -> None:
-    new_tags = []
-    for tag in nam.type_tags:
-        if isinstance(tag, TypeTag.IgnoreLintName) and tag.label in unused:
-            print(f"{nam}: removing unused IgnoreLint tag: {tag}")
-        else:
-            new_tags.append(tag)
-    nam.type_tags = new_tags  # type: ignore[assignment]
-
-
 def get_ignores(nam: Name) -> Iterable[IgnoreLint]:
     return nam.get_tags(nam.type_tags, TypeTag.IgnoreLintName)
 
@@ -153,7 +135,7 @@ def add_ignore(nam: Name, label: str, comment: str) -> None:
     nam.add_type_tag(TypeTag.IgnoreLintName(label, comment=comment))
 
 
-LINT = Lint(Name, get_ignores, remove_unused_ignores, add_ignore)
+LINT = Lint(Name, get_ignores, add_ignore, ignore_field="type_tags")
 
 
 def replace_arg(tag: ADTT, arg: str, val: object) -> ADTT:
@@ -3354,7 +3336,6 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[LintResul
         if nam.corrected_original_name is None:
             return
         expected_form = nam.corrected_original_name.split()[-1]
-        motivation = f"to match corrected original name {nam.corrected_original_name!r}"
         rn_message = "for original name"
     else:
         # Now we have an adjective that needs to agree in gender with its genus, so we
@@ -3375,21 +3356,12 @@ def _check_species_name_gender(nam: Name, cfg: LintConfig) -> Iterable[LintResul
 
         genus_gender = genus.name_complex.gender
         expected_form = nam.species_name_complex.get_form(nam.root_name, genus_gender)
-        motivation = f"to agree in gender with {genus_gender.name} genus {genus} ({{n#{genus.id}}})"
         rn_message = f"for {genus_gender.name} genus {genus}"
     if expected_form != nam.root_name:
         message = _make_rn_message(
             nam, f"does not match expected form {expected_form!r} {rn_message}"
         )
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            comment = (
-                f"Name changed from {nam.root_name!r} to {expected_form!r}{motivation}"
-            )
-            nam.add_static_comment(CommentKind.automatic_change, comment)
-            nam.root_name = expected_form
-        else:
-            yield message
+        yield field_issue(message, nam, "root_name", expected_form)
 
 
 @LINT.add("family_root_name")
@@ -6150,23 +6122,31 @@ def _maybe_add_name_variant(
         yield message
 
 
-def take_over_name(nam: Name, ce: ClassificationEntry, cfg: LintConfig) -> None:
-    nam.original_citation = ce.article
-    nam.page_described = ce.page
-    nam.original_name = ce.name
-    nam.copy_authors()
-    nam.copy_year()
-    nam.type_tags = [  # type: ignore[assignment]
-        tag for tag in nam.type_tags if not isinstance(tag, TypeTag.AuthorityPageLink)
-    ]
-    nam.format()
-    if cfg.interactive:
-        nam.edit_until_clean()
+def take_over_name_issue(message: str, nam: Name, ce: ClassificationEntry) -> LintIssue:
+    citation = ce.article
+    author_source = (
+        citation.parent
+        if citation.issupplement() and citation.parent is not None
+        else citation
+    )
+    assert author_source.author_tags is not None, f"missing authors for {author_source}"
+    return fixes_issue(
+        message,
+        field_fix(nam, "original_citation", citation),
+        field_fix(nam, "page_described", ce.page),
+        field_fix(nam, "original_name", ce.name),
+        field_fix(nam, "author_tags", author_source.author_tags),
+        field_fix(nam, "year", citation.year),
+        *(
+            remove_tag_fix(nam, tag, field="type_tags")
+            for tag in nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink)
+        ),
+    )
 
 
 def maybe_take_over_name(
     nam: Name, ce: ClassificationEntry, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if (
         nam.get_mapped_classification_entry() is not None
         and nam.nomenclature_status
@@ -6176,11 +6156,7 @@ def maybe_take_over_name(
         )
     ):
         message = f"changing original citation of {nam} to {ce.article}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            take_over_name(nam, ce, cfg)
-        else:
-            yield message
+        yield take_over_name_issue(message, nam, ce)
     elif should_report_unreplaceable_name(nam, cfg):
         yield f"replace name {nam} with {ce}"
 
@@ -6204,7 +6180,7 @@ def name_combination_name_sort_key(nam: Name) -> tuple[bool, date, int, int, int
 
 
 @LINT.add("infer_name_variants")
-def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.group is not Group.species:
         return
     ces = nam.get_classification_entries()
@@ -6273,12 +6249,19 @@ def _is_iss_from_synonym_without_full_name(nam: Name) -> bool:
     return ce is not None and ce.is_synonym_without_full_name()
 
 
+def _redirect_name_issue(message: str, nam: Name, target: Name) -> LintIssue:
+    assert nam != target
+    return fields_issue(
+        message, (nam, "status", Status.redirect), (nam, "target", target)
+    )
+
+
 def _infer_name_variants_of_status(
     nam: Name,
     cfg: LintConfig,
     expected_name_variants: list[ClassificationEntry],
     nomenclature_status: NomenclatureStatus,
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     if not expected_name_variants:
         return
     expected_base = nam.resolve_variant()
@@ -6334,15 +6317,14 @@ def _infer_name_variants_of_status(
                     message = (
                         f"removing duplicate {nomenclature_status.name} {duplicate}"
                     )
-                    if cfg.autofix and can_replace is None:
-                        print(f"{duplicate}: {message}")
-                        duplicate.merge(existing[0], copy_fields=False)
+                    if can_replace is None:
+                        yield _redirect_name_issue(message, duplicate, existing[0])
                     elif should_report_unreplaceable_name(duplicate, cfg):
                         yield f"{message} (cannot replace because of: {can_replace})"
 
 
 @LINT.add("duplicate_variants")
-def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     nomenclature_status = nam.nomenclature_status
     if nomenclature_status not in (
         NomenclatureStatus.name_combination,
@@ -6374,9 +6356,8 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if earlier:
         message = f"remove because of earlier names with status {nomenclature_status.name}: {', '.join(str(dupe) for dupe in earlier)}"
         can_replace = can_replace_name(nam)
-        if cfg.autofix and can_replace is None:
-            print(f"{nam}: {message}")
-            nam.merge(earlier[0], copy_fields=False)
+        if can_replace is None:
+            yield _redirect_name_issue(message, nam, earlier[0])
         elif should_report_unreplaceable_name(nam, cfg):
             yield f"{message} (cannot replace because of: {can_replace})"
 
@@ -6811,7 +6792,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintR
 
 
 @LINT.add("remove_redundant_name")
-def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.nomenclature_status is not NomenclatureStatus.subsequent_usage:
         return
     target = nam.get_tag_target(NameTag.SubsequentUsageOf)
@@ -6821,11 +6802,7 @@ def remove_redundant_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
     cannot_replace_reason = can_replace_name(nam)
     if cannot_replace_reason is None:
         message = f"remove redundant name {nam} by redirecting to {target}"
-        if cfg.autofix:
-            print(f"{nam}: {message}")
-            nam.redirect(target)
-        else:
-            yield message
+        yield _redirect_name_issue(message, nam, target)
     elif any(
         isinstance(
             tag,

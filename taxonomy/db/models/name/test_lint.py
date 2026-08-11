@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from typing import cast
+from typing import Any, cast
 
 import pytest
 from clirm import VirtualReferenceError
@@ -14,11 +14,13 @@ from taxonomy.db.constants import (
     Rank,
     SpeciesGroupType,
     SpecimenOrgan,
+    Status,
 )
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
 
 from .lint import (
+    _redirect_name_issue,
     check_collector_lifespan,
     check_coordinates,
     check_general_type_locality,
@@ -30,6 +32,7 @@ from .lint import (
     infer_included_species,
     infer_tags_from_mapped_entries,
     parse_date,
+    take_over_name_issue,
 )
 from .name import Name, NameTag, TypeTag
 
@@ -40,6 +43,53 @@ def test_parse_date() -> None:
     assert parse_date("23 Feb 2013") == "2013-02-23"
     assert parse_date("July 2013") == "2013-07"
     assert parse_date("7 July 2013") == "2013-07-07"
+
+
+def test_redirect_name_issue_changes_only_redirect_fields() -> None:
+    target = cast(Name, SimpleNamespace())
+    name = cast(Name, SimpleNamespace(status=Status.synonym, target=None))
+
+    issue = _redirect_name_issue("redirect", name, target)
+
+    assert issue.fix is not None
+    assert issue.fix.apply() is True
+    assert name.status is Status.redirect
+    assert name.target is target
+
+
+def test_take_over_name_issue_uses_explicit_fields_and_tag_removal() -> None:
+    citation = SimpleNamespace(
+        parent=None, author_tags=("Author",), year="1900", issupplement=lambda: False
+    )
+    ce = SimpleNamespace(article=citation, page="12", name="Original name")
+    page_link = TypeTag.AuthorityPageLink(
+        "https://example.com/page", confirmed=True, page="12"
+    )
+    name = cast(
+        Name,
+        SimpleNamespace(
+            original_citation=None,
+            page_described=None,
+            original_name=None,
+            author_tags=(),
+            year=None,
+            type_tags=(page_link,),
+            get_tags=lambda tags, tag_cls: (
+                tag for tag in tags if isinstance(tag, tag_cls)
+            ),
+        ),
+    )
+
+    issue = take_over_name_issue("take over", name, cast(Any, ce))
+
+    assert issue.fix is not None
+    assert issue.fix.apply() is True
+    assert name.original_citation is citation
+    assert name.page_described == "12"
+    assert name.original_name == "Original name"
+    assert name.author_tags == ("Author",)
+    assert name.year == "1900"
+    assert name.type_tags == ()
 
 
 def _name_with_collector_dates(
