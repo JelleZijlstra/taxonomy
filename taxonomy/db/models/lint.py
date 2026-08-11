@@ -5,7 +5,8 @@ from __future__ import annotations
 import traceback
 from collections import Counter
 from collections.abc import Callable, Generator, Hashable, Iterable
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, replace
+from dataclasses import field as dataclass_field
 from functools import cache
 from typing import Any, ClassVar, Generic, Protocol, TypeVar, cast
 
@@ -135,6 +136,44 @@ class ReplaceTag:
 
 
 @dataclass(frozen=True)
+class CreateRelatedObject:
+    """Create one model and assign it to a guarded relationship field."""
+
+    target: BaseModel
+    field: str
+    expected: Any
+    creator: Callable[[], BaseModel]
+    _created: BaseModel | None = dataclass_field(
+        default=None, init=False, compare=False
+    )
+
+    @property
+    def is_virtual_safe(self) -> bool:
+        # A virtual target does not imply that the creator produces a virtual object.
+        return False
+
+    def validate(self) -> bool:
+        current = getattr(self.target, self.field)
+        if self._created is not None and current == self._created:
+            return False
+        if current != self.expected:
+            raise LintFixError(
+                f"{self.target}: field {self.field} changed from "
+                f"{self.expected!r} to {current!r} before object creation"
+            )
+        return True
+
+    def apply(self) -> None:
+        created = self.creator()
+        if not isinstance(created, BaseModel):
+            raise LintFixError(
+                f"creator for {self.target}.{self.field} did not return a model"
+            )
+        object.__setattr__(self, "_created", created)
+        setattr(self.target, self.field, created)
+
+
+@dataclass(frozen=True)
 class LintFix:
     """A deterministic, guarded collection of model operations."""
 
@@ -142,7 +181,10 @@ class LintFix:
 
     @property
     def is_virtual_safe(self) -> bool:
-        return all(operation.target.is_virtual for operation in self.operations)
+        return all(
+            getattr(operation, "is_virtual_safe", operation.target.is_virtual)
+            for operation in self.operations
+        )
 
     def apply(self) -> bool:
         """Apply the fix and return whether it materially changed any target."""
@@ -206,6 +248,15 @@ def replace_tag_fix(
     return LintFix((ReplaceTag(target, old, new, field),))
 
 
+def create_related_object_fix(
+    target: BaseModel, field: str, creator: Callable[[], BaseModel]
+) -> LintFix:
+    """Build a guarded operation that creates and assigns a related model."""
+    return LintFix(
+        (CreateRelatedObject(target, field, getattr(target, field), creator),)
+    )
+
+
 def add_tag_issue(
     message: str,
     target: BaseModel,
@@ -245,6 +296,20 @@ def remove_tag_issue(
     return fixes_issue(message, remove_tag_fix(target, tag, field=field), code=code)
 
 
+def create_related_object_issue(
+    message: str,
+    target: BaseModel,
+    field: str,
+    creator: Callable[[], BaseModel],
+    *,
+    code: str | None = None,
+) -> LintIssue:
+    """Create an issue that creates a model and assigns it to a relationship."""
+    return fixes_issue(
+        message, create_related_object_fix(target, field, creator), code=code
+    )
+
+
 def count_lint_codes(issues: Iterable[LintResult]) -> Counter[str]:
     """Count structured lint codes while retaining support for plain strings."""
     return Counter(
@@ -264,16 +329,17 @@ def apply_lint_fix(issue: LintIssue, cfg: LintConfig) -> tuple[bool, LintIssue |
     except Exception as exc:
         reloaded: set[int] = set()
         for operation in issue.fix.operations:
-            target = operation.target
-            if target.is_virtual or id(target) in reloaded:
-                continue
-            reload_method = getattr(target, "reload", None)
-            if reload_method is not None:
-                try:
-                    reload_method()
-                except Exception:
-                    pass
-            reloaded.add(id(target))
+            targets = getattr(operation, "targets", (operation.target,))
+            for target in targets:
+                if target.is_virtual or id(target) in reloaded:
+                    continue
+                reload_method = getattr(target, "reload", None)
+                if reload_method is not None:
+                    try:
+                        reload_method()
+                    except Exception:
+                        pass
+                reloaded.add(id(target))
         return False, LintIssue(
             f"{issue.message}; autofix failed with {type(exc).__name__}: {exc}",
             code=issue.code,
@@ -283,7 +349,8 @@ def apply_lint_fix(issue: LintIssue, cfg: LintConfig) -> tuple[bool, LintIssue |
 
 Linter = Callable[[ModelT, LintConfig], Iterable[LintResult]]
 DuplicateKey = Callable[[ModelT], Hashable | None]
-DuplicateFixer = Callable[[Hashable, list[ModelT], LintConfig], None]
+DuplicateFixer = Callable[[Hashable, ModelT, list[ModelT]], LintResult | None]
+InteractiveDuplicateFixer = Callable[[Hashable, list[ModelT], LintConfig], None]
 
 
 class IgnoreLint(Protocol):
@@ -374,9 +441,9 @@ class Lint(Generic[ModelT]):
     add_ignore: Callable[[ModelT, str, str], None] | None = None
     ignore_field: str = "tags"
 
-    linters: list[LintWrapper[ModelT]] = field(default_factory=list)
-    disabled_linters: list[LintWrapper[ModelT]] = field(default_factory=list)
-    cache_clearers: list[Callable[[], None]] = field(default_factory=list)
+    linters: list[LintWrapper[ModelT]] = dataclass_field(default_factory=list)
+    disabled_linters: list[LintWrapper[ModelT]] = dataclass_field(default_factory=list)
+    cache_clearers: list[Callable[[], None]] = dataclass_field(default_factory=list)
 
     _by_model: ClassVar[dict[type[BaseModel], Lint[Any]]] = {}
 
@@ -518,6 +585,7 @@ class Lint(Generic[ModelT]):
         disabled: bool = False,
         query: Iterable[ModelT] | None = None,
         fixer: DuplicateFixer[ModelT] | None = None,
+        interactive_fixer: InteractiveDuplicateFixer[ModelT] | None = None,
     ) -> Callable[[DuplicateKey[ModelT]], LintWrapper[ModelT]]:
         def decorator(dupe_key: DuplicateKey[ModelT]) -> LintWrapper[ModelT]:
             @cache
@@ -538,7 +606,7 @@ class Lint(Generic[ModelT]):
                             output.setdefault(obj.id, []).append((message, others))
                 return output
 
-            def linter(obj: ModelT, cfg: LintConfig) -> Iterable[str]:
+            def linter(obj: ModelT, cfg: LintConfig) -> Iterable[LintResult]:
                 if obj.is_invalid():
                     return
                 mapping = get_object_to_issues()
@@ -554,11 +622,14 @@ class Lint(Generic[ModelT]):
                             if dupe_key(o) == my_key and not o.is_invalid()
                         ]
                         if matching_others:
-                            yield message
-                            if fixer is not None and not self.is_ignoring_lint(
-                                obj, label
-                            ):
-                                fixer(my_key, [obj, *matching_others], cfg)
+                            is_ignored = self.is_ignoring_lint(obj, label)
+                            if fixer is None or is_ignored:
+                                yield message
+                            else:
+                                issue = fixer(my_key, obj, matching_others)
+                                yield message if issue is None else issue
+                            if interactive_fixer is not None and not is_ignored:
+                                interactive_fixer(my_key, [obj, *matching_others], cfg)
 
             return self.add(
                 label, disabled=disabled, clear_caches=get_object_to_issues.cache_clear

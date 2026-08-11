@@ -10,8 +10,15 @@ from typing import Self
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import AgeClass, Group, NomenclatureStatus, Rank, Status
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import IgnoreLint, Lint, add_tag_issue, field_issue
-from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    LintFix,
+    LintFixError,
+    add_tag_issue,
+    field_issue,
+)
+from taxonomy.db.models.lint_types import LintIssue, LintResult
 
 from .taxon import Taxon
 
@@ -82,7 +89,7 @@ def check_rank(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
 
 
 @LINT.add("base_name")
-def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
     if not taxon.base_name.status.is_base_name():
         yield f"base name has invalid status {taxon.base_name.status}"
     expected_group = helpers.group_of_rank(taxon.rank)
@@ -93,11 +100,7 @@ def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     resolved = taxon.base_name.resolve_variant(unavailable_version=False)
     if resolved != taxon.base_name:
         message = f"base name is a variant: {taxon.base_name} -> {resolved}"
-        if cfg.autofix:
-            print(f"{taxon}: {message}")
-            _switch_basename(taxon, resolved)
-        else:
-            yield message
+        yield _switch_basename_issue(message, taxon, resolved)
 
 
 @LINT.add("nominal_genus")
@@ -259,25 +262,107 @@ def check_valid_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("expected_base_name")
 def check_conservative_expected_base_name(
     taxon: Taxon, cfg: LintConfig
-) -> Iterable[str]:
+) -> Iterable[LintResult]:
     expected_base = get_conservative_expected_base_name(taxon)
     if expected_base is None:
         return
     if taxon.base_name == expected_base:
         return
     message = f"expected base name to be {expected_base}, but is {taxon.base_name}"
-    if cfg.autofix:
-        print(f"{taxon}: {message}")
-        _switch_basename(taxon, expected_base)
-    else:
-        yield message
+    yield _switch_basename_issue(message, taxon, expected_base)
 
 
-def _switch_basename(taxon: Taxon, new_base_name: models.Name) -> None:
-    if taxon.base_name.taxon == taxon:
-        taxon.switch_basename(new_base_name)
-    else:
-        taxon.base_name = new_base_name
+@dataclass(frozen=True)
+class SwitchBaseName:
+    taxon: Taxon
+    old_base_name: models.Name
+    new_base_name: models.Name
+    expected_valid_name: str
+    old_base_status: Status
+    new_base_status: Status
+    switch_statuses: bool
+
+    @property
+    def target(self) -> Taxon:
+        return self.taxon
+
+    @property
+    def targets(self) -> tuple[Taxon, ...] | tuple[Taxon, models.Name, models.Name]:
+        if self.switch_statuses:
+            return (self.taxon, self.old_base_name, self.new_base_name)
+        return (self.taxon,)
+
+    @property
+    def is_virtual_safe(self) -> bool:
+        return all(target.is_virtual for target in self.targets)
+
+    def validate(self) -> bool:
+        if self.taxon.base_name == self.new_base_name:
+            if not self.switch_statuses or (
+                self.old_base_name.status is Status.synonym
+                and self.new_base_name.status is self.old_base_status
+            ):
+                return False
+            raise LintFixError(
+                f"{self.taxon}: base name was switched but Name statuses are not "
+                "in the expected state"
+            )
+        if self.taxon.base_name != self.old_base_name:
+            raise LintFixError(
+                f"{self.taxon}: base_name changed from {self.old_base_name} to "
+                f"{self.taxon.base_name} before autofix"
+            )
+        if self.taxon.valid_name != self.expected_valid_name:
+            raise LintFixError(
+                f"{self.taxon}: valid_name changed from {self.expected_valid_name!r} "
+                f"to {self.taxon.valid_name!r} before autofix"
+            )
+        if self.switch_statuses:
+            if self.new_base_name.taxon != self.taxon:
+                raise LintFixError(
+                    f"{self.new_base_name} is not a synonym of {self.taxon}"
+                )
+            if self.old_base_name.status is not self.old_base_status:
+                raise LintFixError(
+                    f"{self.old_base_name}: status changed before autofix"
+                )
+            if self.new_base_name.status is not self.new_base_status:
+                raise LintFixError(
+                    f"{self.new_base_name}: status changed before autofix"
+                )
+        return True
+
+    def apply(self) -> None:
+        if self.switch_statuses:
+            self.new_base_name.status = self.old_base_status
+            self.old_base_name.status = Status.synonym
+        self.taxon.base_name = self.new_base_name
+        if self.switch_statuses:
+            new_valid_name = self.taxon.compute_valid_name()
+            if new_valid_name != self.taxon.valid_name:
+                self.taxon.valid_name = new_valid_name
+
+
+def _switch_basename_issue(
+    message: str, taxon: Taxon, new_base_name: models.Name
+) -> LintIssue:
+    old_base_name = taxon.base_name
+    return LintIssue(
+        message,
+        fix=LintFix(
+            (
+                SwitchBaseName(
+                    taxon,
+                    old_base_name,
+                    new_base_name,
+                    taxon.valid_name,
+                    old_base_name.status,
+                    new_base_name.status,
+                    old_base_name.taxon == taxon,
+                ),
+            )
+        ),
+    )
 
 
 def get_conservative_expected_base_name(taxon: Taxon) -> models.Name | None:

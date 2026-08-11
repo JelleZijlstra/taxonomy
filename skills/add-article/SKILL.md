@@ -241,5 +241,7 @@ differing database value, parent, or file checksum blocks the action.
 
 The action deliberately does not call the interactive `edittitle()`,
 `specify_authors()`, or `edit_until_clean()` loops used by the traditional shell flow.
-Source inspection, explicit overrides, and advisory virtual lint replace those prompts;
-remaining lint output must be resolved before the user applies the row.
+Source inspection, explicit overrides, and advisory virtual lint replace those prompts.
+Do not duplicate `VIRTUAL_LINT_AUTOFIXABLE` findings as Article overrides or generic
+manifest edits; resolve only remaining `VIRTUAL_LINT_ISSUES` before the user applies the
+row.

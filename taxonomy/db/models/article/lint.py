@@ -2067,7 +2067,7 @@ def specify_authors(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     if not art.has_initials_only_authors():
         return
-    if cfg.autofix:
+    if cfg.interactive:
         art.specify_authors()
     yield "has initials-only authors"
 
@@ -2260,7 +2260,7 @@ def dupe_fixer(key_val: Hashable, arts: list[Article], cfg: LintConfig) -> None:
         Article.type != ArticleType.SUPPLEMENT,
         Article.kind != ArticleKind.alternative_version,
     ),
-    fixer=dupe_fixer,
+    interactive_fixer=dupe_fixer,
 )
 def dupe_doi(art: Article) -> str | None:
     if art.type is ArticleType.SUPPLEMENT:
@@ -2278,7 +2278,7 @@ def dupe_doi(art: Article) -> str | None:
         Article.type != ArticleType.SUPPLEMENT,
         Article.kind != ArticleKind.alternative_version,
     ),
-    fixer=dupe_fixer,
+    interactive_fixer=dupe_fixer,
 )
 def dupe_pmid(art: Article) -> str | None:
     return art.get_identifier(ArticleTag.PMID)
@@ -2290,7 +2290,7 @@ def dupe_pmid(art: Article) -> str | None:
         Article.type != ArticleType.SUPPLEMENT,
         Article.kind != ArticleKind.alternative_version,
     ),
-    fixer=dupe_fixer,
+    interactive_fixer=dupe_fixer,
 )
 def dupe_pmc(art: Article) -> str | None:
     return art.get_identifier(ArticleTag.PMC)
@@ -2301,7 +2301,7 @@ def dupe_pmc(art: Article) -> str | None:
     query=Article.with_tag(ArticleTag.LSIDArticle).filter(
         Article.kind != ArticleKind.alternative_version
     ),
-    fixer=dupe_fixer,
+    interactive_fixer=dupe_fixer,
 )
 def dupe_lsid_article(art: Article) -> str | None:
     return art.get_identifier(ArticleTag.LSIDArticle)
@@ -2313,7 +2313,7 @@ def dupe_lsid_article(art: Article) -> str | None:
         Article.type == ArticleType.JOURNAL,
         Article.kind != ArticleKind.alternative_version,
     ),
-    fixer=dupe_fixer,
+    interactive_fixer=dupe_fixer,
 )
 def dupe_journal(art: Article) -> tuple[object, ...] | None:
     if art.kind == ArticleKind.alternative_version:
@@ -2343,7 +2343,7 @@ def dupe_journal(art: Article) -> tuple[object, ...] | None:
         Article.type == ArticleType.JOURNAL,
         Article.kind != ArticleKind.alternative_version,
     ),
-    fixer=dupe_fixer,
+    interactive_fixer=dupe_fixer,
 )
 def dupe_journal_with_title(art: Article) -> tuple[object, ...] | None:
     if art.kind == ArticleKind.alternative_version:

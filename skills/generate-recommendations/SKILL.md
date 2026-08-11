@@ -40,12 +40,19 @@ entry point.
 
    ```bash
    python scripts/apply_recommendations.py recs/manifests/<file>.jsonl \
-       --virtual-lint
+       --virtual-lint-issues-only
    ```
 
    Virtual lint is advisory because database-wide queries cannot see newly proposed
    objects, but it catches ordinary field, tag, relationship, and model-lint problems
-   before the user writes anything.
+   before the user writes anything. The recommended issues-only mode omits autofixable
+   findings and prints only `VIRTUAL_LINT_ISSUES`; no output means none remain.
+
+   Use `--virtual-lint` only when diagnosing the complete lint process. Its
+   `VIRTUAL_LINT_AUTOFIXABLE`, `VIRTUAL_AUTOFIX_SIMULATED`, and
+   `VIRTUAL_AUTOFIX_DEFERRED` findings are derived lint work and must not be duplicated
+   as explicit manifest edits. Only `VIRTUAL_LINT_ISSUES` requires a manifest change, an
+   explicit suppression, or manual review.
 
    To limit the compact review to particular actions, repeat `--review-action`:
 

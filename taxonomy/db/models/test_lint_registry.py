@@ -5,13 +5,15 @@ from typing import Any, ClassVar, cast
 
 import pytest
 
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import BaseModel, LintConfig
 from taxonomy.db.models.lint import (
     Lint,
     LintFix,
     LintFixError,
     add_tag_issue,
+    apply_lint_fix,
     count_lint_codes,
+    create_related_object_issue,
     field_issue,
     remove_tag_issue,
     replace_tag_issue,
@@ -33,6 +35,7 @@ class FakeObject:
     raises: bool = False
     is_virtual: bool = False
     reload_count: int = 0
+    related: Any = None
 
     def __repr__(self) -> str:
         return f"FakeObject({self.id})"
@@ -41,6 +44,9 @@ class FakeObject:
         self.reload_count += 1
         return self
 
+    def is_invalid(self) -> bool:
+        return False
+
 
 class FakeModel:
     objects: ClassVar[list[FakeObject]] = []
@@ -48,6 +54,11 @@ class FakeModel:
     @classmethod
     def select_valid(cls) -> list[FakeObject]:
         return cls.objects
+
+
+class FakeCreatedModel(BaseModel):
+    def __repr__(self) -> str:
+        return "FakeCreatedModel()"
 
 
 @dataclass(frozen=True)
@@ -334,6 +345,82 @@ def test_replace_tag_fails_when_neither_precondition_nor_postcondition_holds() -
         _apply_issue(issue)
 
 
+def test_create_related_object_is_guarded_and_idempotent() -> None:
+    target = FakeObject(1, needs_ignore=False, is_virtual=True)
+    target.related = None
+    created = object.__new__(FakeCreatedModel)
+    issue = create_related_object_issue(
+        "create related", cast(Any, target), "related", lambda: created
+    )
+
+    assert issue.fix is not None
+    assert issue.fix.is_virtual_safe is False
+    assert issue.fix.apply() is True
+    assert target.related is created
+    assert issue.fix.apply() is False
+
+
+def test_create_related_object_rejects_intervening_relationship_edit() -> None:
+    target = FakeObject(1, needs_ignore=False)
+    target.related = None
+    issue = create_related_object_issue(
+        "create related",
+        cast(Any, target),
+        "related",
+        lambda: object.__new__(FakeCreatedModel),
+    )
+    target.related = object.__new__(FakeCreatedModel)
+
+    with pytest.raises(LintFixError, match="changed from None"):
+        _apply_issue(issue)
+
+
+def test_create_related_object_is_not_applied_by_virtual_lint() -> None:
+    target = FakeObject(1, needs_ignore=False, is_virtual=True)
+    creator_calls = 0
+
+    def create() -> BaseModel:
+        nonlocal creator_calls
+        creator_calls += 1
+        return object.__new__(FakeCreatedModel)
+
+    issue = create_related_object_issue(
+        "create related", cast(Any, target), "related", create
+    )
+
+    changed, remaining = apply_lint_fix(
+        issue, LintConfig(autofix=False, structured_autofix=True, interactive=False)
+    )
+
+    assert changed is False
+    assert remaining is issue
+    assert creator_calls == 0
+    assert target.related is None
+
+
+def test_duplicate_finder_can_return_structured_fix() -> None:
+    first = FakeObject(1, needs_ignore=True, is_virtual=True)
+    second = FakeObject(2, needs_ignore=True, is_virtual=True)
+    lint = make_lint([first, second])
+
+    @lint.add_duplicate_finder(
+        "duplicate",
+        fixer=lambda _key, obj, _others: field_issue(
+            "clear duplicate", cast(Any, obj), "needs_ignore", new=False
+        ),
+    )
+    def duplicate_key(_obj: FakeObject) -> str:
+        return "same"
+
+    issues = list(duplicate_key.linter(second, LintConfig(autofix=False)))
+
+    assert len(issues) == 1
+    assert isinstance(issues[0], LintIssue)
+    assert issues[0].fix is not None
+    assert issues[0].fix.apply() is True
+    assert second.needs_ignore is False
+
+
 def test_already_satisfied_tag_fix_does_not_call_fix_callback() -> None:
     obj = FakeObject(1, needs_ignore=False, is_virtual=True)
     lint = make_lint([obj])
@@ -355,17 +442,7 @@ def test_already_satisfied_tag_fix_does_not_call_fix_callback() -> None:
     assert len(applied) == 1
 
 
-_LEGACY_AUTOFIX_BRANCHES = {
-    ("article/lint.py", "specify_authors"): "creates or resolves Person records",
-    ("name/lint.py", "remove_duplicates"): "interactively merges records",
-    ("name/lint.py", "_maybe_add_name_variant"): "creates and edits a Name",
-    ("name/lint.py", "infer_name_variants"): "creates a Name through a CE method",
-    ("taxon/lint.py", "check_base_name"): "switches the Taxon-Name base-name cycle",
-    (
-        "taxon/lint.py",
-        "check_conservative_expected_base_name",
-    ): "switches the Taxon-Name base-name cycle",
-}
+_LEGACY_AUTOFIX_BRANCHES: dict[tuple[str, str], str] = {}
 
 
 def test_legacy_autofix_branches_are_explicitly_allowlisted() -> None:

@@ -1,5 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
+from unittest.mock import Mock
 
 import pytest
 from clirm import VirtualReferenceError
@@ -9,6 +10,7 @@ from taxonomy.db.constants import (
     AgeClass,
     Group,
     NamingConvention,
+    NomenclatureStatus,
     OccurrenceValidity,
     PersonType,
     Rank,
@@ -20,6 +22,8 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
 
 from .lint import (
+    _create_name_variant_issue,
+    _merge_name_issue,
     _redirect_name_issue,
     check_collector_lifespan,
     check_coordinates,
@@ -90,6 +94,80 @@ def test_take_over_name_issue_uses_explicit_fields_and_tag_removal() -> None:
     assert name.author_tags == ("Author",)
     assert name.year == "1900"
     assert name.type_tags == ()
+
+
+def test_create_name_variant_issue_creates_without_interactive_cleanup() -> None:
+    created = Name.virtual()
+    add_variant = Mock(return_value=created)
+    base_name = cast(Name, SimpleNamespace(add_variant=add_variant))
+    article = object()
+    ce = SimpleNamespace(
+        article=article,
+        page="12",
+        name="Original name",
+        rank=Rank.species,
+        mapped_name=base_name,
+    )
+
+    issue = _create_name_variant_issue(
+        "create variant",
+        base_name,
+        NomenclatureStatus.name_combination,
+        cast(Any, ce),
+        "Genus species",
+    )
+
+    assert issue.fix is not None
+    assert issue.fix.apply() is True
+    add_variant.assert_called_once_with(
+        "species",
+        status=NomenclatureStatus.name_combination,
+        paper=article,
+        page_described="12",
+        original_name="Original name",
+        interactive=False,
+    )
+    assert created.corrected_original_name == "Genus species"
+    assert created.original_rank is Rank.species
+    assert ce.mapped_name is created
+
+
+def test_merge_name_issue_copies_empty_fields_and_redirects() -> None:
+    taxon = models.Taxon.virtual(rank=Rank.species, valid_name="Genus species")
+    target = Name.virtual(
+        root_name="species", group=Group.species, status=Status.synonym, taxon=taxon
+    )
+    duplicate = Name.virtual(
+        root_name="species",
+        group=Group.species,
+        status=Status.synonym,
+        taxon=taxon,
+        original_name="Genus species",
+    )
+
+    issue = _merge_name_issue("merge duplicate", duplicate, target)
+
+    assert issue.fix is not None
+    assert issue.fix.apply() is True
+    assert target.original_name == "Genus species"
+    assert duplicate.status is Status.redirect
+    assert duplicate.target is target
+    assert issue.fix.apply() is False
+
+
+def test_merge_name_issue_does_not_autofix_valid_name() -> None:
+    taxon = models.Taxon.virtual(rank=Rank.species, valid_name="Genus species")
+    target = Name.virtual(
+        root_name="species", group=Group.species, status=Status.synonym, taxon=taxon
+    )
+    duplicate = Name.virtual(
+        root_name="species", group=Group.species, status=Status.valid, taxon=taxon
+    )
+
+    issue = _merge_name_issue("merge duplicate", duplicate, target)
+
+    assert issue.fix is None
+    assert "cannot autofix a Name with status valid" in issue.message
 
 
 def _name_with_collector_dates(

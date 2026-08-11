@@ -66,8 +66,10 @@ from taxonomy.db.models.item_file import ItemFile
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
+    LintFixError,
     add_tag_fix,
     add_tag_issue,
+    create_related_object_issue,
     field_fix,
     field_issue,
     fields_issue,
@@ -6005,22 +6007,48 @@ def duplicate_genus(name: Name) -> str:
     return f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"
 
 
-def remove_duplicates(key: object, names: list[Name], cfg: LintConfig) -> None:
-    if len(names) < 2:
-        return
-    names = sorted(names, key=lambda nam: nam.id)
-    print(f"Removing duplicates for {key}")
-    for name in names[1:]:
-        print(f"Remove name: {name}")
-        if cfg.autofix:
-            if cfg.interactive and getinput.yes_no("Remove? "):
-                name.merge(names[0])
+def _merge_name_issue(message: str, name: Name, target: Name) -> LintIssue:
+    if name.status not in (Status.synonym, Status.dubious):
+        return LintIssue(
+            f"{message}; cannot autofix a Name with status {name.status.name}"
+        )
+    fixes = []
+    for field in Name.fields():
+        if field in {"id", "tags"}:
+            continue
+        source_value = getattr(name, field)
+        target_value = getattr(target, field)
+        if field == "type_tags" and source_value and target_value:
+            merged_tags = (
+                *target_value,
+                *(
+                    tag
+                    for tag in source_value
+                    if not isinstance(tag, TypeTag.AuthorityPageLink)
+                ),
+            )
+            if merged_tags != tuple(target_value):
+                fixes.append(field_fix(target, field, merged_tags))
+        elif source_value not in (None, ()) and target_value in (None, ()):
+            fixes.append(field_fix(target, field, source_value))
+    return fixes_issue(
+        message,
+        *fixes,
+        field_fix(name, "status", Status.redirect),
+        field_fix(name, "target", target),
+    )
+
+
+def remove_duplicate_name(key: object, name: Name, others: list[Name]) -> LintResult:
+    target = min(others, key=lambda candidate: candidate.id)
+    message = f"merge duplicate {name} into {target} (key {key!r})"
+    return _merge_name_issue(message, name, target)
 
 
 @LINT.add_duplicate_finder(
     "duplicate_name",
     query=Name.select_valid().filter(Name.original_citation != None),
-    fixer=remove_duplicates,
+    fixer=remove_duplicate_name,
 )
 def duplicate_name(name: Name) -> tuple[object, ...]:
     assert name.original_citation is not None
@@ -6084,42 +6112,41 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
 
 
 def _maybe_add_name_variant(
+    nam: Name, nomenclature_status: NomenclatureStatus, ce: ClassificationEntry
+) -> Iterable[LintResult]:
+    message = f"adding {nomenclature_status.name} based on {ce}"
+    corrected_name = ce.get_corrected_name()
+    if corrected_name is None:
+        yield message
+        return
+    yield _create_name_variant_issue(
+        message, nam, nomenclature_status, ce, corrected_name
+    )
+
+
+def _create_name_variant_issue(
+    message: str,
     nam: Name,
     nomenclature_status: NomenclatureStatus,
     ce: ClassificationEntry,
-    cfg: LintConfig,
-) -> Iterable[str]:
-    message = f"adding {nomenclature_status.name} based on {ce}"
-    corrected_name = ce.get_corrected_name()
-    if corrected_name is None or not cfg.autofix or not cfg.interactive:
-        should_autofix = False
-    elif nomenclature_status is NomenclatureStatus.name_combination:
-        should_autofix = True
-    else:
-        should_autofix = getinput.yes_no(
-            f"{nam}: add {nomenclature_status!r} based on {ce}? ",
-            callbacks=nam.get_wrapped_adt_callbacks(),
-        )
-    if should_autofix:
-        print(f"{nam}: {message}")
-        assert corrected_name is not None
+    corrected_name: str,
+) -> LintIssue:
+    def create_name() -> Name:
         new_name = nam.add_variant(
-            corrected_name.split()[-1],
+            corrected_name.rsplit(maxsplit=1)[-1],
             status=nomenclature_status,
             paper=ce.article,
             page_described=ce.page,
             original_name=ce.name,
             interactive=False,
         )
-        if new_name is not None:
-            new_name.corrected_original_name = corrected_name
-            new_name.original_rank = ce.rank
-            ce.mapped_name = new_name
-            new_name.format()
-            if cfg.interactive:
-                new_name.edit_until_clean()
-    else:
-        yield message
+        if new_name is None:
+            raise LintFixError(f"could not create name variant for {ce}")
+        new_name.corrected_original_name = corrected_name
+        new_name.original_rank = ce.rank
+        return new_name
+
+    return create_related_object_issue(message, ce, "mapped_name", create_name)
 
 
 def take_over_name_issue(message: str, nam: Name, ce: ClassificationEntry) -> LintIssue:
@@ -6236,12 +6263,17 @@ def infer_name_variants(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         if replaceable:
             yield from maybe_take_over_name(replaceable[0], expected_ce, cfg)
         else:
-            message = f"add {expected_ce} as a name variant"
-            if cfg.autofix:
-                print(f"{nam}: {message}")
-                expected_ce.add_incorrect_subsequent_spelling(nam)
+            corrected_name = expected_ce.get_name_to_use_as_normalized_original_name()
+            if corrected_name is None:
+                yield f"add {expected_ce} as a name variant"
             else:
-                yield message
+                yield _create_name_variant_issue(
+                    f"add {expected_ce} as a name variant",
+                    nam,
+                    NomenclatureStatus.incorrect_subsequent_spelling,
+                    expected_ce,
+                    corrected_name,
+                )
 
 
 def _is_iss_from_synonym_without_full_name(nam: Name) -> bool:
@@ -6300,7 +6332,7 @@ def _infer_name_variants_of_status(
         ]
         match len(existing):
             case 0:
-                yield from _maybe_add_name_variant(nam, nomenclature_status, ce, cfg)
+                yield from _maybe_add_name_variant(nam, nomenclature_status, ce)
             case 1:
                 (existing_name,) = existing
                 if (

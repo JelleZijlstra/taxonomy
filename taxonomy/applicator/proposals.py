@@ -26,6 +26,11 @@ class ProposalLintResult:
     proposal: ProposedModel
     messages: tuple[LintResult, ...]
     simulated_fixes: tuple[LintIssue, ...] = ()
+    deferred_fixes: tuple[LintIssue, ...] = ()
+
+    @property
+    def autofixable_issues(self) -> tuple[LintIssue, ...]:
+        return (*self.simulated_fixes, *self.deferred_fixes)
 
 
 class ProposalBuilder:
@@ -219,19 +224,41 @@ def lint_proposals(
         messages = latest_messages.get(id(proposal.model), ())
         if convergence_error is not None and index == 0:
             messages = (*messages, convergence_error)
+        deferred_fixes = tuple(
+            message for message in messages if message.fix is not None
+        )
+        messages = tuple(message for message in messages if message.fix is None)
         results.append(
             ProposalLintResult(
-                proposal, messages, tuple(simulated_by_model[id(proposal.model)])
+                proposal,
+                messages,
+                tuple(simulated_by_model[id(proposal.model)]),
+                deferred_fixes,
             )
         )
     return tuple(results)
 
 
-def print_lint_results(results: tuple[ProposalLintResult, ...]) -> None:
+def print_lint_results(
+    results: tuple[ProposalLintResult, ...], *, issues_only: bool = False
+) -> None:
     """Print advisory virtual-lint results without claiming complete validation."""
     with_issues = [result for result in results if result.messages]
+    if issues_only:
+        _print_lint_issues(with_issues)
+        return
     simulated = [issue for result in results for issue in result.simulated_fixes]
+    deferred = [issue for result in results for issue in result.deferred_fixes]
+    autofixable = [issue for result in results for issue in result.autofixable_issues]
     print("BEST_EFFORT VIRTUAL LINT")
+    if autofixable:
+        counts = count_lint_codes(autofixable)
+        print(
+            f"VIRTUAL_LINT_AUTOFIXABLE total={len(autofixable)} "
+            f"simulated={len(simulated)} deferred={len(deferred)}"
+        )
+        for code, count in sorted(counts.items()):
+            print(f"- code={code} count={count}")
     if simulated:
         counts = count_lint_codes(simulated)
         print(f"VIRTUAL_AUTOFIX_SIMULATED total={len(simulated)}")
@@ -253,16 +280,25 @@ def print_lint_results(results: tuple[ProposalLintResult, ...]) -> None:
             )
             for issue in result.simulated_fixes:
                 print(f"- {issue}")
-    for result in with_issues:
-        model = result.proposal.model
-        origin = model.virtual_origin_id
-        print(
-            f"VIRTUAL_LINT_ISSUES model={type(model).__name__} "
-            f"virtual_id={model.id!r} origin_id={origin!r} "
-            f"contexts={result.proposal.contexts!r}"
-        )
-        for message in result.messages:
-            print(f"- {message}")
+    if deferred:
+        print(f"VIRTUAL_AUTOFIX_DEFERRED total={len(deferred)}")
+        for result in results:
+            if not result.deferred_fixes:
+                continue
+            model = result.proposal.model
+            origin = model.virtual_origin_id
+            identity = (
+                f"origin={origin}"
+                if origin is not None
+                else f"new_virtual_id={model.id!r}"
+            )
+            print(
+                f"DEFERRED_FIXES {type(model).__name__} {identity}; "
+                f"contexts={result.proposal.contexts!r}"
+            )
+            for issue in result.deferred_fixes:
+                print(f"- {issue}")
+    _print_lint_issues(with_issues)
     remaining = count_lint_codes(
         message for result in with_issues for message in result.messages
     )
@@ -272,6 +308,22 @@ def print_lint_results(results: tuple[ProposalLintResult, ...]) -> None:
             print(f"- code={code} count={count}")
     print(
         f"Best-effort virtual lint: {len(results)} object(s) checked, "
-        f"{len(with_issues)} with issue(s). New virtual rows and changed scalar "
-        "fields are not projected into database queries."
+        f"{len(with_issues)} with non-autofixable issue(s), "
+        f"{len(autofixable)} autofixable finding(s). Autofixable findings are "
+        "reported separately and should not be duplicated as manifest edits. "
+        "New virtual rows and changed scalar fields are not projected into "
+        "database queries."
     )
+
+
+def _print_lint_issues(results: list[ProposalLintResult]) -> None:
+    for result in results:
+        model = result.proposal.model
+        origin = model.virtual_origin_id
+        print(
+            f"VIRTUAL_LINT_ISSUES model={type(model).__name__} "
+            f"virtual_id={model.id!r} origin_id={origin!r} "
+            f"contexts={result.proposal.contexts!r}"
+        )
+        for message in result.messages:
+            print(f"- {message}")

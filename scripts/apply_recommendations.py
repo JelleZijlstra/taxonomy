@@ -11,7 +11,9 @@ through the unresolved objects interactively. Use ``--review-each`` to review ev
 row in file order and choose yes (queue it for application), no (skip it), or edit
 (open its affected database object and skip the automated recommendation). Add
 ``--virtual-lint`` to construct the final proposed model states in memory and run
-advisory lint before the dry run or apply step. Flags compose: static review views run
+advisory lint before the dry run or apply step. Use ``--virtual-lint-issues-only`` to
+run the same lint while printing only unresolved ``VIRTUAL_LINT_ISSUES``. Flags
+compose: static review views run
 first, followed by requested lint and dry-run output, application or per-row review,
 and finally manual editing. The only incompatible pair is ``--apply`` with
 ``--review-each``, because one applies every row while the other selects a subset.
@@ -768,9 +770,11 @@ def build_virtual_proposals(
     return builder.build()
 
 
-def run_virtual_lint(plans: RecommendationPlans) -> None:
+def run_virtual_lint(plans: RecommendationPlans, *, issues_only: bool = False) -> None:
     proposals = build_virtual_proposals(plans)
-    virtual_proposals.print_lint_results(virtual_proposals.lint_proposals(proposals))
+    virtual_proposals.print_lint_results(
+        virtual_proposals.lint_proposals(proposals), issues_only=issues_only
+    )
 
 
 def execute_plans(plans: RecommendationPlans, *, apply: bool) -> None:
@@ -804,6 +808,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     individual_items: tuple[IndividualReviewItem, ...] | None = None
     plans: RecommendationPlans | None = None
     printed_output = False
+    run_virtual_lint_requested = args.virtual_lint or args.virtual_lint_issues_only
 
     def begin_output() -> None:
         nonlocal printed_output
@@ -831,10 +836,11 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
             args.apply,
             args.review_each,
             args.edit_manual,
+            args.virtual_lint_issues_only,
         )
     )
     needs_complete_plan = bool(
-        run_dry_run or args.apply or args.review_each or args.virtual_lint
+        run_dry_run or args.apply or args.review_each or run_virtual_lint_requested
     )
     if not needs_complete_plan and not args.edit_manual:
         return
@@ -877,10 +883,10 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     except RecommendationError as exc:
         parser.error(str(exc))
 
-    if args.virtual_lint and (not args.review_each or run_dry_run):
+    if run_virtual_lint_requested and (not args.review_each or run_dry_run):
         assert plans is not None
         begin_output()
-        run_virtual_lint(plans)
+        run_virtual_lint(plans, issues_only=args.virtual_lint_issues_only)
 
     if run_dry_run:
         assert plans is not None
@@ -912,9 +918,11 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                     "selected recommendations failed final database validation; no "
                     f"automated changes were made: {exc}"
                 )
-            if args.virtual_lint:
+            if run_virtual_lint_requested:
                 begin_output()
-                run_virtual_lint(selected_plans)
+                run_virtual_lint(
+                    selected_plans, issues_only=args.virtual_lint_issues_only
+                )
             begin_output()
             execute_plans(selected_plans, apply=True)
 
@@ -987,7 +995,17 @@ def main() -> None:
         action="store_true",
         help=(
             "build virtual versions of all proposed models and run advisory, "
-            "best-effort lint before dry-run output or writes"
+            "best-effort lint before dry-run output or writes; structured "
+            "autofixes are reported separately from issues requiring manifest edits"
+        ),
+    )
+    parser.add_argument(
+        "--virtual-lint-issues-only",
+        action="store_true",
+        help=(
+            "run advisory virtual lint but print only unresolved "
+            "VIRTUAL_LINT_ISSUES, omitting autofixable findings, summaries, and "
+            "the implicit default dry run"
         ),
     )
     args = parser.parse_args()

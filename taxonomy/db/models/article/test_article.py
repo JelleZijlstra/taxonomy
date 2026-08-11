@@ -82,6 +82,33 @@ def test_journal_specific_cleanup_uses_noninteractive_citation_group_lookup(
     lookup.assert_called_once_with(name="Annals and Magazine of Natural History")
 
 
+def test_specify_authors_runs_only_in_interactive_mode() -> None:
+    specify = Mock()
+    article = cast(
+        Article,
+        SimpleNamespace(
+            type=ArticleType.JOURNAL,
+            has_tag=lambda _tag: False,
+            has_initials_only_authors=lambda: True,
+            specify_authors=specify,
+        ),
+    )
+
+    assert list(
+        article_lint.specify_authors.linter(
+            article, LintConfig(autofix=True, interactive=False)
+        )
+    ) == ["has initials-only authors"]
+    specify.assert_not_called()
+
+    assert list(
+        article_lint.specify_authors.linter(
+            article, LintConfig(autofix=False, interactive=True)
+        )
+    ) == ["has initials-only authors"]
+    specify.assert_called_once_with()
+
+
 def test_clear_zoobank_caches_clears_article_lsids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -178,8 +205,10 @@ def test_identifier_data_stops_at_doi_mismatch(
     )
 
     assert list(linter(article, LintConfig())) == [
-        f"DOI mismatch: 10.1093/jmammal/gyy181 ({source}) vs. "
-        "10.1093/jmammal/gyv133 (article)"
+        (
+            f"DOI mismatch: 10.1093/jmammal/gyy181 ({source}) vs. "
+            "10.1093/jmammal/gyv133 (article)"
+        )
     ]
 
 

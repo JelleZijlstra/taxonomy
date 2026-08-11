@@ -9,7 +9,12 @@ from taxonomy.applicator.proposals import (
 )
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models import Location, OccurrenceRecord, Region
-from taxonomy.db.models.lint import Lint, LintWrapper, field_issue
+from taxonomy.db.models.lint import (
+    Lint,
+    LintWrapper,
+    create_related_object_issue,
+    field_issue,
+)
 from taxonomy.db.models.lint_types import LintIssue
 from taxonomy.db.models.tags import LocationTag
 
@@ -103,6 +108,48 @@ def test_print_lint_results_aggregates_simulated_fixes_by_code(
     assert "normalized field" in output
 
 
+def test_print_lint_results_separates_deferred_autofixes_from_issues(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    location = Location.virtual(name="Place", tags=())
+    proposal = ProposedModel(location, ("manifest line 1",))
+    deferred = field_issue("derived field", location, "name", "Derived place")
+
+    print_lint_results((ProposalLintResult(proposal, (), (), (deferred,)),))
+
+    output = capsys.readouterr().out
+    assert "VIRTUAL_LINT_AUTOFIXABLE total=1 simulated=0 deferred=1" in output
+    assert "VIRTUAL_AUTOFIX_DEFERRED total=1" in output
+    assert "DEFERRED_FIXES Location" in output
+    assert "derived field" in output
+    assert "VIRTUAL_LINT_ISSUES" not in output
+    assert "should not be duplicated as manifest edits" in output
+
+
+def test_print_lint_results_can_output_only_unresolved_issues(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    location = Location.virtual(name="Place", tags=())
+    proposal = ProposedModel(location, ("manifest line 1",))
+    unresolved = LintIssue("requires a manifest edit", code="manual_fix")
+    simulated = LintIssue("simulated normalization", code="normalize")
+    deferred = LintIssue("deferred object creation", code="create_object")
+
+    print_lint_results(
+        (ProposalLintResult(proposal, (unresolved,), (simulated,), (deferred,)),),
+        issues_only=True,
+    )
+
+    output = capsys.readouterr().out
+    assert "VIRTUAL_LINT_ISSUES model=Location" in output
+    assert "requires a manifest edit" in output
+    assert "BEST_EFFORT" not in output
+    assert "simulated normalization" not in output
+    assert "deferred object creation" not in output
+    assert "VIRTUAL_LINT_REMAINING_BY_CODE" not in output
+    assert "Best-effort virtual lint:" not in output
+
+
 def test_lint_proposals_contains_lint_failures_in_result() -> None:
     location = Location.virtual(name="Place", tags=())
     proposal = ProposedModel(location, ("manifest line 1",))
@@ -156,3 +203,39 @@ def test_lint_proposals_applies_structured_fixes_to_fixed_point(
     assert [issue.code for issue in result.simulated_fixes] == ["test_fix", "test_fix"]
     assert location.name == "New"
     assert location.latitude == "12°N"
+
+
+def test_lint_proposals_flags_nonvirtual_structured_fix_as_deferred(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    region = Region.virtual(name="Region", kind=RegionKind.other, tags=())
+    location = Location.virtual(name="Place", region=region, parent=None, tags=())
+    proposal = ProposedModel(location, ("manifest line 1",))
+    registry = Lint.for_model(Location)
+
+    def check_location(item: Location, _cfg: object) -> list[LintIssue]:
+        return [
+            create_related_object_issue(
+                "create derived parent Location",
+                item,
+                "parent",
+                lambda: Location.virtual(
+                    name="Derived parent", region=region, parent=None, tags=()
+                ),
+            )
+        ]
+
+    wrapper = LintWrapper(
+        linter=check_location,
+        disabled=False,
+        label="create_parent_location",
+        lint=registry,
+    )
+    monkeypatch.setattr(Location, "general_lint", lambda self, cfg: wrapper(self, cfg))
+
+    (result,) = lint_proposals((proposal,))
+
+    assert result.messages == ()
+    assert result.simulated_fixes == ()
+    assert [issue.code for issue in result.deferred_fixes] == ["create_parent_location"]
+    assert location.parent is None

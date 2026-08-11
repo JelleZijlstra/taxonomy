@@ -908,7 +908,9 @@ def test_virtual_lint_runs_before_dry_run(
     monkeypatch.setattr(
         apply_recommendations,
         "run_virtual_lint",
-        lambda plans: events.append("virtual lint"),
+        lambda plans, *, issues_only: events.append(
+            "issues only" if issues_only else "virtual lint"
+        ),
     )
     monkeypatch.setattr(
         apply_recommendations,
@@ -922,6 +924,39 @@ def test_virtual_lint_runs_before_dry_run(
     apply_recommendations.main()
 
     assert events == ["read-only enter", "virtual lint", "dry-run", "read-only exit"]
+
+
+def test_virtual_lint_issues_only_implies_virtual_lint(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object())
+    events: list[str] = []
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "run_virtual_lint",
+        lambda plans, *, issues_only: events.append(
+            "issues only" if issues_only else "virtual lint"
+        ),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda *_args, **_kwargs: pytest.fail("issues-only mode ran a dry run"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["apply_recommendations.py", str(path), "--virtual-lint-issues-only"],
+    )
+
+    apply_recommendations.main()
+
+    assert events == ["issues only"]
 
 
 def test_apply_mode_does_not_enter_read_only_context(
@@ -959,7 +994,9 @@ def test_virtual_lint_combines_with_review_mode(
     monkeypatch.setattr(
         apply_recommendations,
         "run_virtual_lint",
-        lambda plans: events.append("virtual lint"),
+        lambda plans, *, issues_only: events.append(
+            "issues only" if issues_only else "virtual lint"
+        ),
     )
     monkeypatch.setattr(
         sys,
@@ -1063,7 +1100,9 @@ def test_views_dry_run_lint_apply_and_edit_run_in_order(
     monkeypatch.setattr(
         apply_recommendations,
         "run_virtual_lint",
-        lambda plans: events.append("virtual lint"),
+        lambda plans, *, issues_only: events.append(
+            "issues only" if issues_only else "virtual lint"
+        ),
     )
     monkeypatch.setattr(
         apply_recommendations,
