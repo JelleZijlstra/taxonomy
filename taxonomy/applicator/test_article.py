@@ -174,6 +174,21 @@ def _build(tmp_path: Path) -> recommendations.RecommendationPlan:
     )
 
 
+def test_review_expands_article_creation_fields(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    row = recommendations.parse_recommendation(_volume_row(), 1)
+
+    recommendations.print_review_table([row])
+
+    output = capsys.readouterr().out
+    assert "    - article type: BOOK" in output
+    assert "    - field: year='2017'" in output
+    assert "    - field: title='Biodiversity, Biogeography" in output
+    assert "    - author 1: family_name='Telnov', given_names='Dmitry'" in output
+    assert "    - citation group: CitationGroupSpec(" in output
+
+
 def test_build_plan_expands_doi_and_applies_explicit_overrides(tmp_path: Path) -> None:
     plan = _build(tmp_path)
 
@@ -240,6 +255,87 @@ def test_virtual_article_includes_legacy_string_defaults(tmp_path: Path) -> None
     assert builder.article_values is not None
     assert builder.article_values["_location"] == "None"
     assert builder.article_values["misc_data"] == "None"
+
+
+def test_existing_person_author_is_guarded_and_reused_virtually(tmp_path: Path) -> None:
+    pdf = _pdf_bytes()
+    row_data = _row(pdf)
+    row_data["article"]["authors"] = [{"person": {"id": 74061, "name": "Schmidt"}}]
+    new_path = tmp_path / "new"
+    library_path = tmp_path / "library"
+    new_path.mkdir()
+    (library_path / "Mollusca").mkdir(parents=True)
+    (new_path / "download.pdf").write_bytes(pdf)
+    person = cast(
+        Person,
+        SimpleNamespace(
+            id=74061,
+            family_name="Schmidt",
+            given_names="Karl Patterson",
+            initials=None,
+            tussenvoegsel=None,
+            suffix=None,
+            is_invalid=lambda: False,
+        ),
+    )
+    plan = recommendations.build_plan(
+        (recommendations.parse_recommendation(row_data, 1),),
+        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        get_article=lambda _name: None,
+        get_person_by_id=lambda _id: person,
+        articles_with_doi=lambda _doi: (),
+        is_catalog_folder=lambda _path: True,
+        get_citation_group=lambda _id: _citation_group(),
+        expand_doi=lambda _doi: {"type": ArticleType.JOURNAL},
+    )
+
+    class RecordingBuilder:
+        def __init__(self) -> None:
+            self.copied: list[Any] = []
+
+        def copy(self, obj: Any, *, context: str) -> Any:
+            self.copied.append(obj)
+            return obj
+
+        def create(self, model: type[Any], *, context: str, **values: Any) -> Any:
+            assert model is Article
+            return cast(Any, SimpleNamespace(**values))
+
+    builder = RecordingBuilder()
+    recommendations.add_virtual_models(plan, cast(Any, builder))
+
+    assert plan.actions[0].resolved_people == (person,)
+    assert builder.copied[-1] is person
+
+
+def test_existing_person_author_rejects_changed_family_name(tmp_path: Path) -> None:
+    pdf = _pdf_bytes()
+    row_data = _row(pdf)
+    row_data["article"]["authors"] = [{"person": {"id": 74061, "name": "Changed"}}]
+    new_path = tmp_path / "new"
+    library_path = tmp_path / "library"
+    new_path.mkdir()
+    (library_path / "Mollusca").mkdir(parents=True)
+    (new_path / "download.pdf").write_bytes(pdf)
+    person = cast(
+        Person,
+        SimpleNamespace(id=74061, family_name="Schmidt", is_invalid=lambda: False),
+    )
+
+    with pytest.raises(
+        recommendations.RecommendationError,
+        match="not valid with family name 'Changed'",
+    ):
+        recommendations.build_plan(
+            (recommendations.parse_recommendation(row_data, 1),),
+            options=SimpleNamespace(new_path=new_path, library_path=library_path),
+            get_article=lambda _name: None,
+            get_person_by_id=lambda _id: person,
+            articles_with_doi=lambda _doi: (),
+            is_catalog_folder=lambda _path: True,
+            get_citation_group=lambda _id: _citation_group(),
+            expand_doi=lambda _doi: {"type": ArticleType.JOURNAL},
+        )
 
 
 def test_build_plan_rejects_changed_staged_file(tmp_path: Path) -> None:
@@ -489,3 +585,40 @@ def test_build_plan_rejects_forward_planned_parent_reference(tmp_path: Path) -> 
             get_citation_group=lambda _id: _book_citation_group(),
             expand_doi=lambda _doi: {},
         )
+
+
+def test_build_plan_orders_forward_typed_parent_reference(tmp_path: Path) -> None:
+    pdf = _pdf_bytes()
+    new_path = tmp_path / "new"
+    library_path = tmp_path / "library"
+    new_path.mkdir()
+    (library_path / "Insecta").mkdir(parents=True)
+    (new_path / "TumbrinckSkejo.pdf").write_bytes(pdf)
+    chapter_data = _chapter_row(pdf)
+    chapter_data["article"]["ref"] = "chapter"
+    chapter_data["article"]["parent"] = {
+        "model": "Article",
+        "ref": "volume",
+        "label": _volume_row()["article"]["name"],
+    }
+    volume_data = _volume_row()
+    volume_data["article"]["ref"] = "volume"
+    rows = (
+        recommendations.parse_recommendation(chapter_data, 1),
+        recommendations.parse_recommendation(volume_data, 2),
+    )
+
+    plan = recommendations.build_plan(
+        rows,
+        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        get_article=lambda _name: None,
+        articles_with_doi=lambda _doi: (),
+        is_catalog_folder=lambda _path: True,
+        get_citation_group=lambda _id: _book_citation_group(),
+        expand_doi=lambda _doi: {},
+    )
+
+    assert [action.recommendation.ref for action in plan.actions] == [
+        "volume",
+        "chapter",
+    ]

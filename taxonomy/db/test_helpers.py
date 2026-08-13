@@ -19,6 +19,38 @@ def assert_romanizes(cyrillic: str, latin: str) -> None:
     assert romanize_russian(cyrillic) == latin
 
 
+def test_interactive_clean_string_is_quiet_when_noninteractive(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    text = "Derived from ur- (original) and Spelerpes."
+
+    assert helpers.interactive_clean_string(text, interactive=False) == text
+    assert capsys.readouterr().out == ""
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("fine- to coarse-grained", "fine-\\ to coarse-grained"),
+        ("single- or double-rooted", "single-\\ or double-rooted"),
+        ("orange- for Orange County", "orange-\\ for Orange County"),
+        ("thalasso- from Greek thalassa", "thalasso-\\ from Greek thalassa"),
+        ("proto- and metacone", "proto-\\ and metacone"),
+        ("ranging from fine- to", "ranging from fine-\\ to"),
+    ],
+)
+def test_interactive_clean_string_preserves_suspended_hyphens(
+    text: str, expected: str
+) -> None:
+    assert helpers.interactive_clean_string(text, interactive=False) == expected
+
+
+def test_interactive_clean_string_preserves_escaped_hyphen_space() -> None:
+    text = "fine-\\ to coarse-grained"
+
+    assert helpers.interactive_clean_string(text, interactive=False) == text
+
+
 def test_extract_coordinates_normalizes_typographic_symbols() -> None:
     assert helpers.extract_coordinates("at 31º28′12″ S, 64˚44’24” W") == (
         "31°28'12\"S",

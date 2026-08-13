@@ -13,12 +13,21 @@ from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
 from taxonomy.apis.zoobank import clean_lsid, is_valid_lsid
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import SYNONYM_RANKS, Group, NomenclatureStatus, Rank
+from taxonomy.db.constants import (
+    SYNONYM_RANKS,
+    AgeClass,
+    Group,
+    NomenclatureStatus,
+    Rank,
+    Status,
+)
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
+    LintFix,
+    LintFixError,
     add_tag_fix,
     add_tag_issue,
     field_fix,
@@ -34,6 +43,7 @@ from taxonomy.db.models.name.lint import (
     name_combination_name_sort_key,
 )
 from taxonomy.db.models.name.name import clean_original_name
+from taxonomy.db.models.person import AuthorTag, Person
 from taxonomy.db.models.taxon import Taxon
 
 from .ce import ClassificationEntry, ClassificationEntryStatus, ClassificationEntryTag
@@ -88,6 +98,62 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
         yield "multiple AuxiliaryName tags"
     if counts[ClassificationEntryTag.VerbatimParent] > 1:
         yield "multiple VerbatimParent tags"
+    if counts[ClassificationEntryTag.Materialize] > 1:
+        yield "multiple Materialize tags"
+    if counts[ClassificationEntryTag.OriginalCitation] > 1:
+        yield "multiple OriginalCitation tags"
+    base_name_author_tags = list(
+        ce.get_tags(ce.tags, ClassificationEntryTag.MaterializeBaseNameAuthor)
+    )
+    materialization_detail_types = (
+        ClassificationEntryTag.MaterializeBaseName,
+        ClassificationEntryTag.MaterializeBaseNameAuthor,
+        ClassificationEntryTag.MaterializeParent,
+    )
+    has_materialization_details = any(
+        counts[tag_type] for tag_type in materialization_detail_types
+    )
+    if (
+        ce.mapped_name is not None
+        and counts[ClassificationEntryTag.Materialize] == 0
+        and has_materialization_details
+    ):
+        new_materialization_tags = tuple(
+            tag for tag in ce.tags if not isinstance(tag, materialization_detail_types)
+        )
+        yield field_issue(
+            f"remove satisfied materialization detail tags from {ce}",
+            ce,
+            "tags",
+            new_materialization_tags,
+        )
+    else:
+        if counts[ClassificationEntryTag.MaterializeBaseName] > 1:
+            yield "multiple MaterializeBaseName tags"
+        elif (
+            counts[ClassificationEntryTag.MaterializeBaseName] == 1
+            and counts[ClassificationEntryTag.Materialize] == 0
+        ):
+            yield "MaterializeBaseName requires Materialize"
+        if (
+            base_name_author_tags
+            and counts[ClassificationEntryTag.MaterializeBaseName] == 0
+        ):
+            yield "MaterializeBaseNameAuthor requires MaterializeBaseName"
+        author_orders = [tag.order for tag in base_name_author_tags]
+        if len(author_orders) != len(set(author_orders)):
+            yield "MaterializeBaseNameAuthor orders must be unique"
+        elif author_orders and sorted(author_orders) != list(
+            range(1, len(author_orders) + 1)
+        ):
+            yield "MaterializeBaseNameAuthor orders must be contiguous starting at 1"
+        if counts[ClassificationEntryTag.MaterializeParent] > 1:
+            yield "multiple MaterializeParent tags"
+        elif (
+            counts[ClassificationEntryTag.MaterializeParent] == 1
+            and counts[ClassificationEntryTag.Materialize] == 0
+        ):
+            yield "MaterializeParent requires Materialize"
     new_tags = []
     for tag in ce.tags:
         if isinstance(tag, ClassificationEntryTag.ReferencedUsage):
@@ -246,8 +312,7 @@ def check_needs_auxiliary_name(
     ]
     if conflicting_children:
         yield (
-            f"mapped name is a misspelling of sibling CE {correct_ce}, but children "
-            f"have conflicting VerbatimParent tags: {conflicting_children}"
+            f"mapped name is a misspelling of sibling CE {correct_ce}, but children have conflicting VerbatimParent tags: {conflicting_children}"
         )
         return
 
@@ -292,6 +357,12 @@ def check_missing_mapped_name(
 ) -> Iterable[LintResult]:
     if ce.mapped_name is not None:
         return
+    if ce.has_tag(ClassificationEntryTag.Materialize):
+        # Materialize owns creation and assignment of the mapped Name. Its fix is
+        # deliberately deferred during virtual lint because it creates persistent
+        # Taxon/Name objects, but that must not turn the derived missing mapping into
+        # a second, non-autofixable manifest issue.
+        return
     if not must_have_mapped_name(ce):
         return
     candidates = list(get_filtered_possible_mapped_names(ce))
@@ -301,6 +372,477 @@ def check_missing_mapped_name(
         yield field_issue(message, ce, "mapped_name", inferred)
     elif cfg.verbose and candidates:
         print(f"{ce}: missing mapped_name (candidates: {candidates})")
+
+
+def _get_materialize_tag(
+    ce: ClassificationEntry,
+) -> ClassificationEntryTag.Materialize | None:  # type: ignore[name-defined]
+    tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.Materialize))
+    return tags[0] if len(tags) == 1 else None
+
+
+def _get_materialize_parent_tag(
+    ce: ClassificationEntry,
+) -> ClassificationEntryTag.MaterializeParent | None:  # type: ignore[name-defined]
+    tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.MaterializeParent))
+    return tags[0] if len(tags) == 1 else None
+
+
+def _materialization_parent_taxon(ce: ClassificationEntry) -> Taxon:
+    tag = _get_materialize_tag(ce)
+    if tag is None:
+        raise LintFixError(f"{ce}: Materialize tag is no longer present")
+    reconciliation_parent = _get_materialize_parent_tag(ce)
+    if reconciliation_parent is not None:
+        if ce.rank.is_synonym:
+            raise LintFixError(f"{ce}: synonym cannot use MaterializeParent")
+        if ce.parent is not None:
+            raise LintFixError(
+                f"{ce}: MaterializeParent cannot be combined with a source-local parent"
+            )
+        if tag.parent_taxon_id is not None:
+            raise LintFixError(
+                f"{ce}: MaterializeParent cannot be combined with parent_taxon_id"
+            )
+        parent_name = reconciliation_parent.ce.mapped_name
+        if parent_name is None:
+            raise LintFixError(f"{ce}: reconciliation parent has not been materialized")
+        return parent_name.taxon
+    if ce.rank.is_synonym:
+        if tag.parent_taxon_id is not None:
+            raise LintFixError(
+                f"{ce}: synonym Materialize tag cannot specify parent_taxon_id"
+            )
+        if ce.parent is None or ce.parent.mapped_name is None:
+            raise LintFixError(f"{ce}: synonym parent has not been materialized")
+        return ce.parent.mapped_name.taxon
+    if ce.parent is None:
+        if tag.parent_taxon_id is None:
+            raise LintFixError(
+                f"{ce}: root accepted entry requires Materialize.parent_taxon_id"
+            )
+        try:
+            return Taxon.get(id=tag.parent_taxon_id)
+        except Taxon.DoesNotExist as exc:
+            raise LintFixError(
+                f"{ce}: parent Taxon {tag.parent_taxon_id} no longer exists"
+            ) from exc
+    if tag.parent_taxon_id is not None:
+        raise LintFixError(
+            f"{ce}: non-root accepted entry cannot specify parent_taxon_id"
+        )
+    if ce.parent.mapped_name is None:
+        raise LintFixError(f"{ce}: accepted parent has not been materialized")
+    return ce.parent.mapped_name.taxon
+
+
+def _materialized_root_name(ce: ClassificationEntry, corrected_name: str) -> str:
+    match ce.get_group():
+        case Group.species:
+            return corrected_name.rsplit(maxsplit=1)[-1]
+        case Group.family:
+            return helpers.strip_standard_suffixes(corrected_name)
+        case Group.genus | Group.high:
+            return corrected_name
+        case _ as unreachable:
+            assert_never(unreachable)
+
+
+def _materialized_age(ce: ClassificationEntry, parent: Taxon) -> AgeClass:
+    age_tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.AgeClassCE))
+    return age_tags[0].age if len(age_tags) == 1 else parent.age
+
+
+def _materialized_nomenclature_status(ce: ClassificationEntry) -> NomenclatureStatus:
+    statuses = set(get_applicable_nomenclature_statuses(ce))
+    if not statuses:
+        return NomenclatureStatus.available
+    return min(statuses, key=models.name.lint.nomenclature_status_priority)
+
+
+def _citation_values_for_materialized_name(
+    ce: ClassificationEntry, article: Article, authority: str | None
+) -> dict[str, object]:
+    author_source = (
+        article.parent
+        if article.issupplement() and article.parent is not None
+        else article
+    )
+    article_authors = author_source.get_authors()
+    if not article_authors:
+        raise LintFixError(
+            f"{ce}: original-citation materialization requires Article authors"
+        )
+    if authority is None:
+        selected_authors = article_authors
+    else:
+        authority_names = re.split(r", | & ", authority)
+        authors_by_name = {
+            author.taxonomic_authority(): author for author in article_authors
+        }
+        try:
+            selected_authors = [authors_by_name[name] for name in authority_names]
+        except KeyError as exc:
+            raise LintFixError(
+                f"{ce}: authority author {exc.args[0]!r} is not an Article author"
+            ) from exc
+        if Person.join_authors(selected_authors) != authority:
+            raise LintFixError(
+                f"{ce}: cannot reproduce authority {authority!r} from Article authors"
+            )
+    return {
+        "original_citation": article,
+        "author_tags": tuple(
+            AuthorTag.Author(person=author) for author in selected_authors
+        ),
+    }
+
+
+def _materialized_original_citation_values(
+    ce: ClassificationEntry,
+) -> dict[str, object]:
+    if not ce.has_tag(ClassificationEntryTag.OriginalCitation):
+        return {}
+    return {
+        **_citation_values_for_materialized_name(ce, ce.article, ce.authority),
+        "year": ce.article.year,
+    }
+
+
+def _materialize_base_name_author_tags(
+    ce: ClassificationEntry,
+) -> list[ClassificationEntryTag.MaterializeBaseNameAuthor]:  # type: ignore[name-defined]
+    return sorted(
+        ce.get_tags(ce.tags, ClassificationEntryTag.MaterializeBaseNameAuthor),
+        key=lambda tag: tag.order,
+    )
+
+
+def _materialized_base_name_citation_values(
+    ce: ClassificationEntry,
+    tag: ClassificationEntryTag.MaterializeBaseName,  # type: ignore[name-defined]
+) -> dict[str, object]:
+    explicit_authors = _materialize_base_name_author_tags(ce)
+    if tag.original_citation is not None:
+        if explicit_authors:
+            raise LintFixError(
+                f"{ce}: MaterializeBaseNameAuthor is only allowed without an original-citation Article"
+            )
+        if tag.verbatim_citation is not None or tag.citation_group is not None:
+            raise LintFixError(
+                f"{ce}: verbatim_citation and citation_group are only allowed when original_citation is blank"
+            )
+        return {
+            **_citation_values_for_materialized_name(
+                ce, tag.original_citation, ce.authority
+            ),
+            "year": tag.original_citation.year,
+        }
+    if tag.verbatim_citation is None:
+        raise LintFixError(
+            f"{ce}: MaterializeBaseName without an Article requires verbatim_citation"
+        )
+    if tag.citation_group is None:
+        raise LintFixError(
+            f"{ce}: MaterializeBaseName without an Article requires citation_group"
+        )
+    if not explicit_authors:
+        raise LintFixError(
+            f"{ce}: MaterializeBaseName without an Article requires explicit authors"
+        )
+    orders = [author.order for author in explicit_authors]
+    if orders != list(range(1, len(explicit_authors) + 1)):
+        raise LintFixError(
+            f"{ce}: MaterializeBaseNameAuthor orders must be contiguous starting at 1"
+        )
+    people = [author.person for author in explicit_authors]
+    if len(people) != len(set(people)):
+        raise LintFixError(f"{ce}: MaterializeBaseName authors must be unique")
+    if ce.authority is None or Person.join_authors(people) != ce.authority:
+        raise LintFixError(
+            f"{ce}: explicit authors do not reproduce authority {ce.authority!r}"
+        )
+    return {
+        "original_citation": None,
+        "verbatim_citation": tag.verbatim_citation,
+        "citation_group": tag.citation_group,
+        "author_tags": tuple(AuthorTag.Author(person=person) for person in people),
+    }
+
+
+def _get_materialize_base_name_tag(
+    ce: ClassificationEntry,
+) -> ClassificationEntryTag.MaterializeBaseName | None:  # type: ignore[name-defined]
+    tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.MaterializeBaseName))
+    return tags[0] if len(tags) == 1 else None
+
+
+def _materialized_base_name_candidates(
+    tag: ClassificationEntryTag.MaterializeBaseName,  # type: ignore[name-defined]
+) -> Iterable[Name]:
+    corrected_name = clean_original_name(tag.original_name)
+    return Name.select_valid().filter(Name.corrected_original_name == corrected_name)
+
+
+@dataclass(frozen=True)
+class MaterializeClassificationEntry:
+    """Guarded, persistent-only creation of the database objects requested by a CE."""
+
+    target: ClassificationEntry
+    tag: ClassificationEntryTag.Materialize  # type: ignore[name-defined]
+
+    @property
+    def is_virtual_safe(self) -> bool:
+        return False
+
+    def validate(self) -> bool:
+        if self.tag not in self.target.tags:
+            if self.target.mapped_name is not None:
+                return False
+            raise LintFixError(
+                f"{self.target}: Materialize tag changed before object creation"
+            )
+        if self.target.mapped_name is not None:
+            raise LintFixError(
+                f"{self.target}: mapped_name was set before object creation"
+            )
+        base_name_tags = list(
+            self.target.get_tags(
+                self.target.tags, ClassificationEntryTag.MaterializeBaseName
+            )
+        )
+        if len(base_name_tags) > 1:
+            raise LintFixError(
+                f"{self.target}: multiple MaterializeBaseName tags before object creation"
+            )
+        candidates = list(get_filtered_possible_mapped_names(self.target))
+        if candidates:
+            raise LintFixError(
+                f"{self.target}: mapping candidates appeared before object creation: {candidates}"
+            )
+        if base_name_tag := _get_materialize_base_name_tag(self.target):
+            base_candidates = list(_materialized_base_name_candidates(base_name_tag))
+            if base_candidates:
+                raise LintFixError(
+                    f"{self.target}: base-Name candidates appeared before object creation: {base_candidates}"
+                )
+        _materialization_parent_taxon(self.target)
+        return True
+
+    def apply(self) -> None:
+        ce = self.target
+        parent_taxon = _materialization_parent_taxon(ce)
+        corrected_name = ce.get_name_to_use_as_normalized_original_name()
+        if corrected_name is None:
+            raise LintFixError(f"{ce}: cannot infer a normalized name")
+        common_name_values = {
+            "taxon": parent_taxon,
+            "group": ce.get_group(),
+            "root_name": _materialized_root_name(ce, corrected_name),
+            "status": Status.synonym,
+            "nomenclature_status": _materialized_nomenclature_status(ce),
+            "original_name": ce.name,
+            "corrected_original_name": corrected_name,
+            "year": ce.year,
+            "page_described": ce.page,
+            "original_rank": ce.rank,
+            "verbatim_citation": ce.citation,
+            **_materialized_original_citation_values(ce),
+        }
+        if ce.rank.is_synonym:
+            name = Name.create(**common_name_values)
+        else:
+            taxon = Taxon.create(
+                valid_name=corrected_name,
+                rank=ce.rank,
+                age=_materialized_age(ce, parent_taxon),
+                parent=parent_taxon,
+            )
+            base_name_tag = _get_materialize_base_name_tag(ce)
+            if base_name_tag is None:
+                common_name_values["taxon"] = taxon
+                common_name_values["status"] = Status.valid
+                name = Name.create(**common_name_values)
+                taxon.base_name = name
+            else:
+                base_corrected_name = clean_original_name(base_name_tag.original_name)
+                base_name = Name.create(
+                    taxon=taxon,
+                    group=ce.get_group(),
+                    root_name=_materialized_root_name(ce, base_corrected_name),
+                    status=Status.valid,
+                    nomenclature_status=NomenclatureStatus.available,
+                    original_name=base_name_tag.original_name,
+                    corrected_original_name=base_corrected_name,
+                    year=ce.year,
+                    page_described=base_name_tag.page,
+                    original_rank=base_name_tag.original_rank or ce.rank,
+                    **_materialized_base_name_citation_values(ce, base_name_tag),
+                )
+                taxon.base_name = base_name
+                current_article_values = _citation_values_for_materialized_name(
+                    ce, ce.article, None
+                )
+                name = Name.create(
+                    taxon=taxon,
+                    group=ce.get_group(),
+                    root_name=_materialized_root_name(ce, corrected_name),
+                    status=Status.synonym,
+                    nomenclature_status=NomenclatureStatus.name_combination,
+                    original_name=ce.name,
+                    corrected_original_name=corrected_name,
+                    year=ce.article.year,
+                    page_described=ce.page,
+                    original_rank=ce.rank,
+                    verbatim_citation=ce.citation,
+                    tags=(NameTag.NameCombinationOf(base_name),),
+                    **current_article_values,
+                )
+        ce.mapped_name = name
+        ce.tags = tuple(  # type: ignore[assignment]
+            tag
+            for tag in ce.tags
+            if tag != self.tag
+            and not isinstance(tag, ClassificationEntryTag.MaterializeBaseName)
+            and not isinstance(tag, ClassificationEntryTag.MaterializeBaseNameAuthor)
+            and not isinstance(tag, ClassificationEntryTag.MaterializeParent)
+        )
+
+
+def _materialize_fix(ce: ClassificationEntry) -> LintFix:
+    tag = _get_materialize_tag(ce)
+    assert tag is not None
+    return LintFix((MaterializeClassificationEntry(ce, tag),))
+
+
+@LINT.add("materialize")
+def materialize_classification_entry(
+    ce: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
+    tag = _get_materialize_tag(ce)
+    if tag is None:
+        return
+    if ce.mapped_name is not None:
+        satisfied_types = (
+            ClassificationEntryTag.MaterializeBaseName,
+            ClassificationEntryTag.MaterializeBaseNameAuthor,
+            ClassificationEntryTag.MaterializeParent,
+        )
+        new_tags = tuple(
+            existing
+            for existing in ce.tags
+            if existing != tag and not isinstance(existing, satisfied_types)
+        )
+        yield field_issue(
+            f"remove satisfied materialization tags from {ce}", ce, "tags", new_tags
+        )
+        return
+    if not must_have_mapped_name(ce):
+        yield "Materialize tag is not allowed on an informal entry"
+        return
+    if ce.has_tag(ClassificationEntryTag.AuxiliaryName):
+        yield "Materialize tag is not allowed on an AuxiliaryName entry"
+        return
+    base_name_tag = _get_materialize_base_name_tag(ce)
+    if (
+        ce.has_tag(ClassificationEntryTag.OriginalCitation)
+        and base_name_tag is not None
+    ):
+        yield "MaterializeBaseName cannot be combined with OriginalCitation"
+        return
+    if base_name_tag is not None:
+        if ce.rank.is_synonym:
+            yield "MaterializeBaseName requires an accepted entry"
+            return
+        base_corrected_name = clean_original_name(base_name_tag.original_name)
+        corrected_name = ce.get_name_to_use_as_normalized_original_name()
+        if base_corrected_name == corrected_name:
+            yield "MaterializeBaseName requires a different original spelling"
+            return
+        base_candidates = list(_materialized_base_name_candidates(base_name_tag))
+        if base_candidates:
+            yield (
+                f"MaterializeBaseName is blocked until original-name candidates are resolved: {base_candidates}"
+            )
+            return
+        try:
+            _materialized_base_name_citation_values(ce, base_name_tag)
+            _citation_values_for_materialized_name(ce, ce.article, None)
+        except LintFixError as exc:
+            yield str(exc)
+            return
+    if not ce.rank.is_synonym and not ce.rank.is_allowed_for_taxon:
+        yield f"cannot materialize accepted Taxon at rank {ce.rank.name}"
+        return
+    candidates = list(get_filtered_possible_mapped_names(ce))
+    if candidates:
+        yield f"Materialize is blocked until mapping candidates are resolved: {candidates}"
+        return
+    reconciliation_parent = _get_materialize_parent_tag(ce)
+    if reconciliation_parent is not None:
+        if ce.rank.is_synonym:
+            yield "synonym Materialize entry cannot use MaterializeParent"
+            return
+        if ce.parent is not None:
+            yield "MaterializeParent cannot be combined with a source-local parent"
+            return
+        if tag.parent_taxon_id is not None:
+            yield "MaterializeParent cannot be combined with parent_taxon_id"
+            return
+        if reconciliation_parent.ce == ce:
+            yield "MaterializeParent cannot reference the same entry"
+            return
+        seen_parents = {ce}
+        parent_entry = reconciliation_parent.ce
+        while True:
+            if parent_entry in seen_parents:
+                yield "MaterializeParent cycle"
+                return
+            seen_parents.add(parent_entry)
+            parent_instruction = _get_materialize_parent_tag(parent_entry)
+            if parent_instruction is None:
+                break
+            parent_entry = parent_instruction.ce
+        if reconciliation_parent.ce.rank.is_synonym:
+            yield "MaterializeParent must reference an accepted entry"
+            return
+        if (
+            reconciliation_parent.ce.mapped_name is None
+            and _get_materialize_tag(reconciliation_parent.ce) is None
+        ):
+            yield (
+                "MaterializeParent entry must be mapped or carry its own Materialize tag"
+            )
+            return
+    if ce.rank.is_synonym:
+        if tag.parent_taxon_id is not None:
+            yield "synonym Materialize tag cannot specify parent_taxon_id"
+            return
+        if ce.parent is None:
+            yield "synonym Materialize entry requires a source-local parent"
+            return
+    elif ce.parent is None and reconciliation_parent is None:
+        if tag.parent_taxon_id is None:
+            yield "root accepted Materialize entry requires parent_taxon_id"
+            return
+        try:
+            Taxon.get(id=tag.parent_taxon_id)
+        except Taxon.DoesNotExist:
+            yield f"Materialize parent Taxon {tag.parent_taxon_id} does not exist"
+            return
+    elif ce.parent is not None and tag.parent_taxon_id is not None:
+        yield "non-root accepted Materialize entry cannot specify parent_taxon_id"
+        return
+    parent = ce.parent
+    if (
+        parent is not None
+        and parent.mapped_name is None
+        and _get_materialize_tag(parent) is None
+    ):
+        yield "Materialize parent must be mapped or carry its own Materialize tag"
+        return
+    kind = "Name" if ce.rank.is_synonym else "Taxon and base Name"
+    yield fixes_issue(f"materialize {kind} from {ce}", _materialize_fix(ce))
 
 
 def must_have_mapped_name(ce: ClassificationEntry) -> bool:
@@ -478,6 +1020,11 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[Lint
                         new_name = alternatives[0]
                         message = f"mapped_name corrected_original_name does not match; change to {new_name}"
                         yield field_issue(message, ce, "mapped_name", new_name)
+    elif ce.has_tag(ClassificationEntryTag.Materialize):
+        # The mapped Name is the declared output of the Materialize fix. Virtual
+        # lint cannot safely create that persistent object, so do not reclassify
+        # the derived absence as an unresolved issue.
+        return
     elif must_have_mapped_name(ce):
         yield "missing mapped_name"
 

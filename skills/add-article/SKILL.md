@@ -125,18 +125,21 @@ name, ArticleType, Region ID and name, and any serialized CitationGroup tags. Fo
 `docs/citation-group.md`; a CrossRef container title is evidence, not automatic
 authority to create a new journal.
 
-For a chapter in an edited volume, prefer two ordered rows:
+For a chapter in an edited volume, declare stable `article.ref` values on both rows:
 
 1. Create an explicit `BOOK` row for the volume, omitting `file`. Give it an
    extensionless name, the editors in `authors`, its book CitationGroup (normally the
    publication city), year, title, publisher, and numbered-page extent.
-2. Create the PDF-backed `CHAPTER` row with `parent: {"name": "<parent name>"}`. The
-   parent name must match an earlier row exactly. Put the chapter authors and printed
-   text page range on the child; do not put a CitationGroup on the child.
+2. Create the PDF-backed `CHAPTER` row with a typed parent such as
+   `parent: {"model": "Article", "ref": "volume-key", "label": "<parent name>"}`.
+   Dependency planning permits this ref to point forward in manifest review order. Put
+   the chapter authors and printed text page range on the child; do not put a
+   CitationGroup on the child.
 
 To use a parent already in the database instead, guard it with
-`parent: {"id": 123, "name": "Exact parent name"}`. Do not refer to a later row or rely
-on an unguarded database name lookup.
+`parent: {"id": 123, "name": "Exact parent name"}`. Do not rely on an unguarded database
+name lookup. The older planned `{name}` form remains supported only for an earlier row;
+new bundle workflows should use typed refs.
 
 ### 7. Hash the staged file and write the row
 
@@ -198,10 +201,13 @@ Optional Article keys are:
   `start_page`, `end_page`, `url`, `publisher`, `pages`, `misc_data`, and
   `article_number`;
 - `authors`: ordered objects with `family_name` and optional `given_names`, `initials`,
-  `tussenvoegsel`, and `suffix`; and
+  `tussenvoegsel`, and `suffix`, or a guarded existing Person as
+  `{"person": {"id": 123, "name": "Exact family name"}}`; and
 - `tags`: serialized `ArticleTag` values; and
-- `parent`: an existing `{id, name}` snapshot or an earlier planned `{name}` reference,
-  permitted only for `CHAPTER` and `PART`.
+- `ref`: a stable bundle-local Article key when another row depends on this Article; and
+- `parent`: an existing `{id, name}` snapshot, a typed `{model: "Article", ref, label}`
+  dependency, or the legacy earlier planned `{name}` form, permitted only for `CHAPTER`
+  and `PART`.
 
 Explicit values override CrossRef. Do not copy CrossRef data into overrides merely to
 make the row verbose.

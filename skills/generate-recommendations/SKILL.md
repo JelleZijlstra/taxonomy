@@ -54,7 +54,11 @@ entry point.
    as explicit manifest edits. Only `VIRTUAL_LINT_ISSUES` requires a manifest change, an
    explicit suppression, or manual review.
 
-   To limit the compact review to particular actions, repeat `--review-action`:
+   Static review keeps one summary row per recommendation and adds indented, untruncated
+   details: generic creation fields and match guards, schema-v2 guarded operations,
+   Article and Taxon creation fields, Location and type-locality changes, coverage
+   guards and members, and the evidence attached to every `manual_review` row. To limit
+   the review to particular actions, repeat `--review-action`:
 
    ```bash
    python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --review \
@@ -82,7 +86,7 @@ entry point.
 
    Operation flags may be combined. Static `--review` and `--review-manual` output runs
    first, followed by requested virtual lint and `--dry-run`, then `--apply` or
-   `--review-each`, and finally `--edit-manual`. For example,
+   `--review-each`, post-apply cleanup, and finally `--edit-manual`. For example,
    `--review-manual --review-each --edit-manual` prints the complete unresolved notes,
    reviews every row interactively, applies the accepted subset, and then opens all
    manual-review objects. Only `--apply` and `--review-each` are incompatible because
@@ -94,28 +98,6 @@ entry point.
    ```bash
    python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --edit-manual
    ```
-
-   To apply every actionable recommendation and then edit each unresolved manual-review
-   object in the same run, use:
-
-   ```bash
-   python scripts/apply_recommendations.py recs/manifests/<file>.jsonl --apply --edit-manual
-   ```
-
-   The combined mode validates the complete manifest and resolves all manual editor
-   targets before writing anything. It then applies the actionable recommendations and
-   finally prints each complete manual-review note before opening that object's editor.
-
-   This edits the explicit `object` on generic `manual_review` rows. For legacy
-   type-locality `manual_review` rows, it edits the referenced Name. It does not open
-   actionable rows that merely carry `review_note`. The interactive view gives each
-   object a distinct header, shows the full evidence, and repeats the reason immediately
-   before opening the editor so the recommended decision remains visible at the prompt.
-   Edit-only mode warns and continues when a row has become stale, because it will not
-   write that row. It resolves manual-review objects by stable model and ID, so a label
-   change is reported but does not prevent editing; missing objects and invalid IDs or
-   models still stop the run. Combined `--apply --edit-manual` mode remains strict about
-   the complete manifest.
 
 7. Do not use `--apply`. The user reviews and applies recommendations.
 
@@ -134,6 +116,25 @@ domain semantics.
 - `remove_tag`: remove one serialized ADT tag from a named tag field.
 - `manual_review`: record a non-mutating, evidence-bearing review decision for any
   database object after validating its ID and label.
+
+Schema-version 2 `update_object` combines guarded scalar and ADT changes. Its ordinary
+operations are `set`, `add`, and `remove`. Use `remove_raw` only to recover an ADT field
+containing one exact malformed serialized tag that ordinary decoding cannot load. Supply
+that exact list as `raw_value`; it must be the first change to that field, and the
+remaining field must decode successfully. Follow it with an ordinary `add` when moving
+the information to the correct tag field or ADT class.
+
+Schema-version 2 `merge_collection` redirects one duplicate Collection to a canonical
+target and atomically applies explicit guarded `object_updates`. Each nested update has
+an existing `object` and one or more `set` changes with complete `old_value` and
+`new_value` snapshots. Complete ADT-field snapshots are lists of serialized tags. The
+planner checks indexed ordinary backreferences and rejects the merge unless each is
+covered by an update whose new value no longer contains the source. It deliberately does
+not scan serialized ADT fields; ordinary post-apply lint/autofix handles those
+references. Include `type_specimen` text changes in the same action because Collection
+lint enforces that they match the canonical label, and `Collection.merge()` does not
+rewrite identifiers. If the target itself needs renaming or other metadata changes, put
+a guarded `update_object` immediately before the merge.
 
 Existing-object mutation actions use:
 
@@ -251,8 +252,10 @@ safer; generic actions are not a reason to discard those guardrails.
 
 - Treat `manual_review` as a legitimate result. Do not manufacture a target to maximize
   actionable rows.
-- Preserve source wording and provenance. Put standardized interpretations on the
-  database object without rewriting the quoted evidence.
+- Preserve source wording and provenance. The text of every `*Detail` tag is a direct
+  quotation from its cited source, never a paraphrase or inference. Put standardized
+  interpretations on structured fields or non-Detail comments without rewriting the
+  quoted evidence.
 - Require exact support for source-derived coordinates and include the corresponding
   provenance tag.
 - Reuse an existing object only after checking all relevant context, not merely its

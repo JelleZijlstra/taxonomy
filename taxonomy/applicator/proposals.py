@@ -58,6 +58,35 @@ class ProposalBuilder:
         self._add_context(proposal, context)
         return cast(ModelT, proposal)
 
+    def copy_with_overrides(
+        self, origin: ModelT, *, context: str, overrides: dict[str, Any]
+    ) -> ModelT:
+        """Copy an object while bypassing fields that cannot currently decode."""
+        identity = id(origin)
+        try:
+            proposal = self._by_origin_identity[identity]
+        except KeyError:
+            if not origin.is_virtual:
+                origin.load()
+            values = {
+                name: overrides[name] if name in overrides else getattr(origin, name)
+                for name, field in origin.clirm_fields.items()
+                if field.name in origin._clirm_data
+            }
+            proposal = type(origin).virtual(**values)
+            proposal._clirm_virtual_origin = (
+                origin._clirm_virtual_origin if origin.is_virtual else origin
+            )
+            proposal._clirm_virtual_baseline = dict(proposal._clirm_data)
+            proposal._clirm_dirty_fields.clear()
+            self._by_origin_identity[identity] = proposal
+            self._proposals.append(proposal)
+        else:
+            for name, value in overrides.items():
+                setattr(proposal, name, value)
+        self._add_context(proposal, context)
+        return cast(ModelT, proposal)
+
     def create(
         self,
         model_cls: type[ModelT],

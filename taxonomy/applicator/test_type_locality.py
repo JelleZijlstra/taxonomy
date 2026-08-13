@@ -229,7 +229,7 @@ def test_rejects_duplicate_name_ids(tmp_path: Path) -> None:
         recommendations.read_recommendations(path)
 
 
-def test_review_table_is_concise_and_can_filter_actions(
+def test_review_table_expands_changes_and_can_filter_actions(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
@@ -250,7 +250,32 @@ def test_review_table_is_concise_and_can_filter_actions(
     assert "Western Africa [existing #3684]" in output
     assert "Name 2" in output
     assert "Name 1" not in output
+    assert "    - current location: L1176 Africa" in output
+    assert "    - change: type_locality: L1176 Africa -> L3684 Western Africa" in output
+    assert "    - target field: region_name='Western Africa'" in output
     assert "1 recommendation(s)" in output
+
+
+def test_review_prints_manual_evidence_without_truncation(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    row = _row(action=recommendations.MANUAL_REVIEW)
+    row["tag_comment"] = None
+    row["evidence"] = [
+        {
+            "source_id": 10,
+            "source_name": "Source",
+            "text": "Exact evidence " + "that must remain visible " * 10,
+        }
+    ]
+    _write_rows(path, [row])
+
+    recommendations.print_review_table(recommendations.read_recommendations(path))
+
+    output = capsys.readouterr().out
+    assert "    - evidence (A10 Source): Exact evidence" in output
+    assert "that must remain visible " * 10 in output
 
 
 def test_dry_run_adds_tag_and_moves_without_mutating(

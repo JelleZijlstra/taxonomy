@@ -26,7 +26,9 @@ from taxonomy.db.constants import (
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
+from taxonomy.db.models.citation_group import CitationGroup
 from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.models.person import Person
 
 
 class ClassificationEntryStatus(enum.Enum):
@@ -704,6 +706,38 @@ class ClassificationEntryTag(ADT):
     # The parent implied by the spelling of this CE, when it differs from the
     # primary classification represented by parent.
     VerbatimParent(ce=ClassificationEntry, tag=19)  # type: ignore[name-defined]
+    # Reconciliation instruction: create a Name for this CE and, for an accepted
+    # rank, a Taxon/base-Name pair. Non-root accepted entries derive their Taxon
+    # parent from the source-local CE parent after it has been reconciled. A root
+    # entry may instead name an explicit existing/proposed parent Taxon.
+    Materialize(parent_taxon_id=NotRequired[int], tag=20)  # type: ignore[name-defined]
+    # Source-backed etymology text. Name lint copies this to an EtymologyDetail
+    # whose source is the CE's Article after the CE has been mapped.
+    EtymologyDetail(text=Markdown, tag=21)  # type: ignore[name-defined]
+    # The CE is the original description of the mapped Name. Materialize uses the
+    # CE's Article as original_citation and its authority to select the applicable
+    # authors from that Article (some nomenclatural acts have a subset of authors).
+    OriginalCitation(tag=22)  # type: ignore[name-defined]
+    # Materialize an accepted Taxon from a later name combination. The Taxon's base
+    # Name is created from the original spelling and citation below; the CE itself is
+    # mapped to a separate name-combination Name sourced to the CE's Article.
+    MaterializeBaseName(  # type: ignore[name-defined]
+        original_name=Managed,
+        page=Managed,
+        original_citation=NotRequired[Article],
+        verbatim_citation=NotRequired[Markdown],
+        citation_group=NotRequired[CitationGroup],
+        original_rank=NotRequired[Rank],
+        tag=23,
+    )
+    # Explicit authors for a MaterializeBaseName instruction whose original
+    # description is not represented by an Article. The order makes this safe on
+    # ClassificationEntry.tags, which is intentionally unordered.
+    MaterializeBaseNameAuthor(person=Person, order=int, tag=24)  # type: ignore[name-defined]
+    # Reconciliation-only parent for a root CE whose accepted database parent is
+    # materialized from another source. Unlike ClassificationEntry.parent, this may
+    # cross Article boundaries and does not claim a source-local hierarchy.
+    MaterializeParent(ce=ClassificationEntry, tag=25)  # type: ignore[name-defined]
 
 
 _NAME_CHARS = r"[a-zæüöïœ]+"

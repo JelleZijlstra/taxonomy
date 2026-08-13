@@ -8,10 +8,11 @@ import json
 import textwrap
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db import coordinate_lint
 from taxonomy.db.constants import DistributionOrigin, OccurrenceValidity
@@ -1147,6 +1148,51 @@ def print_review_table(
             f"{_shorten(row.name, 32):<32} {_shorten(_review_target(row), 48):<48} "
             f"{_shorten(evidence, 90)}"
         )
+        generic_recommendations._print_review_detail(
+            "current location",
+            f"L{row.current_location_id} {row.current_location_name}",
+        )
+        generic_recommendations._print_review_detail(
+            "current location tags", repr(row.current_location_tags)
+        )
+        if row.action == ADD_IMPRECISE_LOCALITY:
+            generic_recommendations._print_review_detail(
+                "add type tag", f"ImpreciseLocality(comment={row.tag_comment!r})"
+            )
+        elif row.target is not None:
+            target_identity = (
+                f"L{row.target.location_id} {row.target.location_name}"
+                if row.target.location_id is not None
+                else f"new Location {row.target.location_name}"
+            )
+            generic_recommendations._print_review_detail(
+                "change",
+                f"type_locality: L{row.current_location_id} "
+                f"{row.current_location_name} -> {target_identity}",
+            )
+            for target_field in fields(row.target):
+                generic_recommendations._print_review_detail(
+                    "target field",
+                    f"{target_field.name}={getattr(row.target, target_field.name)!r}",
+                )
+        if row.type_locality_validity is not None:
+            validity = row.type_locality_validity
+            generic_recommendations._print_review_detail(
+                "type-locality validity",
+                f"validity={validity.validity.name}, comment={validity.comment!r}",
+            )
+        for origin in row.regional_origins:
+            generic_recommendations._print_review_detail(
+                "regional origin",
+                f"region=R{origin.region_id} {origin.region_name!r}, "
+                f"origin={origin.origin.name}, source=A{origin.source_id} "
+                f"{origin.source_name!r}, comment={origin.comment!r}",
+            )
+        if row.action == MANUAL_REVIEW:
+            for item in row.evidence:
+                generic_recommendations._print_review_detail(
+                    f"evidence (A{item.source_id} {item.source_name})", item.text
+                )
     counts = Counter(row.action for row in rows)
     print(f"\n{len(rows)} recommendation(s): {dict(counts)}")
 

@@ -1,0 +1,6 @@
+interface:
+  display_name: "Add Taxonomic Group"
+  short_description: "Build staged source-backed taxonomy bundles"
+  default_prompt:
+    "Use $add-taxonomic-group to add a reviewed classification and enrichment workflow
+    for a taxonomic group."

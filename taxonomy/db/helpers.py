@@ -830,7 +830,11 @@ def is_clean_string(text: str) -> bool:
     return clean_string(text) == text
 
 
-HYPHEN_IGNORE_PATTERNS = {"and ", "bis ", "en ", "oder ", "u. ", "und "}
+# A hyphen before one of these complete connector words may be a suspended hyphen
+# (``fine- to coarse-grained``), not an end-of-line hyphen. Escape its following
+# space so subsequent noninteractive cleaning preserves the source punctuation.
+HYPHEN_IGNORE_PATTERNS = {"bis ", "en ", "oder ", "u. ", "und "}
+HYPHEN_IGNORE_WORDS = {"and", "for", "from", "or", "to"}
 HYPHEN_REPLACE_PATTERNS = {
     "adae",
     "akh",
@@ -1029,11 +1033,15 @@ def interactive_clean_string(
         return text
     if "| --" in text or ":\n- " in text:
         return text  # advanced Markdown formatting
-    getinput.print_header(text)
+    if interactive or verbose:
+        getinput.print_header(text)
 
     def repl(m: re.Match[str]) -> str:
         after = m.group(1)
-        if any(after.startswith(pattern) for pattern in HYPHEN_IGNORE_PATTERNS):
+        first_word = re.match(r"^[a-z]+", after)
+        if (
+            first_word is not None and first_word.group() in HYPHEN_IGNORE_WORDS
+        ) or any(after.startswith(pattern) for pattern in HYPHEN_IGNORE_PATTERNS):
             if verbose:
                 print(f"autofix {after!r} in {text}")
             return m.group().replace("- ", "-\\ ")

@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from taxonomy import config
+from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db.constants import ArticleKind, ArticleType, NamingConvention, PersonType
 from taxonomy.db.helpers import trimdoi
@@ -88,6 +89,7 @@ class PersonSpec:
     initials: str | None = None
     tussenvoegsel: str | None = None
     suffix: str | None = None
+    person_id: int | None = None
 
     @classmethod
     def from_virtual_person(cls, person: VirtualPerson) -> PersonSpec:
@@ -140,6 +142,7 @@ class FileSpec:
 class ParentSpec:
     article_id: int | None
     name: str
+    ref: str | None = None
 
     @property
     def is_planned(self) -> bool:
@@ -162,6 +165,7 @@ class Recommendation:
     citation_group: CitationGroupSpec | None
     parent: ParentSpec | None
     file: FileSpec | None
+    ref: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +189,7 @@ class PlannedAction:
     article_type: ArticleType
     fields: Mapping[str, str | None]
     authors: tuple[PersonSpec, ...]
+    resolved_people: tuple[Person | None, ...]
     tags: tuple[ArticleTag, ...]
     crossref_journal: str | None
     already_applied: bool
@@ -255,6 +260,23 @@ def _parse_authors(value: Any, line: int) -> tuple[PersonSpec, ...]:
     output = []
     for item in value:
         data = _object(item, "article author", line)
+        if "person" in data:
+            if set(data) != {"person"}:
+                raise RecommendationError(
+                    f"line {line}: an existing author accepts only person"
+                )
+            person_data = _object(data["person"], "article author person", line)
+            if set(person_data) != {"id", "name"}:
+                raise RecommendationError(
+                    f"line {line}: author person accepts only id and name"
+                )
+            output.append(
+                PersonSpec(
+                    family_name=_required_str(person_data, "name", line),
+                    person_id=_required_int(person_data, "id", line),
+                )
+            )
+            continue
         unknown = set(data) - AUTHOR_FIELDS
         if unknown:
             raise RecommendationError(
@@ -271,7 +293,15 @@ def _parse_authors(value: Any, line: int) -> tuple[PersonSpec, ...]:
         family_name = kwargs.pop("family_name")
         if not family_name:
             raise RecommendationError(f"line {line}: author family_name is required")
-        output.append(PersonSpec(family_name=family_name, **kwargs))
+        output.append(
+            PersonSpec(
+                family_name=family_name,
+                given_names=kwargs["given_names"],
+                initials=kwargs["initials"],
+                tussenvoegsel=kwargs["tussenvoegsel"],
+                suffix=kwargs["suffix"],
+            )
+        )
     return tuple(output)
 
 
@@ -311,8 +341,28 @@ def _parse_citation_group(value: Any, line: int) -> CitationGroupSpec:
 
 def _parse_parent(value: Any, line: int) -> ParentSpec:
     data = _object(value, "article.parent", line)
-    name = _required_str(data, "name", line)
+    name_value = data.get("name") or data.get("label")
+    if not isinstance(name_value, str) or not name_value:
+        raise RecommendationError(f"line {line}: article.parent requires name or label")
+    name = name_value
     object_id = data.get("id")
+    ref = data.get("ref")
+    if ref is not None:
+        if not isinstance(ref, str) or not ref:
+            raise RecommendationError(
+                f"line {line}: article.parent.ref must be a nonempty string"
+            )
+        if data.get("model") != "Article":
+            raise RecommendationError(
+                f"line {line}: article.parent ref must declare model 'Article'"
+            )
+        if object_id is not None:
+            raise RecommendationError(
+                f"line {line}: article.parent accepts exactly one of id or ref"
+            )
+        if set(data) - {"model", "ref", "name", "label"}:
+            raise RecommendationError(f"line {line}: unsupported planned parent fields")
+        return ParentSpec(None, name, ref)
     if object_id is None:
         if set(data) != {"name"}:
             raise RecommendationError(
@@ -326,6 +376,39 @@ def _parse_parent(value: Any, line: int) -> ParentSpec:
             f"line {line}: an existing parent accepts only id and name"
         )
     return ParentSpec(object_id, name)
+
+
+def _order_by_parent_refs(rows: list[Recommendation]) -> list[Recommendation]:
+    producers: dict[str, Recommendation] = {}
+    for row in rows:
+        if row.ref is None:
+            continue
+        if row.ref in producers:
+            raise RecommendationError(
+                f"line {row.line_number}: duplicate Article ref {row.ref!r}"
+            )
+        producers[row.ref] = row
+    pending = list(rows)
+    ordered: list[Recommendation] = []
+    resolved: set[str] = set()
+    while pending:
+        ready: list[Recommendation] = []
+        for row in pending:
+            parent_ref = row.parent.ref if row.parent is not None else None
+            if parent_ref is None or parent_ref in resolved:
+                ready.append(row)
+            elif parent_ref not in producers:
+                raise RecommendationError(
+                    f"line {row.line_number}: unknown parent Article ref {parent_ref!r}"
+                )
+        if not ready:
+            raise RecommendationError("Article parent reference dependency cycle")
+        for row in ready:
+            pending.remove(row)
+            ordered.append(row)
+            if row.ref is not None:
+                resolved.add(row.ref)
+    return ordered
 
 
 def _parse_file(value: Any, line: int) -> FileSpec:
@@ -363,6 +446,11 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         )
     article = _object(_required(data, "article", line_number), "article", line_number)
     name = _required_str(article, "name", line_number)
+    ref = article.get("ref")
+    if ref is not None and (not isinstance(ref, str) or not ref):
+        raise RecommendationError(
+            f"line {line_number}: article.ref must be a nonempty string"
+        )
     file = _parse_file(data["file"], line_number) if "file" in data else None
     parser = get_name_parser(name)
     if errors := parser.get_errors():
@@ -431,6 +519,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         "tags",
         "citation_group",
         "parent",
+        "ref",
     }
     if unknown_article:
         raise RecommendationError(
@@ -468,6 +557,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         citation_group=citation_group,
         parent=parent,
         file=file,
+        ref=ref,
     )
 
 
@@ -527,6 +617,13 @@ def _get_article_by_id(object_id: int) -> Article:
         return Article.get(id=object_id)
     except Article.DoesNotExist as exc:
         raise RecommendationError(f"Article {object_id} does not exist") from exc
+
+
+def _get_person_by_id(object_id: int) -> Person:
+    try:
+        return Person.get(id=object_id)
+    except Person.DoesNotExist as exc:
+        raise RecommendationError(f"Person {object_id} does not exist") from exc
 
 
 def _articles_with_doi(doi: str) -> Iterable[Article]:
@@ -612,16 +709,19 @@ def _check_field_snapshot(article: Article, action: PlannedAction) -> None:
         mismatches.append(
             f"parent={article.parent!r} (expected {action.parent_article!r})"
         )
+    expected_authors = tuple(
+        resolved or spec
+        for spec, resolved in zip(action.authors, action.resolved_people, strict=True)
+    )
     if tuple(_person_key(person) for person in article.get_authors()) != tuple(
-        _person_key(person) for person in action.authors
+        _person_key(person) for person in expected_authors
     ):
         mismatches.append("authors differ")
     if frozenset(article.tags or ()) != frozenset(action.tags):
         mismatches.append("tags differ")
     if mismatches:
         raise RecommendationError(
-            f"line {action.recommendation.line_number}: existing Article "
-            f"{article.name!r} conflicts with recommendation: {'; '.join(mismatches)}"
+            f"line {action.recommendation.line_number}: existing Article {article.name!r} conflicts with recommendation: {'; '.join(mismatches)}"
         )
 
 
@@ -631,6 +731,7 @@ def build_plan(
     options: OptionsLike | None = None,
     get_article: Callable[[str], Article | None] = _get_article,
     get_article_by_id: Callable[[int], Article] = _get_article_by_id,
+    get_person_by_id: Callable[[int], Person] = _get_person_by_id,
     articles_with_doi: Callable[[str], Iterable[Article]] = _articles_with_doi,
     is_catalog_folder: Callable[[str], bool] = _is_catalog_folder,
     get_citation_group: Callable[[int], CitationGroup] = _get_citation_group,
@@ -641,19 +742,28 @@ def build_plan(
     expand_doi: Callable[[str], Mapping[str, Any]] = expand_doi_json,
 ) -> RecommendationPlan:
     resolved_options: OptionsLike = options or config.get_options()
+    rows = _order_by_parent_refs(list(recommendations))
     actions: list[PlannedAction] = []
     seen_names: set[str] = set()
+    seen_refs: set[str] = set()
     seen_dois: set[str] = set()
     seen_sources: set[Path] = set()
     planned_new_citation_groups: dict[str, PlannedCitationGroup] = {}
     planned_actions_by_name: dict[str, PlannedAction] = {}
-    for recommendation in recommendations:
+    planned_actions_by_ref: dict[str, PlannedAction] = {}
+    for recommendation in rows:
         line = recommendation.line_number
         if recommendation.name in seen_names:
             raise RecommendationError(
                 f"line {line}: duplicate create_article name {recommendation.name!r}"
             )
         seen_names.add(recommendation.name)
+        if recommendation.ref is not None:
+            if recommendation.ref in seen_refs:
+                raise RecommendationError(
+                    f"line {line}: duplicate Article ref {recommendation.ref!r}"
+                )
+            seen_refs.add(recommendation.ref)
         if recommendation.doi is not None:
             if recommendation.doi in seen_dois:
                 raise RecommendationError(
@@ -683,8 +793,7 @@ def build_plan(
             resolved_source = source.resolve(strict=False)
             if resolved_source in seen_sources:
                 raise RecommendationError(
-                    f"line {line}: staged file is used by more than one recommendation: "
-                    f"{source}"
+                    f"line {line}: staged file is used by more than one recommendation: {source}"
                 )
             seen_sources.add(resolved_source)
             if not destination_dir.is_dir():
@@ -693,13 +802,11 @@ def build_plan(
                 )
             if not is_catalog_folder(recommendation.file.destination_folder):
                 raise RecommendationError(
-                    f"line {line}: destination is not an existing catalog folder: "
-                    f"{recommendation.file.destination_folder!r}"
+                    f"line {line}: destination is not an existing catalog folder: {recommendation.file.destination_folder!r}"
                 )
             if not destination_dir.resolve().is_relative_to(library_root):
                 raise RecommendationError(
-                    f"line {line}: destination folder resolves outside library_path: "
-                    f"{destination_dir}"
+                    f"line {line}: destination folder resolves outside library_path: {destination_dir}"
                 )
             if source.is_symlink():
                 raise RecommendationError(
@@ -743,8 +850,7 @@ def build_plan(
                 )
             if recommendation.citation_group is not None:
                 raise RecommendationError(
-                    f"line {line}: {article_type.name} Article inherits its "
-                    "CitationGroup from its parent"
+                    f"line {line}: {article_type.name} Article inherits its CitationGroup from its parent"
                 )
         elif recommendation.parent is not None:
             raise RecommendationError(
@@ -767,6 +873,22 @@ def build_plan(
             )
         else:
             authors = ()
+        resolved_people: list[Person | None] = []
+        for author in authors:
+            if author.person_id is None:
+                resolved_people.append(None)
+                continue
+            person = get_person_by_id(author.person_id)
+            if (
+                person.id != author.person_id
+                or person.family_name != author.family_name
+                or person.is_invalid()
+            ):
+                raise RecommendationError(
+                    f"line {line}: Person {author.person_id} is not valid with "
+                    f"family name {author.family_name!r}"
+                )
+            resolved_people.append(person)
         if recommendation.serialized_tags is not None:
             tags = _decode_tags(
                 recommendation.serialized_tags,
@@ -838,8 +960,7 @@ def build_plan(
                         assert earlier.region is not None
                         if earlier.spec != spec or earlier.region.id != region.id:
                             raise RecommendationError(
-                                f"line {line}: conflicting definitions for new "
-                                f"CitationGroup {spec.name!r}"
+                                f"line {line}: conflicting definitions for new CitationGroup {spec.name!r}"
                             )
                         planned_cg = earlier
                     else:
@@ -877,16 +998,23 @@ def build_plan(
                     or parent_article.is_invalid()
                 ):
                     raise RecommendationError(
-                        f"line {line}: parent Article {parent_spec.article_id} is not "
-                        f"valid with name {parent_spec.name!r}"
+                        f"line {line}: parent Article {parent_spec.article_id} is not valid with name {parent_spec.name!r}"
                     )
                 parent_type = parent_article.type
             else:
-                earlier_action = planned_actions_by_name.get(parent_spec.name)
+                earlier_action = (
+                    planned_actions_by_ref.get(parent_spec.ref)
+                    if parent_spec.ref is not None
+                    else planned_actions_by_name.get(parent_spec.name)
+                )
                 if earlier_action is None:
+                    identity = (
+                        f"ref {parent_spec.ref!r}"
+                        if parent_spec.ref is not None
+                        else repr(parent_spec.name)
+                    )
                     raise RecommendationError(
-                        f"line {line}: planned parent {parent_spec.name!r} must be an "
-                        "earlier create_article recommendation"
+                        f"line {line}: planned parent {identity} must be an earlier create_article recommendation or a declared Article ref"
                     )
                 parent_article = earlier_action.article
                 parent_type = earlier_action.article_type
@@ -919,6 +1047,7 @@ def build_plan(
             article_type=article_type,
             fields=fields,
             authors=authors,
+            resolved_people=tuple(resolved_people),
             tags=tags,
             crossref_journal=(
                 raw.get("journal") if isinstance(raw.get("journal"), str) else None
@@ -947,12 +1076,13 @@ def build_plan(
                 )
                 if existing is None:
                     raise RecommendationError(
-                        f"line {line}: destination exists without the recommended "
-                        f"Article: {destination}"
+                        f"line {line}: destination exists without the recommended Article: {destination}"
                     )
                 action = replace(action, already_applied=True)
         actions.append(action)
         planned_actions_by_name[recommendation.name] = action
+        if recommendation.ref is not None:
+            planned_actions_by_ref[recommendation.ref] = action
     return RecommendationPlan(
         tuple(actions), Counter(action.recommendation.action for action in actions)
     )
@@ -964,21 +1094,61 @@ def print_review_table(rows: Iterable[Recommendation]) -> None:
         parent = row.parent.name if row.parent else "-"
         destination = row.file.destination_folder if row.file else "-"
         print(
-            f"line={row.line_number} action={row.action} confidence={row.confidence} "
-            f"name={row.name!r} doi={row.doi!r} citation_group={cg!r} "
-            f"parent={parent!r} destination={destination!r}"
+            f"line={row.line_number} action={row.action} confidence={row.confidence} ref={row.ref!r} name={row.name!r} doi={row.doi!r} citation_group={cg!r} parent={parent!r} destination={destination!r}"
         )
+        generic_recommendations._print_review_detail(
+            "article type",
+            "None" if row.article_type is None else row.article_type.name,
+        )
+        for field_name, value in row.fields.items():
+            generic_recommendations._print_review_detail(
+                "field", f"{field_name}={value!r}"
+            )
+        if row.authors is not None:
+            for index, author in enumerate(row.authors, start=1):
+                if author.person_id is not None:
+                    author_fields = (
+                        f"Person:{author.person_id} family_name={author.family_name!r}"
+                    )
+                else:
+                    author_fields = ", ".join(
+                        f"{name}={value!r}"
+                        for name, value in author.as_kwargs().items()
+                        if value is not None
+                    )
+                generic_recommendations._print_review_detail(
+                    f"author {index}", author_fields
+                )
+        if row.serialized_tags is not None:
+            for tag in row.serialized_tags:
+                generic_recommendations._print_review_detail(
+                    "tag",
+                    generic_recommendations._format_serialized_tag(Article.tags, tag),
+                )
+        if row.citation_group is not None:
+            generic_recommendations._print_review_detail(
+                "citation group", repr(row.citation_group)
+            )
+        if row.parent is not None:
+            generic_recommendations._print_review_detail("parent", repr(row.parent))
+        if row.file is not None:
+            generic_recommendations._print_review_detail("file", repr(row.file))
 
 
-def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> None:
+def add_virtual_models(
+    plan: RecommendationPlan, builder: ProposalBuilder
+) -> Mapping[str, Article]:
     now = datetime.datetime.now(tz=datetime.UTC)
     new_citation_groups: dict[str, CitationGroup] = {}
     planned_articles: dict[str, Article] = {}
+    references: dict[str, Article] = {}
     for action in plan.actions:
         context = f"line {action.recommendation.line_number} create_article"
         if action.article is not None:
             article = builder.copy(action.article, context=context)
             planned_articles[action.recommendation.name] = article
+            if action.recommendation.ref is not None:
+                references[action.recommendation.ref] = article
             continue
         cg: CitationGroup | None = None
         if action.citation_group is not None:
@@ -1002,18 +1172,24 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                     )
                     new_citation_groups[planned.spec.name] = cg
         virtual_people = [
-            builder.create(
-                Person,
-                context=context,
-                family_name=person.family_name,
-                given_names=person.given_names,
-                initials=person.initials,
-                tussenvoegsel=person.tussenvoegsel,
-                suffix=person.suffix,
-                type=PersonType.unchecked,
-                naming_convention=NamingConvention.unspecified,
+            (
+                builder.copy(resolved, context=context)
+                if resolved is not None
+                else builder.create(
+                    Person,
+                    context=context,
+                    family_name=person.family_name,
+                    given_names=person.given_names,
+                    initials=person.initials,
+                    tussenvoegsel=person.tussenvoegsel,
+                    suffix=person.suffix,
+                    type=PersonType.unchecked,
+                    naming_convention=NamingConvention.unspecified,
+                )
             )
-            for person in action.authors
+            for person, resolved in zip(
+                action.authors, action.resolved_people, strict=True
+            )
         ]
         parent: Article | None = None
         if action.planned_parent_name is not None:
@@ -1048,6 +1224,9 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
         for field, value in action.fields.items():
             setattr(article, field, value)
         planned_articles[action.recommendation.name] = article
+        if action.recommendation.ref is not None:
+            references[action.recommendation.ref] = article
+    return references
 
 
 def _create_citation_group(planned: PlannedCitationGroup) -> CitationGroup:
@@ -1115,7 +1294,7 @@ def execute_plan(
     install_pdf: Callable[[Path, Path, str], None] = _install_pdf,
     run_auxiliary: Callable[..., None] = _run_auxiliary,
     add_article_history: Callable[[Article], None] = _add_article_history,
-) -> None:
+) -> Mapping[str, Article]:
     created_citation_groups: dict[str, CitationGroup] = {}
     resolved_articles: dict[str, Article] = {}
     for action in plan.actions:
@@ -1153,7 +1332,14 @@ def execute_plan(
         article = action.article
         if article is None:
             people = [
-                get_or_create_person(**person.as_kwargs()) for person in action.authors
+                (
+                    resolved
+                    if resolved is not None
+                    else get_or_create_person(**person.as_kwargs())
+                )
+                for person, resolved in zip(
+                    action.authors, action.resolved_people, strict=True
+                )
             ]
             values: dict[str, Any] = {
                 "kind": action.kind,
@@ -1184,3 +1370,9 @@ def execute_plan(
     print(f"{mode}: {len(plan.actions)} create_article recommendation(s).")
     if not apply:
         print("No database or filesystem changes made. Pass --apply to execute.")
+    return {
+        action.recommendation.ref: resolved_articles[action.recommendation.name]
+        for action in plan.actions
+        if action.recommendation.ref is not None
+        and action.recommendation.name in resolved_articles
+    }

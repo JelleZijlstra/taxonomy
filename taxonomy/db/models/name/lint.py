@@ -6774,6 +6774,13 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintR
         return
     tag_name = nam.resolve_variant(unavailable_version=False)
     for ce in ces:
+        for ce_tag in ce.tags:
+            if not isinstance(ce_tag, ClassificationEntryTag.EtymologyDetail):
+                continue
+            tag = TypeTag.EtymologyDetail(ce_tag.text, ce.article)
+            if tag not in tag_name.type_tags:
+                message = f"adding etymology from {ce} to {tag_name}: {tag}"
+                yield add_tag_issue(message, tag_name, tag, field="type_tags")
         if nam.group is Group.species:
             location = ce.type_locality
             if location and not any(

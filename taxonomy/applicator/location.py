@@ -23,6 +23,7 @@ from io import StringIO
 from pathlib import Path
 from typing import Any, Protocol, cast
 
+from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db.models import Article, Location, Period, Region, StratigraphicUnit
 from taxonomy.db.models.location import LocationStatus
@@ -1345,6 +1346,13 @@ def _format_field_change(change: FieldChange, *, target: bool = True) -> str:
     return f"{change.field}={rendered_value}"
 
 
+def _format_exact_field_change(change: FieldChange) -> str:
+    return (
+        f"{_format_field_change(change, target=False)} -> "
+        f"{_format_field_change(change)}"
+    )
+
+
 def print_review_table(recommendations: Iterable[Recommendation]) -> None:
     print(f"{'ACTION':<18} {'CONF':<8} {'CURRENT':<52} TARGET")
     print("-" * 150)
@@ -1384,6 +1392,43 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
             f"{row.action:<18} {row.confidence:<8} "
             f"{_shorten(current, 52):<52} {_shorten(target, 65)}"
         )
+        if row.action == RENAME_LOCATION:
+            assert row.location is not None and row.new_name is not None
+            generic_recommendations._print_review_detail(
+                "change",
+                f"name={row.location.location_name!r} -> name={row.new_name!r}",
+            )
+        elif row.action == EDIT_LOCATION:
+            for field_change in row.changes:
+                generic_recommendations._print_review_detail(
+                    "change", _format_exact_field_change(field_change)
+                )
+            for tag in row.add_tags:
+                generic_recommendations._print_review_detail("add tag", repr(tag))
+            for tag in row.remove_tags:
+                generic_recommendations._print_review_detail("remove tag", repr(tag))
+        elif row.action == PROMOTE_LOCATION_ALIAS_NAME:
+            assert row.source is not None and row.target is not None
+            generic_recommendations._print_review_detail(
+                "change",
+                f"name={row.target.location_name!r} -> "
+                f"name={row.source.location_name!r}",
+            )
+        else:
+            assert row.source is not None and row.target is not None
+            generic_recommendations._print_review_detail(
+                "merge",
+                f"L{row.source.location_id} {row.source.location_name} -> "
+                f"L{row.target.location_id} {row.target.location_name}",
+            )
+            generic_recommendations._print_review_detail(
+                "allow temporal context conflicts",
+                repr(row.allow_temporal_context_conflicts),
+            )
+            for field_change in row.changes:
+                generic_recommendations._print_review_detail(
+                    "target change", _format_exact_field_change(field_change)
+                )
     print(f"\n{sum(counts.values())} recommendation(s): {dict(counts)}")
 
 

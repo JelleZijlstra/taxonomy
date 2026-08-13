@@ -1,45 +1,285 @@
 """Review or apply heterogeneous taxonomy recommendations from JSONL.
 
 The default mode validates the complete file against the current database and prints
-a dry run. Rows are dispatched by ``action`` to the Article, generic, Location, or
-type-locality recommendation implementations, so one file may contain all families. Use ``--review``
+a dry run. Registered action handlers let one file contain Articles, ordinary model
+changes, Locations, type localities, Taxon/base-Name pairs, and coverage assertions. Use ``--review``
 for a database-independent summary, ``--review-manual`` for the complete text of
 manual-review rows and actionable rows carrying ``review_note``, and ``--edit-manual``
 to open every manual-review object in the database editor after printing its complete
-note. Combine ``--apply --edit-manual`` to apply actionable rows first and then work
-through the unresolved objects interactively. Use ``--review-each`` to review every
+note. ``--apply`` performs both post-apply cleanup and manual-review editing by default;
+use ``--no-edit-applied`` or ``--no-edit-manual`` to skip either phase. Use
+``--review-each`` to review every
 row in file order and choose yes (queue it for application), no (skip it), or edit
 (open its affected database object and skip the automated recommendation). Add
 ``--virtual-lint`` to construct the final proposed model states in memory and run
 advisory lint before the dry run or apply step. Use ``--virtual-lint-issues-only`` to
 run the same lint while printing only unresolved ``VIRTUAL_LINT_ISSUES``. Flags
-compose: static review views run
+compose: static and classification review views run
 first, followed by requested lint and dry-run output, application or per-row review,
-and finally manual editing. The only incompatible pair is ``--apply`` with
+affected-object cleanup, and finally manual editing. The only incompatible pair is ``--apply`` with
 ``--review-each``, because one applies every row while the other selects a subset.
 """
 
 import argparse
 import json
-from collections.abc import Callable
+import traceback
+from collections import Counter
+from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, Self, cast
 
 from clirm import readonly
 
 from taxonomy import getinput
 from taxonomy.applicator import article as article_recommendations
+from taxonomy.applicator import coverage as coverage_recommendations
 from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import proposals as virtual_proposals
+from taxonomy.applicator import taxon as taxon_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
 from taxonomy.db.models import Name
+from taxonomy.db.models.base import BaseModel, LintConfig
 
 
 class RecommendationError(Exception):
     pass
+
+
+@dataclass(frozen=True, slots=True)
+class RegisteredActionHandler:
+    """Compatibility adapter registered with the common manifest parser."""
+
+    family: str
+    actions: frozenset[str]
+    parse: Callable[[dict[str, Any], int], Any]
+    matches: Callable[[dict[str, Any]], bool] = lambda _data: True
+
+
+ACTION_HANDLERS = (
+    RegisteredActionHandler(
+        "taxon",
+        frozenset(taxon_recommendations.ALLOWED_ACTIONS),
+        taxon_recommendations.parse_recommendation,
+    ),
+    RegisteredActionHandler(
+        "coverage",
+        frozenset(coverage_recommendations.ALLOWED_ACTIONS),
+        coverage_recommendations.parse_recommendation,
+    ),
+    RegisteredActionHandler(
+        "article",
+        frozenset(article_recommendations.ALLOWED_ACTIONS),
+        article_recommendations.parse_recommendation,
+    ),
+    RegisteredActionHandler(
+        "generic",
+        frozenset(generic_recommendations.ALLOWED_ACTIONS),
+        generic_recommendations.parse_recommendation,
+        lambda data: data.get("action") != generic_recommendations.MANUAL_REVIEW
+        or "object" in data,
+    ),
+    RegisteredActionHandler(
+        "location",
+        frozenset(location_recommendations.ALLOWED_ACTIONS),
+        location_recommendations.parse_recommendation,
+    ),
+    RegisteredActionHandler(
+        "type_locality",
+        frozenset(type_recommendations.ALLOWED_ACTIONS),
+        type_recommendations.parse_recommendation,
+    ),
+)
+
+
+class AppliedObjectRecorder:
+    """Collect persistent models created or saved within a scoped execution."""
+
+    def __init__(self, model_classes: Iterable[type[BaseModel]] | None = None) -> None:
+        self._model_classes = (
+            tuple(model_classes) if model_classes is not None else None
+        )
+        self._events: list[Any] = []
+        self._objects: list[BaseModel] = []
+        self._seen: set[tuple[type[BaseModel], object]] = set()
+        self._callback = self._record
+
+    @staticmethod
+    def _all_model_classes() -> tuple[type[BaseModel], ...]:
+        classes: list[type[BaseModel]] = []
+        pending = list(BaseModel.__subclasses__())
+        while pending:
+            model = pending.pop()
+            classes.append(model)
+            pending.extend(model.__subclasses__())
+        return tuple(classes)
+
+    def _record(self, obj: BaseModel) -> None:
+        object_id = getattr(obj, "id", None)
+        identity: object = object_id if object_id is not None else id(obj)
+        key = (type(obj), identity)
+        if key in self._seen:
+            return
+        self._seen.add(key)
+        self._objects.append(obj)
+
+    def __enter__(self) -> Self:
+        seen_events: set[int] = set()
+        model_classes = self._model_classes or self._all_model_classes()
+        for model in model_classes:
+            for event_name in ("creation_event", "save_event"):
+                event = getattr(model, event_name, None)
+                if event is None or id(event) in seen_events:
+                    continue
+                seen_events.add(id(event))
+                event.handlers.append(self._callback)
+                self._events.append(event)
+        return self
+
+    def __exit__(self, *_exc_info: object) -> None:
+        for event in self._events:
+            event.handlers.remove(self._callback)
+        self._events.clear()
+
+    @property
+    def objects(self) -> tuple[BaseModel, ...]:
+        return tuple(self._objects)
+
+
+@dataclass(frozen=True, slots=True)
+class ExecutionResult:
+    affected_objects: tuple[BaseModel, ...]
+
+
+def _persistent_identity(obj: BaseModel) -> tuple[type[BaseModel], object]:
+    object_id = getattr(obj, "id", None)
+    return type(obj), object_id if object_id is not None else id(obj)
+
+
+def _deduplicate_objects(objects: Iterable[BaseModel]) -> tuple[BaseModel, ...]:
+    output: list[BaseModel] = []
+    seen: set[tuple[type[BaseModel], object]] = set()
+    for obj in objects:
+        if getattr(obj, "id", None) is None:
+            continue
+        key = _persistent_identity(obj)
+        if key not in seen:
+            seen.add(key)
+            output.append(obj)
+    return tuple(output)
+
+
+def _declared_affected_objects(
+    plans: AnyRecommendationPlans, replacements: Mapping[int, BaseModel]
+) -> Iterable[BaseModel]:
+    if isinstance(plans, UnifiedRecommendationPlan):
+        article_plan = plans.article
+        taxon_plan = plans.taxon
+        generic_plan = plans.generic
+        location_plan = plans.location
+        type_plan = plans.type_locality
+    else:
+        article_plan, generic_plan, location_plan, type_plan = plans
+        taxon_plan = None
+    for article_action in article_plan.actions:
+        if article_action.article is not None:
+            yield article_action.article
+    if taxon_plan is not None:
+        for taxon_action in taxon_plan.actions:
+            yield generic_recommendations._replace_created_models(
+                taxon_action.taxon, replacements
+            )
+            yield generic_recommendations._replace_created_models(
+                taxon_action.name, replacements
+            )
+    for generic_action in generic_plan.actions:
+        if (
+            generic_action.recommendation.action
+            != generic_recommendations.MANUAL_REVIEW
+        ):
+            yield generic_recommendations._replace_created_models(
+                generic_action.object, replacements
+            )
+    for location_action in location_plan.actions:
+        if isinstance(
+            location_action,
+            (
+                location_recommendations.PlannedRename,
+                location_recommendations.PlannedEdit,
+            ),
+        ):
+            if isinstance(location_action.location, BaseModel):
+                yield location_action.location
+        else:
+            if isinstance(location_action.source, BaseModel):
+                yield location_action.source
+            if isinstance(location_action.target, BaseModel):
+                yield location_action.target
+    for type_update in type_plan.updates:
+        if type_update.recommendation.action not in {
+            type_recommendations.MANUAL_REVIEW,
+            type_recommendations.NO_ACTION,
+        } and isinstance(type_update.name, BaseModel):
+            yield type_update.name
+    for tag_update in type_plan.location_tag_updates:
+        if isinstance(tag_update.location, BaseModel):
+            yield tag_update.location
+    for serialized_tag_update in type_plan.serialized_location_tag_updates:
+        if isinstance(serialized_tag_update.location, BaseModel):
+            yield serialized_tag_update.location
+    for validity_update in type_plan.type_locality_validity_updates:
+        if isinstance(validity_update.name, BaseModel):
+            yield validity_update.name
+    for origin_update in type_plan.regional_origin_updates:
+        if isinstance(origin_update.taxon, BaseModel):
+            yield origin_update.taxon
+
+
+def edit_applied_objects(result: ExecutionResult) -> bool:
+    """Clean affected objects and any additional objects their autofixes create."""
+    failures: list[str] = []
+    objects = list(result.affected_objects)
+    seen = {_persistent_identity(obj) for obj in objects}
+    # Structured lint may create related models (notably CE materialization). Keep
+    # recording during cleanup and append those models in deterministic event order.
+    with AppliedObjectRecorder() as recorder:
+        index = 0
+        while index < len(objects):
+            obj = objects[index]
+            label = getattr(obj, type(obj).label_field, None)
+            print(
+                f"POST_APPLY_CLEANUP {index + 1}/{len(objects)} "
+                f"object={type(obj).__name__}:{obj.id} label={label!r}"
+            )
+            try:
+                obj.reload()
+                obj.format(quiet=True)
+                obj.edit_until_clean()
+                obj.reload()
+                if not obj.is_lint_clean(
+                    cfg=LintConfig(interactive=False, autofix=False)
+                ):
+                    failures.append(f"{type(obj).__name__}:{obj.id} has residual lint")
+            except Exception as exc:
+                traceback.print_exc()
+                failures.append(f"{type(obj).__name__}:{obj.id}: {exc}")
+            for discovered in recorder.objects:
+                if getattr(discovered, "id", None) is None:
+                    continue
+                key = _persistent_identity(discovered)
+                if key not in seen:
+                    seen.add(key)
+                    objects.append(discovered)
+            index += 1
+    print(
+        f"POST_APPLY_CLEANUP total={len(objects)} "
+        f"clean={len(objects) - len(failures)} incomplete={len(failures)}"
+    )
+    for failure in failures:
+        print(f"  INCOMPLETE {failure}")
+    return not failures
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +288,8 @@ class Recommendations:
     generic_rows: tuple[generic_recommendations.Recommendation, ...]
     location_rows: tuple[location_recommendations.Recommendation, ...]
     type_locality_rows: tuple[type_recommendations.Recommendation, ...]
+    taxon_rows: tuple[taxon_recommendations.Recommendation, ...] = ()
+    coverage_rows: tuple[coverage_recommendations.Recommendation, ...] = ()
 
     @property
     def count(self) -> int:
@@ -56,6 +298,8 @@ class Recommendations:
             + len(self.generic_rows)
             + len(self.location_rows)
             + len(self.type_locality_rows)
+            + len(self.taxon_rows)
+            + len(self.coverage_rows)
         )
 
 
@@ -72,6 +316,8 @@ Recommendation = (
     | generic_recommendations.Recommendation
     | location_recommendations.Recommendation
     | type_recommendations.Recommendation
+    | taxon_recommendations.Recommendation
+    | coverage_recommendations.Recommendation
 )
 RecommendationPlans = tuple[
     article_recommendations.RecommendationPlan,
@@ -82,10 +328,27 @@ RecommendationPlans = tuple[
 
 
 @dataclass(frozen=True, slots=True)
+class UnifiedRecommendationPlan:
+    article: article_recommendations.RecommendationPlan
+    taxon: taxon_recommendations.RecommendationPlan
+    generic: generic_recommendations.RecommendationPlan
+    location: location_recommendations.RecommendationPlan
+    type_locality: type_recommendations.RecommendationPlan
+    coverage: coverage_recommendations.RecommendationPlan
+    proposals: tuple[virtual_proposals.ProposedModel, ...]
+    references: Mapping[str, BaseModel]
+
+
+AnyRecommendationPlans = RecommendationPlans | UnifiedRecommendationPlan
+
+
+@dataclass(frozen=True, slots=True)
 class IndividualReviewItem:
     line_number: int
     recommendation: Recommendation
-    family: Literal["article", "generic", "location", "type_locality"]
+    family: Literal[
+        "article", "generic", "location", "type_locality", "taxon", "coverage"
+    ]
     edit_object: Any | None
 
 
@@ -184,6 +447,8 @@ def read_recommendations(path: Path) -> Recommendations:
     generic_rows: list[generic_recommendations.Recommendation] = []
     location_rows: list[location_recommendations.Recommendation] = []
     type_rows: list[type_recommendations.Recommendation] = []
+    taxon_rows: list[taxon_recommendations.Recommendation] = []
+    coverage_rows: list[coverage_recommendations.Recommendation] = []
     try:
         lines = path.read_text().splitlines()
     except OSError as exc:
@@ -201,47 +466,57 @@ def read_recommendations(path: Path) -> Recommendations:
             raise RecommendationError(f"line {line_number}: row must be an object")
         action = data.get("action")
         try:
-            if action in article_recommendations.ALLOWED_ACTIONS:
-                article_rows.append(
-                    article_recommendations.parse_recommendation(data, line_number)
-                )
-            elif action == generic_recommendations.MANUAL_REVIEW and "object" in data:
-                generic_rows.append(
-                    generic_recommendations.parse_recommendation(data, line_number)
-                )
-            elif action == type_recommendations.MANUAL_REVIEW:
-                type_rows.append(
-                    type_recommendations.parse_recommendation(data, line_number)
-                )
-            elif action in generic_recommendations.ALLOWED_ACTIONS:
-                generic_rows.append(
-                    generic_recommendations.parse_recommendation(data, line_number)
-                )
-            elif action in location_recommendations.ALLOWED_ACTIONS:
-                location_rows.append(
-                    location_recommendations.parse_recommendation(data, line_number)
-                )
-            elif action in type_recommendations.ALLOWED_ACTIONS:
-                type_rows.append(
-                    type_recommendations.parse_recommendation(data, line_number)
-                )
-            else:
+            handler = next(
+                (
+                    candidate
+                    for candidate in ACTION_HANDLERS
+                    if action in candidate.actions and candidate.matches(data)
+                ),
+                None,
+            )
+            if handler is None:
                 raise RecommendationError(
                     f"line {line_number}: unsupported action {action!r}"
                 )
+            parsed = handler.parse(data, line_number)
+            destinations: dict[str, list[Any]] = {
+                "article": article_rows,
+                "generic": generic_rows,
+                "location": location_rows,
+                "type_locality": type_rows,
+                "taxon": taxon_rows,
+                "coverage": coverage_rows,
+            }
+            destinations[handler.family].append(parsed)
         except (
             generic_recommendations.RecommendationError,
             article_recommendations.RecommendationError,
             location_recommendations.RecommendationError,
             type_recommendations.RecommendationError,
+            taxon_recommendations.RecommendationError,
+            coverage_recommendations.RecommendationError,
         ) as exc:
             raise RecommendationError(str(exc)) from exc
-    if not article_rows and not generic_rows and not location_rows and not type_rows:
+    if not any(
+        (
+            article_rows,
+            generic_rows,
+            location_rows,
+            type_rows,
+            taxon_rows,
+            coverage_rows,
+        )
+    ):
         raise RecommendationError("recommendation file contains no rows")
     _validate_location_rows(location_rows)
     _validate_type_locality_rows(type_rows)
     return Recommendations(
-        tuple(article_rows), tuple(generic_rows), tuple(location_rows), tuple(type_rows)
+        tuple(article_rows),
+        tuple(generic_rows),
+        tuple(location_rows),
+        tuple(type_rows),
+        tuple(taxon_rows),
+        tuple(coverage_rows),
     )
 
 
@@ -268,6 +543,16 @@ def print_review(
         for row in recommendations.type_locality_rows
         if actions is None or row.action in actions
     )
+    taxon_rows = tuple(
+        row
+        for row in recommendations.taxon_rows
+        if actions is None or row.action in actions
+    )
+    coverage_rows = tuple(
+        row
+        for row in recommendations.coverage_rows
+        if actions is None or row.action in actions
+    )
     if article_rows:
         print("ARTICLE RECOMMENDATIONS")
         article_recommendations.print_review_table(article_rows)
@@ -286,7 +571,26 @@ def print_review(
             print()
         print("TYPE-LOCALITY RECOMMENDATIONS")
         type_recommendations.print_review_table(type_rows)
-    if not article_rows and not generic_rows and not location_rows and not type_rows:
+    if taxon_rows:
+        if article_rows or generic_rows or location_rows or type_rows:
+            print()
+        print("TAXON RECOMMENDATIONS")
+        taxon_recommendations.print_review_table(taxon_rows)
+    if coverage_rows:
+        if article_rows or generic_rows or location_rows or type_rows or taxon_rows:
+            print()
+        print("COVERAGE ASSERTIONS")
+        coverage_recommendations.print_review_table(coverage_rows)
+    if not any(
+        (
+            article_rows,
+            generic_rows,
+            location_rows,
+            type_rows,
+            taxon_rows,
+            coverage_rows,
+        )
+    ):
         print("No recommendations match the requested actions.")
 
 
@@ -319,6 +623,120 @@ def print_manual_reviews(recommendations: Recommendations) -> None:
         if generic_rows or location_rows:
             print()
         type_recommendations.print_full_manual_reviews(type_rows)
+
+
+def print_classification_review(recommendations: Recommendations) -> None:
+    """Render the source-local CE trees directly from native object rows."""
+    rows = [
+        row
+        for row in recommendations.generic_rows
+        if row.action == generic_recommendations.CREATE_OBJECT
+        and row.object.model == "ClassificationEntry"
+    ]
+    if not rows:
+        print("No native ClassificationEntry creation recommendations.")
+        return
+    by_ref = {row.object.ref: row for row in rows}
+    children: dict[str | None, list[generic_recommendations.Recommendation]] = {}
+    for row in rows:
+        assert row.values is not None
+        parent = row.values.get("parent")
+        parent_ref = parent.get("ref") if isinstance(parent, dict) else None
+        children.setdefault(parent_ref, []).append(row)
+
+    def display(row: generic_recommendations.Recommendation, depth: int) -> None:
+        assert row.values is not None and row.object.ref is not None
+        article = row.values.get("article")
+        article_ref = article.get("ref") if isinstance(article, dict) else article
+        occurrences = sum(
+            1
+            for candidate in recommendations.generic_rows
+            if candidate.action == generic_recommendations.CREATE_OBJECT
+            and candidate.object.model == "OccurrenceRecord"
+            and candidate.values is not None
+            and isinstance(candidate.values.get("classification_entry"), dict)
+            and candidate.values["classification_entry"].get("ref") == row.object.ref
+        )
+        print(
+            f"{'  ' * depth}{row.object.label} "
+            f"[{row.values.get('rank')}; page {row.values.get('page')}; "
+            f"article={article_ref}; occurrences={occurrences}]"
+        )
+        for child in children.get(row.object.ref, ()):
+            display(child, depth + 1)
+
+    roots = [
+        row
+        for row in rows
+        if not (
+            isinstance((row.values or {}).get("parent"), dict)
+            and (row.values or {})["parent"].get("ref") in by_ref
+        )
+    ]
+    for index, root in enumerate(roots):
+        if index:
+            print()
+        display(root, 0)
+
+
+def print_reconciliation_review(plans: AnyRecommendationPlans) -> None:
+    if isinstance(plans, UnifiedRecommendationPlan):
+        generic_plan = plans.generic
+    else:
+        generic_plan = plans[1]
+    ce_actions = [
+        action
+        for action in generic_plan.actions
+        if action.recommendation.action == generic_recommendations.CREATE_OBJECT
+        and action.recommendation.object.model == "ClassificationEntry"
+    ]
+    occurrence_actions = [
+        action
+        for action in generic_plan.actions
+        if action.recommendation.action == generic_recommendations.CREATE_OBJECT
+        and action.recommendation.object.model == "OccurrenceRecord"
+    ]
+    if not ce_actions and not occurrence_actions:
+        print("No native classification objects to reconcile.")
+        return
+    for action in ce_actions:
+        values = action.new_value
+        mapped = values.get("mapped_name")
+        if mapped is not None:
+            status = f"MAPPED {mapped}"
+        elif any(type(tag).__name__ == "Materialize" for tag in values.get("tags", ())):
+            status = (
+                "MATERIALIZE_NAME"
+                if values["rank"].is_synonym
+                else "MATERIALIZE_TAXON_AND_NAME"
+            )
+        else:
+            name = values["name"]
+            matches = list(Name.select().filter(Name.corrected_original_name == name))
+            if len(matches) == 1:
+                status = f"EXACT_CANDIDATE Name:{matches[0].id}"
+            elif matches:
+                status = f"AMBIGUOUS {len(matches)} candidates"
+            else:
+                status = "UNRECOGNIZED"
+        print(
+            f"RECONCILIATION ClassificationEntry ref={action.recommendation.object.ref!r} "
+            f"name={values['name']!r} status={status}"
+        )
+    for action in occurrence_actions:
+        values = action.new_value
+        location = values.get("location")
+        tags = values.get("tags") or ()
+        declared_hint = any(type(tag).__name__ == "LocationHint" for tag in tags)
+        status = (
+            "RESOLVED"
+            if location is not None
+            else ("UNRESOLVED_DECLARED" if declared_hint else "MISSING")
+        )
+        print(
+            f"RECONCILIATION OccurrenceRecord ref={action.recommendation.object.ref!r} "
+            f"locality={values['locality_text']!r} location={status}"
+        )
 
 
 def _get_name_for_manual_review(name_id: int) -> Name:
@@ -413,18 +831,26 @@ def _edit_manual_review_objects(items: tuple[ManualReviewObject, ...]) -> None:
 def _all_recommendation_rows(
     recommendations: Recommendations,
 ) -> tuple[
-    tuple[Literal["article", "generic", "location", "type_locality"], Recommendation],
+    tuple[
+        Literal["article", "generic", "location", "type_locality", "taxon", "coverage"],
+        Recommendation,
+    ],
     ...,
 ]:
     rows: list[
         tuple[
-            Literal["article", "generic", "location", "type_locality"], Recommendation
+            Literal[
+                "article", "generic", "location", "type_locality", "taxon", "coverage"
+            ],
+            Recommendation,
         ]
     ] = [
         *(("article", row) for row in recommendations.article_rows),
         *(("generic", row) for row in recommendations.generic_rows),
         *(("location", row) for row in recommendations.location_rows),
         *(("type_locality", row) for row in recommendations.type_locality_rows),
+        *(("taxon", row) for row in recommendations.taxon_rows),
+        *(("coverage", row) for row in recommendations.coverage_rows),
     ]
     return tuple(sorted(rows, key=lambda item: item[1].line_number))
 
@@ -443,13 +869,17 @@ def _location_edit_object(action: location_recommendations.PlannedAction) -> Any
 
 def _resolve_individual_review_items(
     recommendations: Recommendations,
-    plans: RecommendationPlans,
+    plans: AnyRecommendationPlans,
     *,
     get_name: Callable[[int], Any] = _get_name_for_manual_review,
     label_name: Callable[[Any], str] = _name_label,
 ) -> tuple[IndividualReviewItem, ...]:
     """Resolve every possible editor target before opening the first editor."""
-    _, generic_plan, location_plan, _ = plans
+    if isinstance(plans, UnifiedRecommendationPlan):
+        generic_plan = plans.generic
+        location_plan = plans.location
+    else:
+        _, generic_plan, location_plan, _ = plans
     generic_objects = {
         action.recommendation.line_number: action.object
         for action in generic_plan.actions
@@ -487,8 +917,10 @@ def _resolve_individual_review_items(
             edit_object = generic_objects.get(row.line_number)
         elif family == "location":
             edit_object = location_objects[row.line_number]
-        else:
+        elif family == "type_locality":
             edit_object = type_objects[row.line_number]
+        else:
+            edit_object = None
         if edit_object is not None and not callable(getattr(edit_object, "edit", None)):
             edit_object = None
         items.append(IndividualReviewItem(row.line_number, row, family, edit_object))
@@ -511,9 +943,15 @@ def _print_individual_recommendation(
     elif item.family == "location":
         assert isinstance(row, location_recommendations.Recommendation)
         location_recommendations.print_review_table((row,))
-    else:
+    elif item.family == "type_locality":
         assert isinstance(row, type_recommendations.Recommendation)
         type_recommendations.print_review_table((row,))
+    elif item.family == "taxon":
+        assert isinstance(row, taxon_recommendations.Recommendation)
+        taxon_recommendations.print_review_table((row,))
+    else:
+        assert isinstance(row, coverage_recommendations.Recommendation)
+        coverage_recommendations.print_review_table((row,))
 
     print()
     print(getinput.blue("Evidence"))
@@ -529,14 +967,18 @@ def _print_individual_recommendation(
             print(f"{evidence_index}. {getinput.italicize(location_evidence.kind)}")
             print(location_evidence.text)
     elif isinstance(row, generic_recommendations.Recommendation):
-        for evidence_index, evidence in enumerate(row.evidence, start=1):
-            print(f"{evidence_index}. {getinput.italicize(evidence.kind)}")
-            print(evidence.text)
-    else:
-        assert isinstance(row, article_recommendations.Recommendation)
+        for evidence_index, other_evidence in enumerate(row.evidence, start=1):
+            print(f"{evidence_index}. {getinput.italicize(other_evidence.kind)}")
+            print(other_evidence.text)
+    elif isinstance(row, article_recommendations.Recommendation):
         for evidence_index, article_evidence in enumerate(row.evidence, start=1):
             print(f"{evidence_index}. {getinput.italicize(article_evidence.kind)}")
             print(article_evidence.text)
+    else:
+        for evidence_index, remaining_evidence in enumerate(row.evidence, start=1):
+            simple_evidence = cast(Any, remaining_evidence)
+            print(f"{evidence_index}. {getinput.italicize(simple_evidence.kind)}")
+            print(simple_evidence.text)
     tag_comment = getattr(row, "tag_comment", None)
     if tag_comment is not None:
         print()
@@ -641,6 +1083,16 @@ def _filter_recommendations(
             for row in recommendations.type_locality_rows
             if row.line_number in selected_lines
         ),
+        tuple(
+            row
+            for row in recommendations.taxon_rows
+            if row.line_number in selected_lines
+        ),
+        tuple(
+            row
+            for row in recommendations.coverage_rows
+            if row.line_number in selected_lines
+        ),
     )
 
 
@@ -703,11 +1155,40 @@ def _print_type_locality_manual_review_for_edit(
     print(row.reason)
 
 
-def build_plans(recommendations: Recommendations) -> RecommendationPlans:
+def _uses_unified_plan(recommendations: Recommendations) -> bool:
+    return bool(
+        recommendations.taxon_rows
+        or recommendations.coverage_rows
+        or any(row.ref is not None for row in recommendations.article_rows)
+        or any(row.schema_version == 2 for row in recommendations.generic_rows)
+    )
+
+
+def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
     # Validate every family before any executor is allowed to write.
     try:
         article_plan = article_recommendations.build_plan(recommendations.article_rows)
-        generic_plan = generic_recommendations.build_plan(recommendations.generic_rows)
+        if _uses_unified_plan(recommendations):
+            builder = virtual_proposals.ProposalBuilder()
+            references: dict[str, BaseModel] = dict(
+                article_recommendations.add_virtual_models(article_plan, builder)
+            )
+            taxon_plan = taxon_recommendations.build_plan(
+                recommendations.taxon_rows, initial_references=references
+            )
+            references.update(taxon_plan.references)
+            taxon_recommendations.add_virtual_models(taxon_plan, builder)
+            generic_plan = generic_recommendations.build_plan(
+                recommendations.generic_rows, initial_references=references
+            )
+            references.update(generic_plan.references or {})
+        else:
+            builder = None
+            references = {}
+            taxon_plan = taxon_recommendations.RecommendationPlan((), Counter(), {})
+            generic_plan = generic_recommendations.build_plan(
+                recommendations.generic_rows
+            )
         location_plan = location_recommendations.build_plan(
             recommendations.location_rows
         )
@@ -731,11 +1212,30 @@ def build_plans(recommendations: Recommendations) -> RecommendationPlans:
             recommendations.type_locality_rows,
             allowed_target_names=allowed_target_names,
         )
+        if builder is not None:
+            type_recommendations.add_virtual_models(type_plan, builder)
+            location_recommendations.add_virtual_models(location_plan, builder)
+            generic_recommendations.add_virtual_models(generic_plan, builder)
+            coverage_plan = coverage_recommendations.build_plan(
+                recommendations.coverage_rows, references=references
+            )
+            return UnifiedRecommendationPlan(
+                article_plan,
+                taxon_plan,
+                generic_plan,
+                location_plan,
+                type_plan,
+                coverage_plan,
+                builder.build(),
+                references,
+            )
     except (
         generic_recommendations.RecommendationError,
         article_recommendations.RecommendationError,
         location_recommendations.RecommendationError,
         type_recommendations.RecommendationError,
+        taxon_recommendations.RecommendationError,
+        coverage_recommendations.RecommendationError,
     ) as exc:
         raise RecommendationError(str(exc)) from exc
     return article_plan, generic_plan, location_plan, type_plan
@@ -757,9 +1257,11 @@ def build_generic_manual_review_plan(
 
 
 def build_virtual_proposals(
-    plans: RecommendationPlans,
+    plans: AnyRecommendationPlans,
 ) -> tuple[virtual_proposals.ProposedModel, ...]:
     """Build the final in-memory state represented by all actionable plans."""
+    if isinstance(plans, UnifiedRecommendationPlan):
+        return plans.proposals
     article_plan, generic_plan, location_plan, type_plan = plans
     builder = virtual_proposals.ProposalBuilder()
     # Match execute_plans() ordering so actions that touch the same model compose.
@@ -770,45 +1272,108 @@ def build_virtual_proposals(
     return builder.build()
 
 
-def run_virtual_lint(plans: RecommendationPlans, *, issues_only: bool = False) -> None:
+def run_virtual_lint(
+    plans: AnyRecommendationPlans, *, issues_only: bool = False
+) -> None:
     proposals = build_virtual_proposals(plans)
     virtual_proposals.print_lint_results(
         virtual_proposals.lint_proposals(proposals), issues_only=issues_only
     )
 
 
-def execute_plans(plans: RecommendationPlans, *, apply: bool) -> None:
-    article_plan, generic_plan, location_plan, type_plan = plans
-    if article_plan.action_counts:
-        print("ARTICLE PLAN")
-        article_recommendations.execute_plan(article_plan, apply=apply)
-    if type_plan.action_counts:
+def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionResult:
+    recorder_context: AppliedObjectRecorder | nullcontext[None]
+    recorder_context = AppliedObjectRecorder() if apply else nullcontext()
+    with recorder_context as recorder:
+        if isinstance(plans, UnifiedRecommendationPlan):
+            replacements: dict[int, BaseModel] = {}
+            if plans.article.action_counts:
+                print("ARTICLE PLAN")
+                article_outputs = article_recommendations.execute_plan(
+                    plans.article, apply=apply
+                )
+                for ref, actual in article_outputs.items():
+                    proposed = plans.references.get(ref)
+                    if proposed is not None:
+                        replacements[id(proposed)] = actual
+            if plans.taxon.action_counts:
+                if plans.article.action_counts:
+                    print()
+                print("TAXON PLAN")
+                replacements.update(
+                    taxon_recommendations.execute_plan(
+                        plans.taxon, apply=apply, replacements=replacements
+                    )
+                )
+            if plans.type_locality.action_counts:
+                print()
+                print("TYPE-LOCALITY PLAN")
+                type_recommendations.execute_plan(plans.type_locality, apply=apply)
+            if plans.location.action_counts:
+                print()
+                print("LOCATION PLAN")
+                location_recommendations.execute_plan(plans.location, apply=apply)
+            if plans.generic.action_counts:
+                print()
+                print("OBJECT PLAN")
+                replacements.update(
+                    generic_recommendations.execute_plan(
+                        plans.generic, apply=apply, initial_replacements=replacements
+                    )
+                )
+            if plans.coverage.action_counts:
+                print()
+                print("COVERAGE PLAN")
+                coverage_recommendations.execute_plan(plans.coverage, apply=apply)
+            if not apply:
+                return ExecutionResult(())
+            observed = (
+                recorder.objects if isinstance(recorder, AppliedObjectRecorder) else ()
+            )
+            return ExecutionResult(
+                _deduplicate_objects(
+                    (*observed, *_declared_affected_objects(plans, replacements))
+                )
+            )
+
+        article_plan, generic_plan, location_plan, type_plan = plans
         if article_plan.action_counts:
-            print()
-        print("TYPE-LOCALITY PLAN")
-        type_recommendations.execute_plan(type_plan, apply=apply)
-    if location_plan.action_counts:
-        if article_plan.action_counts or type_plan.action_counts:
-            print()
-        print("LOCATION PLAN")
-        location_recommendations.execute_plan(location_plan, apply=apply)
-    if generic_plan.action_counts:
-        if (
-            article_plan.action_counts
-            or type_plan.action_counts
-            or location_plan.action_counts
-        ):
-            print()
-        print("GENERIC PLAN")
-        generic_recommendations.execute_plan(generic_plan, apply=apply)
+            print("ARTICLE PLAN")
+            article_recommendations.execute_plan(article_plan, apply=apply)
+        if type_plan.action_counts:
+            if article_plan.action_counts:
+                print()
+            print("TYPE-LOCALITY PLAN")
+            type_recommendations.execute_plan(type_plan, apply=apply)
+        if location_plan.action_counts:
+            if article_plan.action_counts or type_plan.action_counts:
+                print()
+            print("LOCATION PLAN")
+            location_recommendations.execute_plan(location_plan, apply=apply)
+        if generic_plan.action_counts:
+            if (
+                article_plan.action_counts
+                or type_plan.action_counts
+                or location_plan.action_counts
+            ):
+                print()
+            print("GENERIC PLAN")
+            generic_recommendations.execute_plan(generic_plan, apply=apply)
+    if not apply:
+        return ExecutionResult(())
+    observed = recorder.objects if isinstance(recorder, AppliedObjectRecorder) else ()
+    return ExecutionResult(
+        _deduplicate_objects((*observed, *_declared_affected_objects(plans, {})))
+    )
 
 
 def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     manual_items: tuple[ManualReviewObject, ...] | None = None
     individual_items: tuple[IndividualReviewItem, ...] | None = None
-    plans: RecommendationPlans | None = None
+    plans: AnyRecommendationPlans | None = None
     printed_output = False
     run_virtual_lint_requested = args.virtual_lint or args.virtual_lint_issues_only
+    execution_result: ExecutionResult | None = None
 
     def begin_output() -> None:
         nonlocal printed_output
@@ -828,11 +1393,16 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.review_manual:
         begin_output()
         print_manual_reviews(recommendations)
+    if args.review_classification:
+        begin_output()
+        print_classification_review(recommendations)
 
     run_dry_run = args.dry_run or not any(
         (
             args.review,
             args.review_manual,
+            args.review_classification,
+            args.review_reconciliation,
             args.apply,
             args.review_each,
             args.edit_manual,
@@ -840,7 +1410,11 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         )
     )
     needs_complete_plan = bool(
-        run_dry_run or args.apply or args.review_each or run_virtual_lint_requested
+        run_dry_run
+        or args.apply
+        or args.review_each
+        or args.review_reconciliation
+        or run_virtual_lint_requested
     )
     if not needs_complete_plan and not args.edit_manual:
         return
@@ -852,7 +1426,11 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
             assert args.edit_manual
             try:
                 plans = build_plans(recommendations)
-                generic_plan = plans[1]
+                generic_plan = (
+                    plans.generic
+                    if isinstance(plans, UnifiedRecommendationPlan)
+                    else plans[1]
+                )
             except RecommendationError as exc:
                 begin_output()
                 print(
@@ -879,7 +1457,14 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                     recommendations, generic_plan, allow_name_label_changes=True
                 )
             else:
-                manual_items = _resolve_manual_review_objects(recommendations, plans[1])
+                manual_items = _resolve_manual_review_objects(
+                    recommendations,
+                    (
+                        plans.generic
+                        if isinstance(plans, UnifiedRecommendationPlan)
+                        else plans[1]
+                    ),
+                )
     except RecommendationError as exc:
         parser.error(str(exc))
 
@@ -887,6 +1472,11 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         assert plans is not None
         begin_output()
         run_virtual_lint(plans, issues_only=args.virtual_lint_issues_only)
+
+    if args.review_reconciliation:
+        assert plans is not None
+        begin_output()
+        print_reconciliation_review(plans)
 
     if run_dry_run:
         assert plans is not None
@@ -896,7 +1486,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.apply:
         assert plans is not None
         begin_output()
-        execute_plans(plans, apply=True)
+        execution_result = execute_plans(plans, apply=True)
 
     if individual_items is not None:
         begin_output()
@@ -924,7 +1514,17 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                     selected_plans, issues_only=args.virtual_lint_issues_only
                 )
             begin_output()
-            execute_plans(selected_plans, apply=True)
+            execution_result = execute_plans(selected_plans, apply=True)
+
+    if args.edit_applied and execution_result is not None:
+        begin_output()
+        if not edit_applied_objects(execution_result):
+            print(
+                getinput.yellow(
+                    "Warning: post-apply cleanup was incomplete; recommendations "
+                    "were already applied. Continuing."
+                )
+            )
 
     if manual_items is not None:
         begin_output()
@@ -943,12 +1543,20 @@ def main() -> None:
         ),
     )
     parser.add_argument(
-        "--apply", action="store_true", help="write all validated recommendations"
+        "--apply",
+        action="store_true",
+        help=(
+            "write all validated recommendations, then edit affected and "
+            "manual-review objects by default"
+        ),
     )
     parser.add_argument(
         "--review",
         action="store_true",
-        help="print compact tables without consulting the database",
+        help=(
+            "print static tables with untruncated action details and manual-review "
+            "evidence without consulting the database"
+        ),
     )
     parser.add_argument(
         "--review-action",
@@ -958,6 +1566,8 @@ def main() -> None:
             | article_recommendations.ALLOWED_ACTIONS
             | location_recommendations.ALLOWED_ACTIONS
             | type_recommendations.ALLOWED_ACTIONS
+            | taxon_recommendations.ALLOWED_ACTIONS
+            | coverage_recommendations.ALLOWED_ACTIONS
         ),
         help="with --review, include only this action (repeatable)",
     )
@@ -971,6 +1581,16 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--review-classification",
+        action="store_true",
+        help="print source-local ClassificationEntry trees without database access",
+    )
+    parser.add_argument(
+        "--review-reconciliation",
+        action="store_true",
+        help="report Name and Location reconciliation over the validated object plan",
+    )
+    parser.add_argument(
         "--review-each",
         action="store_true",
         help=(
@@ -982,12 +1602,24 @@ def main() -> None:
     )
     parser.add_argument(
         "--edit-manual",
-        action="store_true",
+        action=argparse.BooleanOptionalAction,
+        default=None,
         help=(
             "validate the complete manifest, then for every manual_review row print "
             "its complete note and invoke edit() on the referenced object; generic "
             "rows edit their explicit object and type-locality rows edit their Name; "
-            "may be combined with --apply to apply actionable rows first"
+            "enabled by default with --apply"
+        ),
+    )
+    parser.add_argument(
+        "--edit-applied",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help=(
+            "after successful --apply or accepted --review-each selections, run "
+            "format() and edit_until_clean() on every created or modified object, "
+            "including related objects created by structured lint autofixes; enabled "
+            "by default with --apply"
         ),
     )
     parser.add_argument(
@@ -1009,6 +1641,10 @@ def main() -> None:
         ),
     )
     args = parser.parse_args()
+    if args.edit_manual is None:
+        args.edit_manual = args.apply
+    if args.edit_applied is None:
+        args.edit_applied = args.apply
     if args.review_action and not args.review:
         parser.error("--review-action requires --review")
     if args.review_each and args.apply:
@@ -1016,6 +1652,8 @@ def main() -> None:
             "--review-each selects individual rows, so it cannot be combined with "
             "--apply, which applies every row"
         )
+    if args.edit_applied and not (args.apply or args.review_each):
+        parser.error("--edit-applied requires --apply or --review-each")
     context = (
         nullcontext()
         if args.apply or args.edit_manual or args.review_each

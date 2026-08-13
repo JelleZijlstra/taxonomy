@@ -525,7 +525,9 @@ Tags include the following:
 Type tags are more commonly used; ideally every species-group name and many genus-group
 names should have at least one. They fall into several groups:
 
-- Sourced quotations
+- Sourced quotations. The text of every `*Detail` tag must be a direct quotation from
+  the cited source, with only transcription-level normalization such as joining line
+  breaks. Occasionally, comments may be added in square brackets.
   - _SpecimenDetail_: Sourced quotation with information about the material on which a
     species was based. Every type specimen should be supported by a _SpecimenDetail_
     field that confirms the identity of the type specimen.
@@ -534,7 +536,8 @@ names should have at least one. They fall into several groups:
     placement of the type locality.
   - _CollectionDetail_: Sourced quotation with information about the
     [collection](/docs/collection) that the type material is located in. This may
-    include the explanation of an obscure abbreviation.
+    include the explanation of an obscure abbreviation. This is only used in unusual
+    cases where the collection is not obvious from other information.
   - _CitationDetail_: Sourced quotation of the original citation of a name. Usually this
     should just go into the "verbatim citation" field, but an explicitly referenced
     _CitationDetail_ tag is useful if the citation is obscure or controversial.
@@ -550,7 +553,9 @@ names should have at least one. They fall into several groups:
     such as those from Linnaeus, that were often based on a series of literature
     sources.
   - _TypeSpeciesDetail_: A previous author's discussion of the type species for a
-    genus-group name.
+    genus-group name. This is only used in cases where there is some difficulty or
+    confusion about the type species; it should not ordinarily be used for the simple
+    selection of a type species when a new genus is named.
   - _DescriptionDetail_: A description of the animal.
 - Structured information about the type
   - _CollectedBy_: The [person](/docs/person) who collected the type specimen.

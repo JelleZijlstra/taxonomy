@@ -4,7 +4,7 @@ from collections import Counter
 from collections.abc import Iterator
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any, Literal, Self, cast
 
 import pytest
 
@@ -976,7 +976,17 @@ def test_apply_mode_does_not_enter_read_only_context(
         "readonly",
         lambda: pytest.fail("apply mode entered read-only context"),
     )
-    monkeypatch.setattr(sys, "argv", ["apply_recommendations.py", str(path), "--apply"])
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "apply_recommendations.py",
+            str(path),
+            "--apply",
+            "--no-edit-applied",
+            "--no-edit-manual",
+        ],
+    )
 
     apply_recommendations.main()
 
@@ -1154,3 +1164,211 @@ def test_apply_remains_incompatible_with_review_each(
         apply_recommendations.main()
 
     assert "--review-each selects individual rows" in capsys.readouterr().err
+
+
+def test_edit_applied_requires_an_application_mode(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--edit-applied"]
+    )
+
+    with pytest.raises(SystemExit):
+        apply_recommendations.main()
+
+    assert "--edit-applied requires --apply or --review-each" in capsys.readouterr().err
+
+
+def test_apply_runs_cleanup_and_manual_edit_by_default(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object(), object())
+    result = apply_recommendations.ExecutionResult(())
+    events: list[str] = []
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_manual_review_objects",
+        lambda recommendations, generic_plan: (object(),),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda plans, *, apply: events.append("apply") or result,  # type: ignore[func-returns-value]
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "edit_applied_objects",
+        lambda execution_result: events.append("cleanup") or True,  # type: ignore[func-returns-value]
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_edit_manual_review_objects",
+        lambda items: events.append("manual"),
+    )
+    monkeypatch.setattr(sys, "argv", ["apply_recommendations.py", str(path), "--apply"])
+
+    apply_recommendations.main()
+
+    assert events == ["apply", "cleanup", "manual"]
+
+
+def test_incomplete_cleanup_warns_and_continues_to_manual_edit(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object(), object())
+    result = apply_recommendations.ExecutionResult(())
+    events: list[str] = []
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_manual_review_objects",
+        lambda recommendations, generic_plan: (object(),),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda plans, *, apply: events.append("apply") or result,  # type: ignore[func-returns-value]
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "edit_applied_objects",
+        lambda execution_result: events.append("cleanup") or False,  # type: ignore[func-returns-value]
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_edit_manual_review_objects",
+        lambda items: events.append("manual"),
+    )
+    monkeypatch.setattr(sys, "argv", ["apply_recommendations.py", str(path), "--apply"])
+
+    apply_recommendations.main()
+
+    captured = capsys.readouterr()
+    assert events == ["apply", "cleanup", "manual"]
+    assert "Warning: post-apply cleanup was incomplete" in captured.out
+    assert "Continuing." in captured.out
+    assert "usage:" not in captured.out
+    assert captured.err == ""
+
+
+def test_apply_cleanup_and_manual_edit_can_be_disabled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    fake_plans = (object(), object(), object(), object())
+    result = apply_recommendations.ExecutionResult(())
+    events: list[str] = []
+    monkeypatch.setattr(
+        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda plans, *, apply: events.append("apply") or result,  # type: ignore[func-returns-value]
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "edit_applied_objects",
+        lambda execution_result: pytest.fail("cleanup was not disabled"),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "_resolve_manual_review_objects",
+        lambda *_args, **_kwargs: pytest.fail("manual editing was not disabled"),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "apply_recommendations.py",
+            str(path),
+            "--apply",
+            "--no-edit-applied",
+            "--no-edit-manual",
+        ],
+    )
+
+    apply_recommendations.main()
+
+    assert events == ["apply"]
+
+
+def test_cleanup_includes_objects_created_by_autofix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    events: list[str] = []
+    active_recorder: list[Any] = []
+
+    class CleanupObject:
+        label_field = "label"
+
+        def __init__(
+            self, object_id: int, label: str, discovered: CleanupObject | None = None
+        ) -> None:
+            self.id = object_id
+            self.label = label
+            self.discovered = discovered
+
+        def reload(self) -> None:
+            events.append(f"reload:{self.label}")
+
+        def format(self, *, quiet: bool) -> None:
+            events.append(f"format:{self.label}")
+            if self.discovered is not None:
+                active_recorder[0]._objects.append(self.discovered)
+                self.discovered = None
+
+        def edit_until_clean(self) -> None:
+            events.append(f"edit:{self.label}")
+
+        def is_lint_clean(self, *, cfg: Any) -> bool:
+            events.append(f"lint:{self.label}")
+            return True
+
+    child = CleanupObject(2, "child")
+    parent = CleanupObject(1, "parent", child)
+
+    class Recorder:
+        def __init__(self) -> None:
+            self._objects: list[Any] = []
+
+        def __enter__(self) -> Self:
+            active_recorder[:] = [self]
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            active_recorder.clear()
+
+        @property
+        def objects(self) -> tuple[Any, ...]:
+            return tuple(self._objects)
+
+    monkeypatch.setattr(apply_recommendations, "AppliedObjectRecorder", Recorder)
+
+    assert apply_recommendations.edit_applied_objects(
+        apply_recommendations.ExecutionResult((cast(Any, parent),))
+    )
+    assert events == [
+        "reload:parent",
+        "format:parent",
+        "edit:parent",
+        "reload:parent",
+        "lint:parent",
+        "reload:child",
+        "format:child",
+        "edit:child",
+        "reload:child",
+        "lint:child",
+    ]

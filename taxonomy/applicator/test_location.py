@@ -203,6 +203,11 @@ def test_review_edit_formats_related_field_labels(
     output = capsys.readouterr().out
     assert "region='Readable Region' (#11)" in output
     assert "source='Readable source' (#123)" in output
+    assert (
+        "    - change: region='Example Region' (#10) -> "
+        "region='Readable Region' (#11)" in output
+    )
+    assert "    - change: source=None -> source='Readable source' (#123)" in output
 
 
 def test_read_alias_promotion_recommendation(tmp_path: Path) -> None:
