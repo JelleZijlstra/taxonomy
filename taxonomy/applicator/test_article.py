@@ -1,6 +1,7 @@
 import copy
 import hashlib
 from collections.abc import Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -12,6 +13,12 @@ from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.models import Article, CitationGroup, Person
 from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.person import VirtualPerson
+
+
+@dataclass(frozen=True)
+class _Options:
+    new_path: Path
+    library_path: Path
 
 
 def _pdf_bytes() -> bytes:
@@ -138,7 +145,7 @@ def _build_volume_and_chapter(tmp_path: Path) -> recommendations.RecommendationP
     )
     return recommendations.build_plan(
         rows,
-        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        options=_Options(new_path=new_path, library_path=library_path),
         get_article=lambda _name: None,
         articles_with_doi=lambda _doi: (),
         is_catalog_folder=lambda _path: True,
@@ -157,7 +164,7 @@ def _build(tmp_path: Path) -> recommendations.RecommendationPlan:
     row = recommendations.parse_recommendation(_row(pdf), 1)
     return recommendations.build_plan(
         (row,),
-        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        options=_Options(new_path=new_path, library_path=library_path),
         get_article=lambda _name: None,
         articles_with_doi=lambda _doi: (),
         is_catalog_folder=lambda _path: True,
@@ -216,7 +223,7 @@ def test_build_plan_canonicalizes_tags_and_infers_jstor(tmp_path: Path) -> None:
 
     plan = recommendations.build_plan(
         (row,),
-        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        options=_Options(new_path=new_path, library_path=library_path),
         get_article=lambda _name: None,
         articles_with_doi=lambda _doi: (),
         is_catalog_folder=lambda _path: True,
@@ -280,7 +287,7 @@ def test_existing_person_author_is_guarded_and_reused_virtually(tmp_path: Path) 
     )
     plan = recommendations.build_plan(
         (recommendations.parse_recommendation(row_data, 1),),
-        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        options=_Options(new_path=new_path, library_path=library_path),
         get_article=lambda _name: None,
         get_person_by_id=lambda _id: person,
         articles_with_doi=lambda _doi: (),
@@ -328,7 +335,7 @@ def test_existing_person_author_rejects_changed_family_name(tmp_path: Path) -> N
     ):
         recommendations.build_plan(
             (recommendations.parse_recommendation(row_data, 1),),
-            options=SimpleNamespace(new_path=new_path, library_path=library_path),
+            options=_Options(new_path=new_path, library_path=library_path),
             get_article=lambda _name: None,
             get_person_by_id=lambda _id: person,
             articles_with_doi=lambda _doi: (),
@@ -350,7 +357,7 @@ def test_build_plan_rejects_changed_staged_file(tmp_path: Path) -> None:
     with pytest.raises(recommendations.RecommendationError, match="size changed"):
         recommendations.build_plan(
             (row,),
-            options=SimpleNamespace(new_path=new_path, library_path=library_path),
+            options=_Options(new_path=new_path, library_path=library_path),
             get_article=lambda _name: None,
             articles_with_doi=lambda _doi: (),
             is_catalog_folder=lambda _path: True,
@@ -424,7 +431,7 @@ def test_inline_citation_group_is_planned_and_created(tmp_path: Path) -> None:
             recommendations.parse_recommendation(row_data, 1),
             recommendations.parse_recommendation(second_row_data, 2),
         ),
-        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        options=_Options(new_path=new_path, library_path=library_path),
         get_article=lambda _name: None,
         articles_with_doi=lambda _doi: (),
         is_catalog_folder=lambda _path: True,
@@ -494,7 +501,7 @@ def test_completed_exact_state_is_idempotent(tmp_path: Path) -> None:
 
     plan = recommendations.build_plan(
         (recommendations.parse_recommendation(_row(pdf), 1),),
-        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        options=_Options(new_path=new_path, library_path=library_path),
         get_article=lambda _name: existing,
         articles_with_doi=lambda _doi: (existing,),
         is_catalog_folder=lambda _path: True,
@@ -578,7 +585,7 @@ def test_build_plan_rejects_forward_planned_parent_reference(tmp_path: Path) -> 
     with pytest.raises(recommendations.RecommendationError, match="must be an earlier"):
         recommendations.build_plan(
             rows,
-            options=SimpleNamespace(new_path=new_path, library_path=library_path),
+            options=_Options(new_path=new_path, library_path=library_path),
             get_article=lambda _name: None,
             articles_with_doi=lambda _doi: (),
             is_catalog_folder=lambda _path: True,
@@ -610,7 +617,7 @@ def test_build_plan_orders_forward_typed_parent_reference(tmp_path: Path) -> Non
 
     plan = recommendations.build_plan(
         rows,
-        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        options=_Options(new_path=new_path, library_path=library_path),
         get_article=lambda _name: None,
         articles_with_doi=lambda _doi: (),
         is_catalog_folder=lambda _path: True,

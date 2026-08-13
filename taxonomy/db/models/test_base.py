@@ -1,5 +1,5 @@
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Generator
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -59,7 +59,7 @@ def test_lint_all_uses_read_only_context_without_autofix(
     events: list[str] = []
 
     @contextmanager
-    def readonly() -> Iterator[None]:
+    def readonly() -> Generator[None]:
         events.append("enter")
         try:
             yield

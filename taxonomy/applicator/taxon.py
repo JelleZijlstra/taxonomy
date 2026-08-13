@@ -1,9 +1,10 @@
 """Atomic Taxon/base-Name recommendations for manifest-created classifications."""
 
+import enum
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from taxonomy.applicator import generic
 from taxonomy.applicator.proposals import ProposalBuilder
@@ -72,7 +73,10 @@ def _string(data: Mapping[str, Any], key: str, line: int) -> str:
     return value
 
 
-def _enum(data: Mapping[str, Any], key: str, cls: type[Any], line: int) -> Any:
+EnumT = TypeVar("EnumT", bound=enum.Enum)
+
+
+def _enum(data: Mapping[str, Any], key: str, cls: type[EnumT], line: int) -> EnumT:
     value = _string(data, key, line)
     try:
         return cls[value]

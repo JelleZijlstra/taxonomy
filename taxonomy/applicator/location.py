@@ -1481,7 +1481,7 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                         change.field, change.new_value, expected_label=change.new_label
                     ),
                 )
-            tags = tuple(proposal.tags or ())
+            tags = tuple(proposal.tags)
             tags = tuple(tag for tag in tags if tag not in row.remove_tags)
             tags = (*tags, *(tag for tag in row.add_tags if tag not in tags))
             proposal.tags = tuple(sorted(set(tags)))  # type: ignore[assignment]

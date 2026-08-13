@@ -74,6 +74,7 @@ def test_create_object_and_reference_it_from_later_action() -> None:
         model: type[BaseModel], values: Mapping[str, object]
     ) -> BaseModel:
         obj = model.virtual(**values)
+        assert isinstance(obj, Location)
         created.append(obj)
         return obj
 
@@ -118,6 +119,7 @@ def test_schema_v2_create_object_allows_forward_references() -> None:
         model: type[BaseModel], values: Mapping[str, object]
     ) -> BaseModel:
         obj = model.virtual(**values)
+        assert isinstance(obj, Location)
         created.append(obj)
         return obj
 
