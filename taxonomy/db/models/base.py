@@ -1530,12 +1530,14 @@ class ADTField(Field[Sequence[ADTT]]):
     def prepare_virtual(
         self, value: Sequence[ADTT]
     ) -> tuple[str | None, Sequence[ADTT]]:
+        # Work around https://github.com/JelleZijlstra/pycroscope/issues/521.
         raw_value = self.serialize(value)  # static analysis: ignore[incompatible_call]
         if isinstance(value, str):
             return raw_value, self.deserialize(raw_value)
         return raw_value, tuple(value or ())
 
     def validate_persistent(self, value: Sequence[ADTT]) -> None:
+        # Work around https://github.com/JelleZijlstra/pycroscope/issues/521.
         super().validate_persistent(
             value  # static analysis: ignore[incompatible_argument]
         )

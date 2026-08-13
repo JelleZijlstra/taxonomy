@@ -1317,6 +1317,7 @@ def build_plan(
                                 f"change {index}: field {field_name!r} is not an "
                                 "ADT tag field"
                             )
+                        # Work around https://github.com/JelleZijlstra/pycroscope/issues/520.
                         field = cast(  # type: ignore[redundant-cast]
                             ADTField[Any], field
                         )

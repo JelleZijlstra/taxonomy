@@ -8,6 +8,7 @@ from clirm import VirtualReferenceError
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AgeClass,
+    ArticleType,
     Group,
     NamingConvention,
     NomenclatureStatus,
@@ -20,6 +21,7 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.location import Location
+from taxonomy.db.models.person import AuthorTag
 
 from .lint import (
     _create_name_variant_issue,
@@ -62,14 +64,13 @@ def test_redirect_name_issue_changes_only_redirect_fields() -> None:
 
 
 def test_take_over_name_issue_uses_explicit_fields_and_tag_removal() -> None:
-    citation = cast(
-        models.Article,
-        SimpleNamespace(
-            parent=None,
-            author_tags=("Author",),
-            year="1900",
-            issupplement=lambda: False,
-        ),
+    author = AuthorTag.Author(person=models.Person.virtual(family_name="Author"))
+    citation = models.Article.virtual(
+        name="citation",
+        parent=None,
+        author_tags=(author,),
+        year="1900",
+        type=ArticleType.JOURNAL,
     )
     ce = SimpleNamespace(article=citation, page="12", name="Original name")
     page_link = TypeTag.AuthorityPageLink(
@@ -97,7 +98,7 @@ def test_take_over_name_issue_uses_explicit_fields_and_tag_removal() -> None:
     assert name.original_citation is citation
     assert name.page_described == "12"
     assert name.original_name == "Original name"
-    assert name.author_tags == ("Author",)
+    assert name.author_tags == (author,)
     assert name.year == "1900"
     assert name.type_tags == ()
 
