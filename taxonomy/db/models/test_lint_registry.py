@@ -412,7 +412,7 @@ def test_duplicate_finder_can_return_structured_fix() -> None:
     def duplicate_key(_obj: FakeObject) -> str:
         return "same"
 
-    issues = list(duplicate_key.linter(second, LintConfig(autofix=False)))
+    issues = list(duplicate_key.linter(cast(Any, second), LintConfig(autofix=False)))
 
     assert len(issues) == 1
     assert isinstance(issues[0], LintIssue)
@@ -475,7 +475,7 @@ def test_legacy_autofix_branches_are_explicitly_allowlisted() -> None:
                 parent, (ast.FunctionDef, ast.AsyncFunctionDef)
             ):
                 parent = parents.get(parent)
-            assert parent is not None
+            assert isinstance(parent, (ast.FunctionDef, ast.AsyncFunctionDef))
             branch = (str(path.relative_to(models_dir)), parent.name)
             if branch in {
                 ("base.py", "_process_lint_results"),

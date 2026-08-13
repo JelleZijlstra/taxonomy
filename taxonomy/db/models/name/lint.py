@@ -4092,6 +4092,8 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.verbatim_citation and not nam.citation_group:
         yield "has verbatim citation but no citation group"
     if has_accessible_original_citation(nam):
+        citation = nam.original_citation
+        assert citation is not None
         if (
             nam.page_described is None
             and not (
@@ -4108,7 +4110,6 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
             yield "has original citation but no original_rank"
         if nam.author_tags is None:
             message = "has original citation but no author_tags"
-            citation = nam.original_citation
             if citation.issupplement() and citation.parent is not None:
                 authors = citation.parent.author_tags
             else:
@@ -4119,7 +4120,7 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
                 yield field_issue(message, nam, "author_tags", authors)
         if nam.year is None:
             message = "has original citation but no year"
-            yield field_issue(message, nam, "year", nam.original_citation.year)
+            yield field_issue(message, nam, "year", citation.year)
         if (
             nam.name_complex is None
             and nam.group is Group.genus
@@ -5508,7 +5509,6 @@ def check_structured_verbatim_citation_fields(
                         yield replace_tag_issue(
                             msg, nam, tag, new_tag, field="type_tags"
                         )
-                        tag = new_tag
                         end_page = candidate
                 except ValueError:
                     pass

@@ -394,7 +394,7 @@ def get_type_specimen_text(name: Name) -> tuple[str, list[str]]:
 
 
 def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
-    todos = []
+    todos: list[str] = []
     order = taxon.get_derived_field("order")
     family = taxon.get_derived_field("family")
     interpreted_tl = name.get_type_tag(TypeTag.InterpretedTypeLocality)
@@ -411,7 +411,10 @@ def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
             todos.append(
                 f"Base name is not valid (status: {name.nomenclature_status.name})"
             )
-        todos += check_full_expected_base_name.linter(taxon, LintConfig())
+        todos.extend(
+            str(issue)
+            for issue in check_full_expected_base_name.linter(taxon, LintConfig())
+        )
 
     nomenclature_text = ""
     if nomen_novum_for := name.get_tag_target(NameTag.NomenNovumFor):

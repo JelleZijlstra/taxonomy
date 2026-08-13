@@ -62,8 +62,14 @@ def test_redirect_name_issue_changes_only_redirect_fields() -> None:
 
 
 def test_take_over_name_issue_uses_explicit_fields_and_tag_removal() -> None:
-    citation = SimpleNamespace(
-        parent=None, author_tags=("Author",), year="1900", issupplement=lambda: False
+    citation = cast(
+        models.Article,
+        SimpleNamespace(
+            parent=None,
+            author_tags=("Author",),
+            year="1900",
+            issupplement=lambda: False,
+        ),
     )
     ce = SimpleNamespace(article=citation, page="12", name="Original name")
     page_link = TypeTag.AuthorityPageLink(

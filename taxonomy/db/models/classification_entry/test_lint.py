@@ -765,6 +765,21 @@ def test_mapped_entry_removes_orphaned_base_name_instructions() -> None:
     assert ce.tags == (retained,)
 
 
+def test_check_tags_counts_parameterless_tags() -> None:
+    ce = _make_ce(parent=None, auxiliary=False)
+
+    for tag, expected in (
+        (ClassificationEntryTag.AuxiliaryName, "multiple AuxiliaryName tags"),
+        (ClassificationEntryTag.OriginalCitation, "multiple OriginalCitation tags"),
+    ):
+        ce.tags = (tag, tag)  # type: ignore[assignment]
+
+        assert any(
+            expected in str(issue)
+            for issue in check_tags(ce, LintConfig(autofix=False, interactive=False))
+        )
+
+
 def test_etymology_detail_is_transferred_to_mapped_name() -> None:
     taxon = Taxon.virtual(valid_name="Endodonta", rank=Rank.genus, age=AgeClass.extant)
     name = Name.virtual(

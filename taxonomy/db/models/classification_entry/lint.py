@@ -94,13 +94,13 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
         yield "unnecessary CorrectedName tag"
     if counts[ClassificationEntryTag.ReferencedUsage] > 1:
         yield "multiple ReferencedUsage tags"
-    if counts[ClassificationEntryTag.AuxiliaryName] > 1:
+    if counts[type(ClassificationEntryTag.AuxiliaryName)] > 1:
         yield "multiple AuxiliaryName tags"
     if counts[ClassificationEntryTag.VerbatimParent] > 1:
         yield "multiple VerbatimParent tags"
     if counts[ClassificationEntryTag.Materialize] > 1:
         yield "multiple Materialize tags"
-    if counts[ClassificationEntryTag.OriginalCitation] > 1:
+    if counts[type(ClassificationEntryTag.OriginalCitation)] > 1:
         yield "multiple OriginalCitation tags"
     base_name_author_tags = list(
         ce.get_tags(ce.tags, ClassificationEntryTag.MaterializeBaseNameAuthor)
@@ -2146,6 +2146,7 @@ def check_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
         new_page = yield from models.name.page.check_page(
             ce.page, get_raw_page_regex=ce.article.get_raw_page_regex
         )
+        assert new_page is not None
         if new_page != ce.page:
             fixes = [field_fix(ce, "page", new_page)]
             for tag in ce.get_tags(ce.tags, ClassificationEntryTag.PageLink):

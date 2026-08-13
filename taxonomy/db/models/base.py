@@ -1530,13 +1530,15 @@ class ADTField(Field[Sequence[ADTT]]):
     def prepare_virtual(
         self, value: Sequence[ADTT]
     ) -> tuple[str | None, Sequence[ADTT]]:
-        raw_value = self.serialize(value)
+        raw_value = self.serialize(value)  # static analysis: ignore[incompatible_call]
         if isinstance(value, str):
             return raw_value, self.deserialize(raw_value)
         return raw_value, tuple(value or ())
 
     def validate_persistent(self, value: Sequence[ADTT]) -> None:
-        super().validate_persistent(value)
+        super().validate_persistent(
+            value  # static analysis: ignore[incompatible_argument]
+        )
 
         def iter_models(item: Any) -> Iterable[Model]:
             if isinstance(item, Model):

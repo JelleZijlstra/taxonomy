@@ -1317,6 +1317,9 @@ def build_plan(
                                 f"change {index}: field {field_name!r} is not an "
                                 "ADT tag field"
                             )
+                        field = cast(  # type: ignore[redundant-cast]
+                            ADTField[Any], field
+                        )
                         if field_key in planned_values:
                             raise RecommendationError(
                                 f"change {index}: remove_raw must be the first change "
