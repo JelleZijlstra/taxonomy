@@ -1112,7 +1112,14 @@ class StringKind(enum.IntEnum):
     url = 4  # URL
 
 
+class StringCleanupOption(enum.IntEnum):
+    normalize_sex_symbols = 1
+
+
 type Markdown = Annotated[str, StringKind.markdown]
+type SpecimenDetailText = Annotated[
+    str, StringKind.markdown, StringCleanupOption.normalize_sex_symbols
+]
 type Managed = Annotated[str, StringKind.managed]
 type Regex = Annotated[str, StringKind.regex]
 type URL = Annotated[str, StringKind.url]

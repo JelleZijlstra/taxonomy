@@ -321,7 +321,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
                     f"line {line_number}: change {index} must be an object"
                 )
             operation = change.get("operation")
-            if operation not in {"set", "add", "remove", "remove_raw"}:
+            if operation not in {"set", "add", "remove", "remove_raw", "normalize"}:
                 raise RecommendationError(
                     f"line {line_number}: change {index} has unsupported operation "
                     f"{operation!r}"
@@ -344,8 +344,10 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
                         f"line {line_number}: change {index} raw_value must be a "
                         "serialized ADT list"
                     )
-            else:
+            elif operation in {"add", "remove"}:
                 required = {"value"}
+            else:
+                required = set()
             missing = required - change.keys()
             if missing:
                 raise RecommendationError(
@@ -736,6 +738,8 @@ def _format_update_change(
         )
     if operation == "remove_raw":
         return f"remove_raw {field_name}: {change['raw_value']!r}"
+    if operation == "normalize":
+        return f"normalize {field_name}"
     model = registry.get(row.object.model)
     field = None if model is None else model.clirm_fields.get(field_name)
     value = change["value"]
@@ -1389,19 +1393,29 @@ def build_plan(
                                 f"change {index}: field {field_name!r} is not an "
                                 "ADT tag field"
                             )
-                        tag = _decode_tag(
-                            field,
-                            change["value"],
-                            context=f"{model.__name__}.{field_name}",
-                            references=references,
-                        )
                         old_value = tuple(cast(Sequence[adt.ADT] | None, actual) or ())
-                        if operation == "add":
-                            candidate = (
-                                old_value if tag in old_value else (*old_value, tag)
-                            )
+                        if operation == "normalize":
+                            if field.is_ordered:
+                                raise RecommendationError(
+                                    f"change {index}: normalize is only valid for "
+                                    "unordered ADT tag fields"
+                                )
+                            candidate = old_value
                         else:
-                            candidate = tuple(item for item in old_value if item != tag)
+                            tag = _decode_tag(
+                                field,
+                                change["value"],
+                                context=f"{model.__name__}.{field_name}",
+                                references=references,
+                            )
+                            if operation == "add":
+                                candidate = (
+                                    old_value if tag in old_value else (*old_value, tag)
+                                )
+                            else:
+                                candidate = tuple(
+                                    item for item in old_value if item != tag
+                                )
                         new_value = (
                             candidate
                             if field.is_ordered

@@ -104,8 +104,7 @@ def _merge_coordinates(source: Location, target: Location) -> bool:
             target.latitude, target.longitude = merged_pair
         return True
     print(
-        f"warning: keeping coordinates on {target}: {target_pair}; "
-        f"source {source} has {source_pair}"
+        f"warning: keeping coordinates on {target}: {target_pair}; source {source} has {source_pair}"
     )
     return False
 
@@ -118,8 +117,7 @@ def merge_location_data(source: Location, target: Location) -> None:
     """
     if source.region != target.region:
         print(
-            f"warning: keeping region on {target}: {target.region}; "
-            f"source {source} has {source.region}"
+            f"warning: keeping region on {target}: {target.region}; source {source} has {source.region}"
         )
     for field in (
         "min_period",
@@ -138,8 +136,7 @@ def merge_location_data(source: Location, target: Location) -> None:
             setattr(target, field, source_value)
         elif source_value != target_value:
             print(
-                f"warning: keeping {field} on {target}: {target_value}; "
-                f"source {source} has {source_value}"
+                f"warning: keeping {field} on {target}: {target_value}; source {source} has {source_value}"
             )
 
     coordinates_merged = _merge_coordinates(source, target)
@@ -263,8 +260,7 @@ class Location(BaseModel):
                 return cls.make(**make_kwargs)
             except sqlite3.IntegrityError:
                 print(
-                    f"Could not create Location {name!r} because that name is now "
-                    "in use; choose a different name."
+                    f"Could not create Location {name!r} because that name is now in use; choose a different name."
                 )
                 maybe_name = cls._get_unique_name()
                 if maybe_name is None:
@@ -487,8 +483,7 @@ class Location(BaseModel):
             else:
                 status = "conflicts with Location PLSS"
             print(
-                f"    [{status}] {item.description.canonical_text} "
-                f"(from {item.source})"
+                f"    [{status}] {item.description.canonical_text} (from {item.source})"
             )
         if not plss_tags and not linked_plss:
             print("    none")
@@ -501,21 +496,18 @@ class Location(BaseModel):
         if not search_plan.coordinates_can_be_inferred:
             if self.name != search_plan.standardized_name:
                 print(
-                    "    Lookup skipped: rename noncanonical offset locality to "
-                    f"{search_plan.standardized_name!r} first"
+                    f"    Lookup skipped: rename noncanonical offset locality to {search_plan.standardized_name!r} first"
                 )
             elif (
                 models.location.lint._get_coordinate_modifier_plan(self.name)
                 is not None
             ):
                 print(
-                    "    Lookup skipped: modifier supplies explicit locality "
-                    "coordinates"
+                    "    Lookup skipped: modifier supplies explicit locality coordinates"
                 )
             else:
                 print(
-                    "    Lookup skipped: modifier is not a fully parsed "
-                    "distance offset"
+                    "    Lookup skipped: modifier is not a fully parsed distance offset"
                 )
         else:
             try:
@@ -529,8 +521,7 @@ class Location(BaseModel):
                 assessment = models.location.lint.assess_nominatim_result(self, result)
                 status = "accepted" if assessment.is_accepted else "rejected"
                 print(
-                    f"    {index}. [{status}] {result.category}/"
-                    f"{result.feature_type}: {result.display_name}"
+                    f"    {index}. [{status}] {result.category}/{result.feature_type}: {result.display_name}"
                 )
                 if assessment.issues:
                     print("       Rejection reasons:")
@@ -579,8 +570,7 @@ class Location(BaseModel):
             else models.location.lint._get_geonames_country_code(geonames_country)
         )
         print(
-            f"    Exact-name query: {search_plan.locality_name!r}; "
-            f"country={geonames_country_code or '(unresolved)'}"
+            f"    Exact-name query: {search_plan.locality_name!r}; country={geonames_country_code or '(unresolved)'}"
         )
         geonames_candidates = models.location.lint._get_geonames_coordinate_matches(
             self
@@ -598,13 +588,10 @@ class Location(BaseModel):
             matched_as = (
                 ""
                 if candidate.match.match_kind == "name"
-                else f"; matched {candidate.match.match_kind.replace('_', ' ')} "
-                f"{candidate.match.matched_name!r}"
+                else f"; matched {candidate.match.match_kind.replace('_', ' ')} {candidate.match.matched_name!r}"
             )
             print(
-                f"    {index}. [{status}] {record.feature_class}/"
-                f"{record.feature_code}: {record.name} "
-                f"(GeoNames ID {record.geoname_id}{matched_as})"
+                f"    {index}. [{status}] {record.feature_class}/{record.feature_code}: {record.name} (GeoNames ID {record.geoname_id}{matched_as})"
             )
             print(
                 "       Coordinates: "
@@ -816,8 +803,7 @@ class Location(BaseModel):
                 add_choice(
                     latitude,
                     longitude,
-                    f"Nominatim {result.category}/{result.feature_type} "
-                    f"{nominatim_source_type} for {result.display_name!r}",
+                    f"Nominatim {result.category}/{result.feature_type} {nominatim_source_type} for {result.display_name!r}",
                     provenance,
                 )
 
@@ -961,6 +947,11 @@ class Location(BaseModel):
             occ.location = other
         for record in self.occurrence_records:
             record.location = other
+        # Keep alias chains one level deep. Otherwise merging a Location that
+        # already has aliases leaves those aliases pointing at the newly created
+        # alias instead of at the canonical target.
+        for alias in tuple(self.aliases):
+            alias.parent = other
 
     def set_period(self, period: Period | None) -> None:
         self.min_period = self.max_period = period
@@ -1157,8 +1148,7 @@ class Location(BaseModel):
                 tags.append(f"coordinate provenance GeoNames {tag.geoname_id}")
             elif isinstance(tag, models.tags.LocationTag.CoordinatesFromNominatim):
                 tags.append(
-                    "coordinate provenance OpenStreetMap "
-                    f"{tag.osm_type} {tag.osm_id} {tag.category}"
+                    f"coordinate provenance OpenStreetMap {tag.osm_type} {tag.osm_id} {tag.category}"
                 )
             elif isinstance(tag, models.tags.LocationTag.CoordinatesFromName):
                 tags.append(f"coordinate provenance Name {tag.name.id}")
@@ -1166,8 +1156,7 @@ class Location(BaseModel):
                 tag, models.tags.LocationTag.CoordinatesFromOccurrenceRecord
             ):
                 tags.append(
-                    "coordinate provenance OccurrenceRecord "
-                    f"{tag.occurrence_record.id}"
+                    f"coordinate provenance OccurrenceRecord {tag.occurrence_record.id}"
                 )
             elif tag is models.tags.LocationTag.CoordinatesFromLocationName:
                 tags.append("coordinate provenance Location name")

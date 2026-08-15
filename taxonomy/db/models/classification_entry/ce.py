@@ -22,6 +22,7 @@ from taxonomy.db.constants import (
     NomenclatureStatus,
     Rank,
     SourceLanguage,
+    SpecimenDetailText,
 )
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.article.article import ArticleTag
@@ -682,7 +683,7 @@ class ClassificationEntryTag(ADT):
     TextualRank(text=Managed, tag=2)  # type: ignore[name-defined]
     CorrectedName(text=Managed, tag=3)  # type: ignore[name-defined]
     PageLink(url=URL, page=Managed, tag=4)  # type: ignore[name-defined]
-    TypeSpecimenData(text=Markdown, tag=5)  # type: ignore[name-defined]
+    TypeSpecimenData(text=SpecimenDetailText, tag=5)  # type: ignore[name-defined]
     OriginalCombination(text=Managed, tag=6)  # type: ignore[name-defined]
     OriginalPageDescribed(text=Managed, tag=7)  # type: ignore[name-defined]
     IgnoreLintClassificationEntry(label=Managed, comment=NotRequired[Markdown], tag=8)  # type: ignore[name-defined]

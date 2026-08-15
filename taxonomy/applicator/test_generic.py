@@ -195,6 +195,61 @@ def test_schema_v2_update_object_applies_multiple_guarded_changes() -> None:
     assert location.comment == "Reviewed."
 
 
+def test_schema_v2_update_object_normalizes_unordered_adt_field() -> None:
+    general = LocationTag.General
+    osm = LocationTag.CoordinatesFromGeoNames(123)
+    location = _make_location(tags=(general, osm, general))
+    row = recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": recommendations.UPDATE_OBJECT,
+            "confidence": "high",
+            "reason": "Normalize an unordered tag field.",
+            "evidence": [{"kind": "lint", "text": "Tags are unsorted."}],
+            "object": {"model": "Location", "id": 2300, "label": "Borchers Fauna"},
+            "changes": [{"operation": "normalize", "field": "tags"}],
+        },
+        1,
+    )
+
+    plan = recommendations.build_plan(
+        [row],
+        model_registry={"Location": Location},
+        get_object=lambda _model, _id: location,
+    )
+    assert not plan.actions[0].already_applied
+
+    recommendations.execute_plan(plan, apply=True)
+
+    assert location.tags == tuple(sorted({general, osm}))
+
+
+def test_schema_v2_update_object_normalize_is_idempotent() -> None:
+    general = LocationTag.General
+    osm = LocationTag.CoordinatesFromGeoNames(123)
+    location = _make_location(tags=tuple(sorted({general, osm})))
+    row = recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": recommendations.UPDATE_OBJECT,
+            "confidence": "high",
+            "reason": "Normalize an unordered tag field.",
+            "evidence": [{"kind": "lint", "text": "Tags are unsorted."}],
+            "object": {"model": "Location", "id": 2300, "label": "Borchers Fauna"},
+            "changes": [{"operation": "normalize", "field": "tags"}],
+        },
+        1,
+    )
+
+    plan = recommendations.build_plan(
+        [row],
+        model_registry={"Location": Location},
+        get_object=lambda _model, _id: location,
+    )
+
+    assert plan.actions[0].already_applied
+
+
 def _merge_collection_row() -> dict[str, object]:
     return {
         "schema_version": 2,

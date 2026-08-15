@@ -2,8 +2,8 @@ from datetime import date
 
 import pytest
 
-from taxonomy.db import helpers
-from taxonomy.db.constants import Group, Rank
+from taxonomy.db import constants, helpers
+from taxonomy.db.constants import Group, Rank, SpecimenDetailText, StringCleanupOption
 
 from .helpers import (
     get_date_object,
@@ -49,6 +49,60 @@ def test_interactive_clean_string_preserves_escaped_hyphen_space() -> None:
     text = "fine-\\ to coarse-grained"
 
     assert helpers.interactive_clean_string(text, interactive=False) == text
+
+
+def test_clean_string_normalizes_sex_symbols_when_requested() -> None:
+    text = "3 [M] [M], 2 [F][F]; adult[M]; C688[F]"
+
+    assert helpers.clean_string(text) == text
+    assert helpers.clean_string(text, normalize_sex_symbols=True) == (
+        "3 ♂ ♂, 2 ♀♀; adult♂; C688♀"
+    )
+
+
+def test_clean_string_preserves_bracketed_initials_and_markdown_links() -> None:
+    text = "[M]agnus, [F]élicité, and [M](https://example.com)"
+
+    assert helpers.clean_string(text, normalize_sex_symbols=True) == text
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("at 23*29'00'N, long. 68*54'45\" E", "at 23°29'00'N, long. 68°54'45\" E"),
+        ("Latitude 26* S; Longitude 152* E", "Latitude 26° S; Longitude 152° E"),
+        ("between 27* and 34* South latitude", "between 27° and 34° South latitude"),
+        ("42*36'29\" [N], 72*32'58\" [W]", "42°36'29\" [N], 72°32'58\" [W]"),
+        ("bearing 97* and 6400 metres", "bearing 97° and 6400 metres"),
+    ],
+)
+def test_clean_string_normalizes_unambiguous_asterisk_degree_signs(
+    text: str, expected: str
+) -> None:
+    assert helpers.clean_string(text) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "2*3",
+        "type* and note *",
+        "temperature 13*C",
+        "02*23\\'99\"N 152*50\\'83*E",
+        "latitude 12*99'N",
+        "91*N, 181*E",
+        "A1*E",
+    ],
+)
+def test_clean_string_preserves_ambiguous_or_invalid_asterisk_uses(text: str) -> None:
+    assert helpers.clean_string(text) == text
+
+
+def test_specimen_detail_text_requests_sex_symbol_normalization() -> None:
+    assert helpers.get_string_kind(SpecimenDetailText) is constants.StringKind.markdown
+    assert helpers.get_string_cleanup_options(SpecimenDetailText) == {
+        StringCleanupOption.normalize_sex_symbols
+    }
 
 
 def test_extract_coordinates_normalizes_typographic_symbols() -> None:

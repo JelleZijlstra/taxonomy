@@ -1178,10 +1178,20 @@ def _occurrence_record_presence(
     return None
 
 
+def _regional_origin_excludes_distribution_evidence(taxon: Taxon, region: Any) -> bool:
+    regional_tag = get_effective_regional_tag(taxon, region, TaxonTag.RegionalOrigin)
+    return (
+        regional_tag is not None
+        and regional_tag.origin is DistributionOrigin.introduced
+    )
+
+
 def _occurrence_record_is_distribution_evidence(record: Any, taxon: Taxon) -> bool:
     assessments = _occurrence_record_validities(record, assessment=True)
     validities = assessments or _occurrence_record_validities(record, assessment=False)
     if validities & _NON_DISTRIBUTION_VALIDITIES:
+        return False
+    if _regional_origin_excludes_distribution_evidence(taxon, record.location.region):
         return False
     presence = _occurrence_record_presence(record, taxon)
     if (
@@ -1271,6 +1281,12 @@ def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
         if isinstance(tag, TypeTag.TypeLocalityValidity)
     ]
     if any(validity is not OccurrenceValidity.valid for validity in validities):
+        return False
+    if (
+        location is not None
+        and hasattr(location, "region")
+        and _regional_origin_excludes_distribution_evidence(name.taxon, location.region)
+    ):
         return False
     regional_presence = (
         get_effective_regional_tag(

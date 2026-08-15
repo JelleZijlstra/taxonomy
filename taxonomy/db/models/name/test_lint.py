@@ -9,6 +9,7 @@ from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AgeClass,
     ArticleType,
+    ArticleKind,
     Group,
     NamingConvention,
     NomenclatureStatus,
@@ -49,6 +50,55 @@ def test_parse_date() -> None:
     assert parse_date("23 Feb 2013") == "2013-02-23"
     assert parse_date("July 2013") == "2013-07"
     assert parse_date("7 July 2013") == "2013-07-07"
+
+
+def test_generic_string_cleanup_normalizes_safe_input_shortcuts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(Name, "__str__", lambda _: "test name")
+    article = models.Article.virtual(name="source.pdf", kind=ArticleKind.electronic)
+    specimen_detail = TypeTag.SpecimenDetail("Adult [M], skin and skull.", article)
+    etymology_detail = TypeTag.EtymologyDetail("[M]agnus, for its large size.", article)
+    location_detail = TypeTag.LocationDetail("at 23*29'N, 68*54'W", article)
+    name = Name.virtual(
+        group=Group.species,
+        root_name="example",
+        status=Status.valid,
+        taxon=models.Taxon.virtual(age=AgeClass.extant),
+        original_name=None,
+        corrected_original_name=None,
+        nomenclature_status=NomenclatureStatus.available,
+        target=None,
+        author_tags=(),
+        original_citation=None,
+        page_described=None,
+        verbatim_citation=None,
+        citation_group=None,
+        year=None,
+        name_complex=None,
+        species_name_complex=None,
+        type=None,
+        type_locality=None,
+        type_specimen=None,
+        collection=None,
+        genus_type_kind=None,
+        species_type_kind=None,
+        type_tags=(specimen_detail, etymology_detail, location_detail),
+        original_rank=None,
+        original_parent=None,
+        data=None,
+        tags=(),
+    )
+
+    issues = list(name.check_all_fields(LintConfig(autofix=False, interactive=False)))
+    assert len(issues) == 2
+    for issue in issues:
+        assert not isinstance(issue, str)
+        assert issue.fix is not None
+        assert issue.fix.apply() is True
+    assert TypeTag.SpecimenDetail("Adult ♂, skin and skull.", article) in name.type_tags
+    assert TypeTag.LocationDetail("at 23°29'N, 68°54'W", article) in name.type_tags
+    assert etymology_detail in name.type_tags
 
 
 def test_redirect_name_issue_changes_only_redirect_fields() -> None:

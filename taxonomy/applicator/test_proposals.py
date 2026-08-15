@@ -1,9 +1,11 @@
 import pytest
 
+from taxonomy import config
 from taxonomy.applicator.proposals import (
     ProposalBuilder,
     ProposalLintResult,
     ProposedModel,
+    get_skipped_network_lints,
     lint_proposals,
     print_lint_results,
 )
@@ -158,6 +160,20 @@ def test_lint_proposals_contains_lint_failures_in_result() -> None:
 
     assert result.proposal is proposal
     assert isinstance(result.messages, tuple)
+
+
+def test_get_skipped_network_lints_reports_incomplete_offline_run(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    location = Location.virtual(name="Place", tags=())
+    proposals = (ProposedModel(location, ("manifest line 1",)),)
+    monkeypatch.setattr(config, "is_network_available", lambda: False)
+
+    skipped = get_skipped_network_lints(proposals)
+
+    assert "Location" in skipped
+    assert "geonames_coordinates" in skipped["Location"]
+    assert "coordinate_provenance" in skipped["Location"]
 
 
 def test_lint_proposals_clears_model_caches_once_per_batch(

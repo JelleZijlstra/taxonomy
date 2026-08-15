@@ -9,8 +9,10 @@ to open every manual-review object in the database editor after printing its com
 note. ``--apply`` performs both post-apply cleanup and manual-review editing by default;
 use ``--no-edit-applied`` or ``--no-edit-manual`` to skip either phase. Use
 ``--review-each`` to review every
-row in file order and choose yes (queue it for application), no (skip it), or edit
-(open its affected database object and skip the automated recommendation). Add
+row in file order and choose yes (apply it immediately), no (skip it), or edit
+(open its affected database object and skip the automated recommendation). Before each
+immediate write, the cumulative accepted subset is rebuilt against the current database
+so manifest-local references and dependencies remain available. Add
 ``--virtual-lint`` to construct the final proposed model states in memory and run
 advisory lint before the dry run or apply step. Use ``--virtual-lint-issues-only`` to
 run the same lint while printing only unresolved ``VIRTUAL_LINT_ISSUES``. Flags
@@ -40,7 +42,7 @@ from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import proposals as virtual_proposals
 from taxonomy.applicator import taxon as taxon_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
-from taxonomy.db.models import Name
+from taxonomy.db.models import Location, Name
 from taxonomy.db.models.base import BaseModel, LintConfig
 
 
@@ -153,6 +155,13 @@ class ExecutionResult:
     affected_objects: tuple[BaseModel, ...]
 
 
+@dataclass(frozen=True, slots=True)
+class IndividualReviewResult:
+    applied_lines: frozenset[int]
+    execution_result: ExecutionResult
+    aborted: bool
+
+
 def _persistent_identity(obj: BaseModel) -> tuple[type[BaseModel], object]:
     object_id = getattr(obj, "id", None)
     return type(obj), object_id if object_id is not None else id(obj)
@@ -250,8 +259,7 @@ def edit_applied_objects(result: ExecutionResult) -> bool:
             obj = objects[index]
             label = getattr(obj, type(obj).label_field, None)
             print(
-                f"POST_APPLY_CLEANUP {index + 1}/{len(objects)} "
-                f"object={type(obj).__name__}:{obj.id} label={label!r}"
+                f"POST_APPLY_CLEANUP {index + 1}/{len(objects)} object={type(obj).__name__}:{obj.id} label={label!r}"
             )
             try:
                 obj.reload()
@@ -274,8 +282,7 @@ def edit_applied_objects(result: ExecutionResult) -> bool:
                     objects.append(discovered)
             index += 1
     print(
-        f"POST_APPLY_CLEANUP total={len(objects)} "
-        f"clean={len(objects) - len(failures)} incomplete={len(failures)}"
+        f"POST_APPLY_CLEANUP total={len(objects)} clean={len(objects) - len(failures)} incomplete={len(failures)}"
     )
     for failure in failures:
         print(f"  INCOMPLETE {failure}")
@@ -352,6 +359,36 @@ class IndividualReviewItem:
     edit_object: Any | None
 
 
+def _validate_proposed_location_name_uniqueness(
+    proposals: tuple[virtual_proposals.ProposedModel, ...],
+) -> None:
+    """Reject cross-family Location name collisions before any executor writes."""
+    by_name: dict[str, virtual_proposals.ProposedModel] = {}
+    for proposal in proposals:
+        if not isinstance(proposal.model, Location):
+            continue
+        name = proposal.model.name
+        previous = by_name.get(name)
+        if previous is None:
+            by_name[name] = proposal
+            continue
+        previous_origin = previous.model.virtual_origin
+        current_origin = proposal.model.virtual_origin
+        previous_identity = (
+            f"Location {previous_origin.id}"
+            if previous_origin is not None
+            else "a newly proposed Location"
+        )
+        current_identity = (
+            f"Location {current_origin.id}"
+            if current_origin is not None
+            else "a newly proposed Location"
+        )
+        raise RecommendationError(
+            f"proposed Location name {name!r} is not unique: {previous_identity} ({', '.join(previous.contexts)}) and {current_identity} ({', '.join(proposal.contexts)}) would both use it"
+        )
+
+
 def _validate_location_rows(
     rows: list[location_recommendations.Recommendation],
 ) -> None:
@@ -366,8 +403,7 @@ def _validate_location_rows(
                 location_id = spec.location_id
                 if location_id in mutations or location_id in merge_target_ids:
                     raise RecommendationError(
-                        f"line {row.line_number}: Location {location_id} is mutated by "
-                        "more than one recommendation"
+                        f"line {row.line_number}: Location {location_id} is mutated by more than one recommendation"
                     )
             mutations[row.source.location_id] = row.action
             mutations[row.target.location_id] = row.action
@@ -408,8 +444,7 @@ def _validate_location_rows(
             )
         ):
             raise RecommendationError(
-                f"line {row.line_number}: Location {location_id} is mutated by more "
-                "than one recommendation"
+                f"line {row.line_number}: Location {location_id} is mutated by more than one recommendation"
             )
         if not composable_merge_source:
             mutations[location_id] = row.action
@@ -423,8 +458,7 @@ def _validate_location_rows(
                 location_recommendations.EDIT_LOCATION,
             }:
                 raise RecommendationError(
-                    f"line {row.line_number}: merge target Location {target_id} is "
-                    "mutated by another recommendation"
+                    f"line {row.line_number}: merge target Location {target_id} is mutated by another recommendation"
                 )
             merge_target_ids.add(target_id)
 
@@ -436,8 +470,7 @@ def _validate_type_locality_rows(
     for row in rows:
         if row.name_id in seen_ids:
             raise RecommendationError(
-                f"line {row.line_number}: duplicate type-locality recommendation for "
-                f"Name {row.name_id}"
+                f"line {row.line_number}: duplicate type-locality recommendation for Name {row.name_id}"
             )
         seen_ids.add(row.name_id)
 
@@ -658,9 +691,7 @@ def print_classification_review(recommendations: Recommendations) -> None:
             and candidate.values["classification_entry"].get("ref") == row.object.ref
         )
         print(
-            f"{'  ' * depth}{row.object.label} "
-            f"[{row.values.get('rank')}; page {row.values.get('page')}; "
-            f"article={article_ref}; occurrences={occurrences}]"
+            f"{'  ' * depth}{row.object.label} [{row.values.get('rank')}; page {row.values.get('page')}; article={article_ref}; occurrences={occurrences}]"
         )
         for child in children.get(row.object.ref, ()):
             display(child, depth + 1)
@@ -720,8 +751,7 @@ def print_reconciliation_review(plans: AnyRecommendationPlans) -> None:
             else:
                 status = "UNRECOGNIZED"
         print(
-            f"RECONCILIATION ClassificationEntry ref={action.recommendation.object.ref!r} "
-            f"name={values['name']!r} status={status}"
+            f"RECONCILIATION ClassificationEntry ref={action.recommendation.object.ref!r} name={values['name']!r} status={status}"
         )
     for action in occurrence_actions:
         values = action.new_value
@@ -734,8 +764,7 @@ def print_reconciliation_review(plans: AnyRecommendationPlans) -> None:
             else ("UNRESOLVED_DECLARED" if declared_hint else "MISSING")
         )
         print(
-            f"RECONCILIATION OccurrenceRecord ref={action.recommendation.object.ref!r} "
-            f"locality={values['locality_text']!r} location={status}"
+            f"RECONCILIATION OccurrenceRecord ref={action.recommendation.object.ref!r} locality={values['locality_text']!r} location={status}"
         )
 
 
@@ -897,16 +926,15 @@ def _resolve_individual_review_items(
             actual_name = label_name(name)
             if actual_name != type_row.name:
                 raise RecommendationError(
-                    f"Name {type_row.name_id} changed from {type_row.name!r} "
-                    f"to {actual_name!r}"
+                    f"Name {type_row.name_id} changed from {type_row.name!r} to {actual_name!r}"
                 )
             type_objects[type_row.line_number] = name
         except RecommendationError as exc:
             errors.append(f"line {type_row.line_number}: {exc}")
     if errors:
         raise RecommendationError(
-            "refusing to start individual review because editor-target validation "
-            "failed:\n- " + "\n- ".join(errors)
+            "refusing to start individual review because editor-target validation failed:\n- "
+            + "\n- ".join(errors)
         )
 
     items: list[IndividualReviewItem] = []
@@ -1022,17 +1050,16 @@ def _prompt_individual_review_choice(*, can_edit: bool) -> Literal["yes", "no", 
 def review_recommendations_individually(
     items: tuple[IndividualReviewItem, ...],
     *,
+    apply_selected: Callable[[set[int]], ExecutionResult],
     choose: Callable[..., Literal["yes", "no", "edit"]] = (
         _prompt_individual_review_choice
     ),
-) -> set[int] | None:
-    """Collect apply choices, opening editors immediately when requested."""
+) -> IndividualReviewResult:
+    """Apply accepted rows and open requested editors in manifest order."""
     selected_lines: set[int] = set()
+    affected_objects: list[BaseModel] = []
     print(
-        "Reviewing recommendations in file order. Yes queues a recommendation for "
-        "application; no skips it; edit opens the affected object and skips the "
-        "automated recommendation. Queued rows are revalidated and applied together "
-        "after the final choice."
+        "Reviewing recommendations in file order. Yes rebuilds and applies the cumulative accepted subset immediately; no skips the recommendation; edit opens the affected object and skips the automated recommendation. Earlier changes are not rolled back if review is interrupted later."
     )
     for index, item in enumerate(items, start=1):
         print()
@@ -1042,21 +1069,49 @@ def review_recommendations_individually(
             choice = choose(can_edit=item.edit_object is not None)
         except getinput.StopException:
             print()
+            applied_summary = (
+                f"{len(selected_lines)} accepted recommendation(s) were already applied"
+                if selected_lines
+                else "No recommendations were applied"
+            )
             print(
                 getinput.yellow(
-                    "Individual review aborted. Queued recommendations were not "
-                    "applied; edits already completed in an object editor are not "
-                    "rolled back."
+                    f"Individual review aborted. {applied_summary}; applied changes and edits already completed in an object editor are not rolled back."
                 )
             )
-            return None
+            return IndividualReviewResult(
+                frozenset(selected_lines),
+                ExecutionResult(_deduplicate_objects(affected_objects)),
+                aborted=True,
+            )
         if choice == "yes":
             selected_lines.add(item.line_number)
+            try:
+                result = apply_selected(selected_lines)
+            except Exception:
+                selected_lines.remove(item.line_number)
+                print()
+                print(
+                    getinput.yellow(
+                        f"Applying manifest line {item.line_number} failed. Earlier accepted changes and any partial changes from this attempt are not rolled back."
+                    )
+                )
+                raise
+            affected_objects.extend(result.affected_objects)
+            print(
+                getinput.green(
+                    f"Applied recommendation from manifest line {item.line_number}."
+                )
+            )
         elif choice == "edit":
             assert item.edit_object is not None
             print(getinput.green(f"Opening editor for {item.edit_object}..."))
             item.edit_object.edit()
-    return selected_lines
+    return IndividualReviewResult(
+        frozenset(selected_lines),
+        ExecutionResult(_deduplicate_objects(affected_objects)),
+        aborted=False,
+    )
 
 
 def _filter_recommendations(
@@ -1129,8 +1184,7 @@ def _print_type_locality_manual_review_for_edit(
     """Print one type-locality review with its reason nearest the editor prompt."""
     print(f"{getinput.blue('Name:')} N{row.name_id} {row.name}")
     print(
-        f"{getinput.blue('Current Location:')} "
-        f"L{row.current_location_id} {row.current_location_name}"
+        f"{getinput.blue('Current Location:')} L{row.current_location_id} {row.current_location_name}"
     )
     print(f"{getinput.blue('Manifest line:')} {row.line_number}")
     print(f"{getinput.blue('Confidence:')} {_confidence_text(row.confidence)}")
@@ -1219,6 +1273,8 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             coverage_plan = coverage_recommendations.build_plan(
                 recommendations.coverage_rows, references=references
             )
+            proposals = builder.build()
+            _validate_proposed_location_name_uniqueness(proposals)
             return UnifiedRecommendationPlan(
                 article_plan,
                 taxon_plan,
@@ -1226,7 +1282,7 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
                 location_plan,
                 type_plan,
                 coverage_plan,
-                builder.build(),
+                proposals,
                 references,
             )
     except (
@@ -1238,6 +1294,11 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
         coverage_recommendations.RecommendationError,
     ) as exc:
         raise RecommendationError(str(exc)) from exc
+    builder = virtual_proposals.ProposalBuilder()
+    type_recommendations.add_virtual_models(type_plan, builder)
+    location_recommendations.add_virtual_models(location_plan, builder)
+    generic_recommendations.add_virtual_models(generic_plan, builder)
+    _validate_proposed_location_name_uniqueness(builder.build())
     return article_plan, generic_plan, location_plan, type_plan
 
 
@@ -1279,6 +1340,13 @@ def run_virtual_lint(
     virtual_proposals.print_lint_results(
         virtual_proposals.lint_proposals(proposals), issues_only=issues_only
     )
+    for model_name, labels in sorted(
+        virtual_proposals.get_skipped_network_lints(proposals).items()
+    ):
+        print(
+            f"VIRTUAL_LINT_INCOMPLETE model={model_name} "
+            f"network_incomplete_lints={','.join(labels)}"
+        )
 
 
 def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionResult:
@@ -1374,6 +1442,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     printed_output = False
     run_virtual_lint_requested = args.virtual_lint or args.virtual_lint_issues_only
     execution_result: ExecutionResult | None = None
+    individual_review_aborted = False
 
     def begin_output() -> None:
         nonlocal printed_output
@@ -1435,10 +1504,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                 begin_output()
                 print(
                     getinput.yellow(
-                        "Warning: the complete manifest no longer matches the "
-                        "database. Because --edit-manual does not apply actionable "
-                        "rows, it will validate the manual-review objects separately "
-                        "and continue:"
+                        "Warning: the complete manifest no longer matches the database. Because --edit-manual does not apply actionable rows, it will validate the manual-review objects separately and continue:"
                     )
                 )
                 print(exc)
@@ -1468,7 +1534,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     except RecommendationError as exc:
         parser.error(str(exc))
 
-    if run_virtual_lint_requested and (not args.review_each or run_dry_run):
+    if run_virtual_lint_requested:
         assert plans is not None
         begin_output()
         run_virtual_lint(plans, issues_only=args.virtual_lint_issues_only)
@@ -1490,41 +1556,51 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
 
     if individual_items is not None:
         begin_output()
-        selected_lines = review_recommendations_individually(individual_items)
-        if selected_lines is None:
-            return
-        selected = _filter_recommendations(recommendations, selected_lines)
-        if selected.count == 0:
-            begin_output()
-            print("No recommendations selected; no automated changes made.")
-        else:
+        applied_count = 0
+
+        def apply_selected(selected_lines: set[int]) -> ExecutionResult:
+            nonlocal applied_count
+            selected = _filter_recommendations(recommendations, selected_lines)
             try:
-                # An editor may have changed database state, and omitted
-                # create_object rows may invalidate selected ref-dependent rows.
-                # Rebuild the selected plan as a single unit before any write.
+                # Rebuild the cumulative accepted subset after every choice. Earlier
+                # rows are idempotent, while retaining them makes their manifest-local
+                # references available to the newly accepted row.
                 selected_plans = build_plans(selected)
             except RecommendationError as exc:
-                parser.error(
-                    "selected recommendations failed final database validation; no "
-                    f"automated changes were made: {exc}"
-                )
-            if run_virtual_lint_requested:
-                begin_output()
-                run_virtual_lint(
-                    selected_plans, issues_only=args.virtual_lint_issues_only
-                )
+                if applied_count:
+                    raise RecommendationError(
+                        f"{applied_count} earlier accepted recommendation(s) remain applied; the newly selected recommendation failed database validation: {exc}"
+                    ) from exc
+                raise RecommendationError(
+                    f"the selected recommendation failed database validation; no automated changes were made: {exc}"
+                ) from exc
+            result = execute_plans(selected_plans, apply=True)
+            applied_count += 1
+            return result
+
+        try:
+            review_result = review_recommendations_individually(
+                individual_items, apply_selected=apply_selected
+            )
+        except RecommendationError as exc:
+            parser.error(str(exc))
+        execution_result = review_result.execution_result
+        individual_review_aborted = review_result.aborted
+        if not review_result.applied_lines:
             begin_output()
-            execution_result = execute_plans(selected_plans, apply=True)
+            print("No recommendations selected; no automated changes made.")
 
     if args.edit_applied and execution_result is not None:
         begin_output()
         if not edit_applied_objects(execution_result):
             print(
                 getinput.yellow(
-                    "Warning: post-apply cleanup was incomplete; recommendations "
-                    "were already applied. Continuing."
+                    "Warning: post-apply cleanup was incomplete; recommendations were already applied. Continuing."
                 )
             )
+
+    if individual_review_aborted:
+        return
 
     if manual_items is not None:
         begin_output()
@@ -1538,24 +1614,21 @@ def main() -> None:
         "--dry-run",
         action="store_true",
         help=(
-            "validate current database state and print the complete plan; may be "
-            "combined with later write or edit operations"
+            "validate current database state and print the complete plan; may be combined with later write or edit operations"
         ),
     )
     parser.add_argument(
         "--apply",
         action="store_true",
         help=(
-            "write all validated recommendations, then edit affected and "
-            "manual-review objects by default"
+            "write all validated recommendations, then edit affected and manual-review objects by default"
         ),
     )
     parser.add_argument(
         "--review",
         action="store_true",
         help=(
-            "print static tables with untruncated action details and manual-review "
-            "evidence without consulting the database"
+            "print static tables with untruncated action details and manual-review evidence without consulting the database"
         ),
     )
     parser.add_argument(
@@ -1575,9 +1648,7 @@ def main() -> None:
         "--review-manual",
         action="store_true",
         help=(
-            "print manual_review actions and actionable rows carrying review_note, "
-            "including complete notes, reasons, and evidence, without consulting "
-            "the database"
+            "print manual_review actions and actionable rows carrying review_note, including complete notes, reasons, and evidence, without consulting the database"
         ),
     )
     parser.add_argument(
@@ -1594,10 +1665,7 @@ def main() -> None:
         "--review-each",
         action="store_true",
         help=(
-            "validate the complete manifest, then review each row in file order "
-            "with yes (apply after all choices), no (skip), or edit (open the "
-            "affected object and skip); accepted rows are revalidated together "
-            "before writing"
+            "validate the complete manifest, then review each row in file order with yes (revalidate and apply immediately), no (skip), or edit (open the affected object and skip); cumulative accepted rows preserve manifest-local dependencies"
         ),
     )
     parser.add_argument(
@@ -1605,10 +1673,7 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "validate the complete manifest, then for every manual_review row print "
-            "its complete note and invoke edit() on the referenced object; generic "
-            "rows edit their explicit object and type-locality rows edit their Name; "
-            "enabled by default with --apply"
+            "validate the complete manifest, then for every manual_review row print its complete note and invoke edit() on the referenced object; generic rows edit their explicit object and type-locality rows edit their Name; enabled by default with --apply"
         ),
     )
     parser.add_argument(
@@ -1616,28 +1681,21 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "after successful --apply or accepted --review-each selections, run "
-            "format() and edit_until_clean() on every created or modified object, "
-            "including related objects created by structured lint autofixes; enabled "
-            "by default with --apply"
+            "after successful --apply or accepted --review-each selections, run format() and edit_until_clean() on every created or modified object, including related objects created by structured lint autofixes; enabled by default with --apply"
         ),
     )
     parser.add_argument(
         "--virtual-lint",
         action="store_true",
         help=(
-            "build virtual versions of all proposed models and run advisory, "
-            "best-effort lint before dry-run output or writes; structured "
-            "autofixes are reported separately from issues requiring manifest edits"
+            "build virtual versions of all proposed models and run advisory, best-effort lint before dry-run output or writes; structured autofixes are reported separately from issues requiring manifest edits"
         ),
     )
     parser.add_argument(
         "--virtual-lint-issues-only",
         action="store_true",
         help=(
-            "run advisory virtual lint but print only unresolved "
-            "VIRTUAL_LINT_ISSUES, omitting autofixable findings, summaries, and "
-            "the implicit default dry run"
+            "run advisory virtual lint but print only unresolved VIRTUAL_LINT_ISSUES, omitting autofixable findings, summaries, and the implicit default dry run"
         ),
     )
     args = parser.parse_args()
@@ -1649,8 +1707,7 @@ def main() -> None:
         parser.error("--review-action requires --review")
     if args.review_each and args.apply:
         parser.error(
-            "--review-each selects individual rows, so it cannot be combined with "
-            "--apply, which applies every row"
+            "--review-each selects individual rows, so it cannot be combined with --apply, which applies every row"
         )
     if args.edit_applied and not (args.apply or args.review_each):
         parser.error("--edit-applied requires --apply or --review-each")

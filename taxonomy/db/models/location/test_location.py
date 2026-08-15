@@ -8,7 +8,7 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from taxonomy import getinput
+from taxonomy import config, getinput
 from taxonomy.apis import geonames, nominatim, plss
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import RegionKind, SpeciesGroupType
@@ -595,6 +595,21 @@ def test_merge_preserves_compatible_metadata() -> None:
     assert source.parent is target
 
 
+def test_reassign_references_reparents_alias_children() -> None:
+    target = cast(Location, object())
+    alias = cast(Location, SimpleNamespace(parent=None))
+    source = cast(
+        Location,
+        SimpleNamespace(
+            type_localities=(), taxa=(), occurrence_records=(), aliases=(alias,)
+        ),
+    )
+
+    Location.reassign_references(source, target)
+
+    assert alias.parent is target
+
+
 def test_merge_combines_text_tags_and_compatible_partial_coordinates() -> None:
     source = _mergeable_location(
         id=1,
@@ -732,8 +747,7 @@ def test_fully_divided_region_lint_reports_direct_location() -> None:
             cast(Location, location), LintConfig()
         )
     ) == [
-        "is directly assigned to fully divided Region 'Example Region'; move it to "
-        "a child Region or add the General or Unplaced tag"
+        "is directly assigned to fully divided Region 'Example Region'; move it to a child Region or add the General or Unplaced tag"
     ]
     region.has_tag.assert_called_once_with(RegionTag.IncompletelyDivided)
 
@@ -949,8 +963,7 @@ def test_likely_synonym_map_flags_all_but_lowest_id_in_same_region() -> None:
 
 def test_extract_bracketed_location_equivalences() -> None:
     assert location_lint.extract_bracketed_location_equivalences(
-        "Toeare [= Tuare]; Umpata (= Humpata); Tlalpam [Tlalpan]; "
-        "Umpata (Humpata); [map](https://example.com)"
+        "Toeare [= Tuare]; Umpata (= Humpata); Tlalpam [Tlalpan]; Umpata (Humpata); [map](https://example.com)"
     ) == ("Tuare", "Humpata", "Tlalpan")
 
 
@@ -1395,8 +1408,8 @@ def test_coordinate_evidence_prints_all_sources(
     assert "GeoNames candidates:" in output
     assert "Exact-name query: 'Walnut Creek'; country=(unresolved)" in output
     assert (
-        "[accepted for point-coordinate checks] P/PPL: Nicasio "
-        "(GeoNames ID 5376890" in output
+        "[accepted for point-coordinate checks] P/PPL: Nicasio (GeoNames ID 5376890"
+        in output
     )
     assert "matched alternate name 'Walnut Creek'" in output
     assert "[rejected by region checks] T/MT: Other place" in output
@@ -1440,8 +1453,8 @@ def test_coordinate_evidence_prints_reviewed_and_linked_plss(
     output = capsys.readouterr().out
     assert "PLSS evidence:" in output
     assert (
-        "Location tag: PLSS('T27S R31E Sec. 3, Willamette Meridian', "
-        "'OR330270S0310E0')" in output
+        "Location tag: PLSS('T27S R31E Sec. 3, Willamette Meridian', 'OR330270S0310E0')"
+        in output
     )
     assert "Resolved coordinates: 42.9°N-43°N, 119.1°W-119°W" in output
     assert "[conflicts with Location PLSS] T27S R30E Sec. 3" in output
@@ -1484,8 +1497,8 @@ def test_coordinate_evidence_explains_accepted_spelling_variant(
     assert "[accepted] place/city: Isabela, Basilan, Philippines" in output
     assert "Match notes:" in output
     assert (
-        "locality spelling differs but is a likely variant: expected 'Isabella', "
-        "got 'Isabela'" in output
+        "locality spelling differs but is a likely variant: expected 'Isabella', got 'Isabela'"
+        in output
     )
 
 
@@ -1894,8 +1907,7 @@ def test_location_plss_lint_infers_township_from_alternative_sections(
     name = _tagged_object(
         (
             TypeTag.LocationDetail(
-                "Bardack gave the provenance as Section 11 or 13, Township 13 S, "
-                "Range 36 W.",
+                "Bardack gave the provenance as Section 11 or 13, Township 13 S, Range 36 W.",
                 source,
             ),
         ),
@@ -2200,11 +2212,7 @@ def test_geonames_alternate_name_lint_preserves_name_structure(
     )
 
     assert messages == [
-        (
-            "base name 'Calcutta' is a GeoNames alternate name rather than the "
-            "primary name 'Kolkata' (ID 1275004); review possible modern name "
-            "'Kolkata (India): 2 km N'"
-        )
+        "base name 'Calcutta' is a GeoNames alternate name rather than the primary name 'Kolkata' (ID 1275004); review possible modern name 'Kolkata (India): 2 km N'"
     ]
     assert loc.name == "Calcutta (India): 2 km N"
 
@@ -2226,10 +2234,7 @@ def test_geonames_alternate_name_lint_flags_ascii_spelling(
     )
 
     assert messages == [
-        (
-            "base name 'Valparaiso' is a GeoNames ASCII name rather than the primary "
-            "name 'Valparaíso' (ID 3868626); review possible modern name 'Valparaíso'"
-        )
+        "base name 'Valparaiso' is a GeoNames ASCII name rather than the primary name 'Valparaíso' (ID 3868626); review possible modern name 'Valparaíso'"
     ]
 
 
@@ -2381,8 +2386,7 @@ def test_location_does_not_infer_multiple_specimen_detail_coordinates() -> None:
     name = _tagged_object(
         (
             TypeTag.SpecimenDetail(
-                "Holotype from Bogamanda (2.08°S, 28.49°E); "
-                "paratype from Tschamola (2.01°S, 28.53°E)",
+                "Holotype from Bogamanda (2.08°S, 28.49°E); paratype from Tschamola (2.01°S, 28.53°E)",
                 source,
             ),
         ),
@@ -2400,8 +2404,7 @@ def test_location_does_not_infer_coordinates_from_proposed_neotype() -> None:
     name = _tagged_object(
         (
             TypeTag.SpecimenDetail(
-                "We hereby propose to designate MVZ 232023, collected at "
-                "34.98466N, 118.30149W",
+                "We hereby propose to designate MVZ 232023, collected at 34.98466N, 118.30149W",
                 source,
             ),
         ),
@@ -2624,8 +2627,7 @@ def test_coordinate_provenance_lint_accepts_one_exact_location_detail_pair(
     name = _tagged_object(
         (
             TypeTag.LocationDetail(
-                "Nandesen Forest at 20°50'S, 47°10'E; an alternative account gives "
-                "20°27'S, 47°9'E",
+                "Nandesen Forest at 20°50'S, 47°10'E; an alternative account gives 20°27'S, 47°9'E",
                 source,
             ),
         ),
@@ -2737,6 +2739,30 @@ def test_coordinate_provenance_lint_accepts_virtual_linked_occurrence() -> None:
     loc.tags = (LocationTag.CoordinatesFromOccurrenceRecord(record),)
 
     assert list(location_lint.check_coordinate_provenance(loc, LintConfig())) == []
+
+
+def test_coordinate_provenance_lint_checks_name_quotes_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = cast(models.Article, object())
+    name = _tagged_object(
+        (TypeTag.LocationDetail("Site at 37.9°N, 122.1°W", source),), name_tags=True
+    )
+    name.id = 101
+    loc = _location_without_coordinates(names=(name,))
+    loc.latitude = "37.9°N"
+    loc.longitude = "122.1°W"
+    loc.tags = (  # type: ignore[assignment]
+        LocationTag.CoordinatesFromName(
+            cast(models.Name, name), text="different coordinate text"
+        ),
+    )
+    monkeypatch.setattr(config, "is_network_available", lambda: False)
+
+    messages = list(location_lint.check_coordinate_provenance(loc, LintConfig()))
+
+    assert len(messages) == 1
+    assert "not present in an applicable LocationDetail tag" in str(messages[0])
 
 
 def test_coordinate_provenance_lint_accepts_alternative_when_each_source_is_exact(
@@ -4414,8 +4440,7 @@ def test_forward_geocoding_accepts_likely_spelling_variant() -> None:
     assert assessment.is_accepted
     assert assessment.issues == ()
     assert assessment.notes == (
-        "locality spelling differs but is a likely variant: expected 'Isabella', "
-        "got 'Isabela'",
+        "locality spelling differs but is a likely variant: expected 'Isabella', got 'Isabela'",
     )
 
 
@@ -4592,8 +4617,8 @@ def test_location_offset_name_lint_does_not_autofix_name_collision(
     assert loc.name == "Castle Brace (2 mi. SW)"
     assert len(messages) == 1
     assert (
-        "distance-offset name should be 'Castle Brace: 2 mi SW'; "
-        "cannot autofix because that name is already in use" in str(messages[0])
+        "distance-offset name should be 'Castle Brace: 2 mi SW'; cannot autofix because that name is already in use"
+        in str(messages[0])
     )
 
 
@@ -4756,8 +4781,8 @@ def test_location_disambiguator_lint_rejects_other_qualifiers(
 
     assert len(messages) == 1
     assert (
-        f"disambiguator {disambiguator!r} is not an enclosing Region, "
-        "an assigned Period, or an assigned StratigraphicUnit" in str(messages[0])
+        f"disambiguator {disambiguator!r} is not an enclosing Region, an assigned Period, or an assigned StratigraphicUnit"
+        in str(messages[0])
     )
     assert "location name should be" not in str(messages[0])
 
@@ -4893,8 +4918,8 @@ def test_coordinate_modifier_lint_checks_region(
 
     assert len(messages) == 1
     assert (
-        "coordinate modifier 17°S 70°W: "
-        "coordinate extent is outside Test Region" in str(messages[0])
+        "coordinate modifier 17°S 70°W: coordinate extent is outside Test Region"
+        in str(messages[0])
     )
 
 

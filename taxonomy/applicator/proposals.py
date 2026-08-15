@@ -7,9 +7,9 @@ from typing import Any, TypeVar, cast
 
 from clirm import substitute_virtual_models
 
-from taxonomy import adt
+from taxonomy import adt, config
 from taxonomy.db.models.base import BaseModel, LintConfig
-from taxonomy.db.models.lint import count_lint_codes
+from taxonomy.db.models.lint import Lint, count_lint_codes
 from taxonomy.db.models.lint_types import LintIssue, LintResult
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -241,8 +241,7 @@ def lint_proposals(
                     model_type.clear_lint_caches()
             else:
                 convergence_error = LintIssue(
-                    f"structured virtual autofix did not converge after "
-                    f"{max_fix_rounds} rounds",
+                    f"structured virtual autofix did not converge after {max_fix_rounds} rounds",
                     code="virtual_autofix_nonconvergent",
                 )
     finally:
@@ -268,6 +267,30 @@ def lint_proposals(
     return tuple(results)
 
 
+def get_skipped_network_lints(
+    proposals: tuple[ProposedModel, ...],
+) -> dict[str, tuple[str, ...]]:
+    """Return active lint checks wholly or partly incomplete offline."""
+    if config.is_network_available():
+        return {}
+    skipped: dict[str, tuple[str, ...]] = {}
+    for model_type in {type(proposal.model) for proposal in proposals}:
+        try:
+            registry = Lint.for_model(model_type)
+        except ValueError:
+            continue
+        labels = tuple(
+            sorted(
+                wrapper.label
+                for wrapper in registry.linters
+                if wrapper.requires_network or wrapper.uses_optional_network
+            )
+        )
+        if labels:
+            skipped[model_type.__name__] = labels
+    return skipped
+
+
 def print_lint_results(
     results: tuple[ProposalLintResult, ...], *, issues_only: bool = False
 ) -> None:
@@ -283,8 +306,7 @@ def print_lint_results(
     if autofixable:
         counts = count_lint_codes(autofixable)
         print(
-            f"VIRTUAL_LINT_AUTOFIXABLE total={len(autofixable)} "
-            f"simulated={len(simulated)} deferred={len(deferred)}"
+            f"VIRTUAL_LINT_AUTOFIXABLE total={len(autofixable)} simulated={len(simulated)} deferred={len(deferred)}"
         )
         for code, count in sorted(counts.items()):
             print(f"- code={code} count={count}")
@@ -304,8 +326,7 @@ def print_lint_results(
                 else f"new_virtual_id={model.id!r}"
             )
             print(
-                f"SIMULATED_FIXES {type(model).__name__} {identity}; "
-                f"contexts={result.proposal.contexts!r}"
+                f"SIMULATED_FIXES {type(model).__name__} {identity}; contexts={result.proposal.contexts!r}"
             )
             for issue in result.simulated_fixes:
                 print(f"- {issue}")
@@ -322,8 +343,7 @@ def print_lint_results(
                 else f"new_virtual_id={model.id!r}"
             )
             print(
-                f"DEFERRED_FIXES {type(model).__name__} {identity}; "
-                f"contexts={result.proposal.contexts!r}"
+                f"DEFERRED_FIXES {type(model).__name__} {identity}; contexts={result.proposal.contexts!r}"
             )
             for issue in result.deferred_fixes:
                 print(f"- {issue}")
@@ -350,9 +370,7 @@ def _print_lint_issues(results: list[ProposalLintResult]) -> None:
         model = result.proposal.model
         origin = model.virtual_origin_id
         print(
-            f"VIRTUAL_LINT_ISSUES model={type(model).__name__} "
-            f"virtual_id={model.id!r} origin_id={origin!r} "
-            f"contexts={result.proposal.contexts!r}"
+            f"VIRTUAL_LINT_ISSUES model={type(model).__name__} virtual_id={model.id!r} origin_id={origin!r} contexts={result.proposal.contexts!r}"
         )
         for message in result.messages:
             print(f"- {message}")

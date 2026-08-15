@@ -24,7 +24,7 @@ from clirm import Clirm, Field, Model, Query, VirtualReferenceError
 from taxonomy import adt, config, events, getinput
 from taxonomy.apis.cloud_search import SearchField
 from taxonomy.db import cached_data, derived_data, helpers, models
-from taxonomy.db.constants import StringKind
+from taxonomy.db.constants import StringCleanupOption, StringKind
 
 from .lint_types import LintIssue, LintResult
 
@@ -363,9 +363,17 @@ class BaseModel(Model):
                                     f" {attr_value} in {field} tag {tag}"
                                 )
                         elif isinstance(attr_value, str):
+                            annotation = tag_type.__annotations__[attr_name]
+                            cleanup_options = helpers.get_string_cleanup_options(
+                                annotation
+                            )
                             cleaned = helpers.interactive_clean_string(
                                 attr_value,
                                 clean_whitespace=True,
+                                normalize_sex_symbols=(
+                                    StringCleanupOption.normalize_sex_symbols
+                                    in cleanup_options
+                                ),
                                 interactive=cfg.interactive,
                             )
                             if cleaned != attr_value:
@@ -396,9 +404,7 @@ class BaseModel(Model):
                                         changes.append(f"edit unprintable {attr_name}")
                                     yield issue
 
-                                match helpers.get_string_kind(
-                                    tag_type.__annotations__[attr_name]
-                                ):
+                                match helpers.get_string_kind(annotation):
                                     case StringKind.markdown:
                                         cleaned_value = yield from models.article.lint.lint_referenced_text(
                                             cleaned, prefix=f"{self}: "

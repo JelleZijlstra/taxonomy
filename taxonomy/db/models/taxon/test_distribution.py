@@ -1,6 +1,6 @@
 from typing import cast
 
-from taxonomy.db.constants import DistributionOrigin, DistributionPresence
+from taxonomy.db.constants import DistributionOrigin, DistributionPresence, Rank
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.region import Region
@@ -29,13 +29,24 @@ def _region(name: str, parent: Region | None = None) -> Region:
     return cast(Region, _RegionStub(name, cast(_RegionStub | None, parent)))
 
 
-def _taxon(tags: tuple[object, ...]) -> Taxon:
+def _taxon(
+    tags: tuple[object, ...], *, rank: Rank = Rank.species, parent: Taxon | None = None
+) -> Taxon:
     class _TaxonStub:
         def __init__(self) -> None:
             self.tags = tags
+            self.rank = rank
+            self.parent = parent
 
         def get_tags(self, values: object, tag_type: type[object]) -> object:
             return (tag for tag in self.tags if isinstance(tag, tag_type))
+
+        def parent_of_rank(self, target_rank: Rank) -> Taxon:
+            if self.rank is target_rank:
+                return cast(Taxon, self)
+            if self.parent is None:
+                raise ValueError(f"no ancestor of rank {target_rank}")
+            return self.parent.parent_of_rank(target_rank)
 
     return cast(Taxon, _TaxonStub())
 
@@ -71,6 +82,40 @@ def test_more_specific_regional_status_overrides_broad_status() -> None:
 
     assert tag is not None
     assert tag.presence is DistributionPresence.resident
+
+
+def test_infraspecific_taxon_inherits_species_regional_status() -> None:
+    continent = _region("North America")
+    country = _region("Canada", continent)
+    source = cast(Article, object())
+    species = _taxon(
+        (TaxonTag.RegionalOrigin(continent, DistributionOrigin.introduced, source),)
+    )
+    subspecies = _taxon((), rank=Rank.subspecies, parent=species)
+
+    tag = get_effective_regional_tag(subspecies, country, TaxonTag.RegionalOrigin)
+
+    assert tag is not None
+    assert tag.origin is DistributionOrigin.introduced
+
+
+def test_infraspecific_regional_status_overrides_species_status() -> None:
+    continent = _region("North America")
+    country = _region("Canada", continent)
+    source = cast(Article, object())
+    species = _taxon(
+        (TaxonTag.RegionalOrigin(continent, DistributionOrigin.introduced, source),)
+    )
+    subspecies = _taxon(
+        (TaxonTag.RegionalOrigin(country, DistributionOrigin.native, source),),
+        rank=Rank.subspecies,
+        parent=species,
+    )
+
+    tag = get_effective_regional_tag(subspecies, country, TaxonTag.RegionalOrigin)
+
+    assert tag is not None
+    assert tag.origin is DistributionOrigin.native
 
 
 def test_conflicting_statuses_for_same_region_are_linted() -> None:

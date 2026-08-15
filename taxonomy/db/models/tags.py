@@ -10,6 +10,7 @@ from taxonomy.db.constants import (
     DistributionPresence,
     Managed,
     Markdown,
+    Rank,
 )
 
 from . import Article, Collection, Name, OccurrenceRecord, Region, Taxon
@@ -101,7 +102,9 @@ class TaxonTag(adt.ADT):
     IgnoreLintTaxon(label=Managed, comment=NotRequired[Markdown], tag=7)  # type: ignore[name-defined]
 
     # These statuses apply in the named Region and all its descendants. A tag on
-    # a more specific Region overrides a broader tag on the same axis.
+    # a species is inherited by its infraspecific taxa, while a direct infraspecific
+    # tag takes precedence. Within one Taxon, a more specific Region overrides a
+    # broader tag on the same axis.
     RegionalOrigin(  # type: ignore[name-defined]
         region=Region,
         origin=DistributionOrigin,
@@ -168,10 +171,32 @@ def get_matching_taxon_tags[Tag: _RegionalTag](
 def get_effective_regional_tag[Tag: _RegionalTag](
     taxon: Taxon, region: Region, tag_type: type[Tag]
 ) -> Tag | None:
-    """Return the most specific unambiguous regional tag for a taxon."""
+    """Return the most specific unambiguous regional tag for a taxon.
+
+    A matching tag directly on an infraspecific taxon takes precedence. If there is
+    no direct match, inherit the matching status from its species ancestor so regional
+    distribution data can remain attached to the more stable species concept.
+    """
+    matches = get_matching_taxon_tags(taxon, region, tag_type)
+    if matches:
+        return _select_effective_regional_tag(matches, region)
+    try:
+        species = taxon.parent_of_rank(Rank.species)
+    except AttributeError, ValueError:
+        return None
+    if species == taxon:
+        return None
+    return _select_effective_regional_tag(
+        get_matching_taxon_tags(species, region, tag_type), region
+    )
+
+
+def _select_effective_regional_tag[Tag: _RegionalTag](
+    matches: Iterable[Tag], region: Region
+) -> Tag | None:
     matches_with_distance = [
         (distance, tag)
-        for tag in get_matching_taxon_tags(taxon, region, tag_type)
+        for tag in matches
         if (distance := region_distance(region, tag.region)) is not None
     ]
     if not matches_with_distance:

@@ -44,6 +44,7 @@ from taxonomy.db.constants import (
     Rank,
     RegionKind,
     SpeciesBasis,
+    SpecimenDetailText,
     Status,
     TypeSpecimenKind,
 )
@@ -3160,7 +3161,7 @@ class TypeTag(adt.ADT):
     )
     # more information on the specimen
     SpecimenDetail(  # type: ignore[name-defined]
-        text=Markdown,
+        text=SpecimenDetailText,
         source=Article,
         classification_entry=NotRequired[ClassificationEntry],
         tag=17,

@@ -104,6 +104,27 @@ def test_nonnative_and_vagrant_records_are_distribution_evidence(tag: object) ->
     assert len(mdd_taxa.get_taxon_distribution_evidence(taxon)) == 1
 
 
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        (DistributionOrigin.introduced, 0),
+        (DistributionOrigin.ancient_introduction, 1),
+        (DistributionOrigin.possibly_introduced, 1),
+    ],
+)
+def test_regional_origin_controls_occurrence_distribution_evidence(
+    origin: DistributionOrigin, expected: int
+) -> None:
+    taxon = _taxon_with_occurrence_record()
+    record = cast(Any, taxon).occurrence_records[0]
+    region = record.location.region
+    cast(Any, taxon).tags = (
+        TaxonTag.RegionalOrigin(region, origin, SimpleNamespace()),
+    )
+
+    assert len(mdd_taxa.get_taxon_distribution_evidence(taxon)) == expected
+
+
 def test_regional_extirpation_excludes_living_taxon() -> None:
     taxon = _taxon_with_occurrence_record()
     record = cast(Any, taxon).occurrence_records[0]
@@ -231,6 +252,29 @@ def test_name_type_locality_distribution_evidence(
     name = SimpleNamespace(
         taxon=SimpleNamespace(age=age, tags=()), type_locality=location, type_tags=tags
     )
+
+    assert mdd_taxa._name_type_locality_is_distribution_evidence(
+        cast(Name, name)
+    ) is bool(expected)
+
+
+@pytest.mark.parametrize(
+    ("origin", "expected"),
+    [
+        (DistributionOrigin.introduced, 0),
+        (DistributionOrigin.ancient_introduction, 1),
+        (DistributionOrigin.possibly_introduced, 1),
+    ],
+)
+def test_regional_origin_controls_type_locality_distribution_evidence(
+    origin: DistributionOrigin, expected: int
+) -> None:
+    location = _location("Venezuela")
+    taxon = SimpleNamespace(
+        age=AgeClass.extant,
+        tags=(TaxonTag.RegionalOrigin(location.region, origin, SimpleNamespace()),),
+    )
+    name = SimpleNamespace(taxon=taxon, type_locality=location, type_tags=())
 
     assert mdd_taxa._name_type_locality_is_distribution_evidence(
         cast(Name, name)

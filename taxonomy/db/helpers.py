@@ -16,7 +16,7 @@ import unidecode
 from taxonomy import getinput
 
 from . import constants
-from .constants import Group, Rank, StringKind
+from .constants import Group, Rank, StringCleanupOption, StringKind
 
 SPECIES_RANKS = [
     Rank.subspecies,
@@ -350,6 +350,103 @@ COORDINATE_RGX = re.compile(
     """,
     re.VERBOSE,
 )
+
+
+_COORDINATE_PRIME = r"(?:\\?['′’‘ʹ`])"
+_COORDINATE_DOUBLE_PRIME = r"""(?:\\?["'″”′’‘ʹ`])"""
+_COORDINATE_DIRECTION = (
+    r"(?:\[\s*)?(?P<direction>[NSEWO])(?:\s*\])?"
+    r"|(?P<word_direction>North|South)\s+latitude"
+    r"|(?P<word_longitude_direction>East|West)\s+longitude"
+)
+_ASTERISK_COORDINATE = re.compile(
+    rf"""
+    (?<![\w°*.'\"′″\\])
+    (?P<degrees>\d{{1,3}}(?:[.,]\d+)?)\s*(?P<star>\*)\s*
+    (?:
+        (?P<minutes>[0-5]?\d(?:[.,]\d+)?)\s*{_COORDINATE_PRIME}\s*
+        (?:
+            (?P<seconds>[0-5]?\d(?:[.,]\d+)?)\s*
+            {_COORDINATE_DOUBLE_PRIME}\s*
+        )?
+    )?
+    (?:{_COORDINATE_DIRECTION})
+    (?!\w)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_COORDINATE_RANGE = re.compile(
+    rf"""
+    (?<![\w°*.'\"′″\\])
+    (?P<first_degrees>\d{{1,3}}(?:[.,]\d+)?)\s*
+    (?P<first_star>\*)\s*
+    (?:[-–—]|\b(?:and|to)\b)\s*
+    (?P<second_degrees>\d{{1,3}}(?:[.,]\d+)?)\s*
+    (?P<second_star>[°*])\s*
+    (?:{_COORDINATE_DIRECTION})
+    (?!\w)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_LABELED_ANGLE = re.compile(
+    r"""
+    \b(?P<label>latitude|longitude|bearing|azimuth)\s*
+    (?:of\s+)?[:=]?\s*
+    (?P<degrees>\d{1,3}(?:[.,]\d+)?)\s*(?P<star>\*)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+
+
+def _coordinate_direction(match: re.Match[str]) -> str:
+    for group_name in ("direction", "word_direction", "word_longitude_direction"):
+        if direction := match.groupdict().get(group_name):
+            return direction[0].upper()
+    raise AssertionError("coordinate pattern matched without a direction")
+
+
+def _valid_coordinate_degrees(degrees: str, direction: str) -> bool:
+    limit = 90 if direction in "NS" else 180
+    return float(degrees.replace(",", ".")) <= limit
+
+
+def normalize_asterisk_degree_signs(text: str) -> str:
+    """Replace asterisks that unambiguously stand for angular degree signs."""
+    if "*" not in text:
+        return text
+
+    def replace_coordinate_range(match: re.Match[str]) -> str:
+        direction = _coordinate_direction(match)
+        if not all(
+            _valid_coordinate_degrees(match[group_name], direction)
+            for group_name in ("first_degrees", "second_degrees")
+        ):
+            return match.group()
+        return match.group().replace("*", "°")
+
+    def replace_coordinate(match: re.Match[str]) -> str:
+        if not _valid_coordinate_degrees(
+            match["degrees"], _coordinate_direction(match)
+        ):
+            return match.group()
+        return match.group().replace("*", "°", 1)
+
+    def replace_labeled_angle(match: re.Match[str]) -> str:
+        label = match["label"].lower()
+        if label in {"latitude", "longitude"} and re.match(
+            r"\s*\d", match.string[match.end() :]
+        ):
+            # A complete directional coordinate was handled above. If digits remain
+            # after the asterisk here, the minutes or seconds syntax was malformed.
+            return match.group()
+        limit = 90 if label == "latitude" else 180 if label == "longitude" else 360
+        if float(match["degrees"].replace(",", ".")) > limit:
+            return match.group()
+        return match.group().replace("*", "°", 1)
+
+    text = _ASTERISK_COORDINATE_RANGE.sub(replace_coordinate_range, text)
+    text = _ASTERISK_COORDINATE.sub(replace_coordinate, text)
+    return _ASTERISK_LABELED_ANGLE.sub(replace_labeled_angle, text)
 
 
 class InvalidCoordinates(Exception):
@@ -1024,10 +1121,15 @@ def interactive_clean_string(
     text: str,
     *,
     clean_whitespace: bool = True,
+    normalize_sex_symbols: bool = False,
     verbose: bool = False,
     interactive: bool = True,
 ) -> str:
-    text = clean_string(text, clean_whitespace=clean_whitespace)
+    text = clean_string(
+        text,
+        clean_whitespace=clean_whitespace,
+        normalize_sex_symbols=normalize_sex_symbols,
+    )
     text = text.replace("\n- ", "\n-\\ -")
     if "- " not in text:
         return text
@@ -1101,13 +1203,24 @@ def is_string_clean(text: str) -> str | None:
     return None
 
 
-def clean_string(text: str, *, clean_whitespace: bool = True) -> str:
+def clean_string(
+    text: str, *, clean_whitespace: bool = True, normalize_sex_symbols: bool = False
+) -> str:
     """Clean a string.
 
     This is intended as a safe operation that can be applied to any
     text (e.g., for cleaning up user input).
 
     """
+    text = normalize_asterisk_degree_signs(text)
+
+    if normalize_sex_symbols:
+        # [M] and [F] are convenient input substitutes for symbols that are hard to
+        # type. Do not change bracketed initial restorations such as "[M]agnus" or
+        # Markdown links such as "[M](...)".
+        text = re.sub(r"\[M\](?![^\W\d_]|\()", "\N{MALE SIGN}", text)
+        text = re.sub(r"\[F\](?![^\W\d_]|\()", "\N{FEMALE SIGN}", text)
+
     # As an optimization, skip various expensive transformations if we know we
     # don't need them.
     if not text.isascii():
@@ -1452,3 +1565,23 @@ def get_string_kind(obj: object) -> StringKind | None:
         if len(kinds) == 1:
             return kinds.pop()
     return None
+
+
+def get_string_cleanup_options(obj: object) -> frozenset[StringCleanupOption]:
+    if isinstance(obj, TypeAliasType):
+        return get_string_cleanup_options(obj.__value__)
+    origin = get_origin(obj)
+    if origin is Annotated:
+        assert hasattr(obj, "__metadata__")
+        return frozenset(
+            meta for meta in obj.__metadata__ if isinstance(meta, StringCleanupOption)
+        )
+    if origin is types.UnionType:
+        return frozenset().union(
+            *(
+                get_string_cleanup_options(elt)
+                for elt in get_args(obj)
+                if elt is not types.NoneType
+            )
+        )
+    return frozenset()

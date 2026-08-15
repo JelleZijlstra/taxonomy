@@ -16,6 +16,7 @@ from taxonomy.db.constants import (
     Markdown,
     OccurrenceBasis,
     OccurrenceValidity,
+    SpecimenDetailText,
 )
 from taxonomy.db.constants import ObservationKind as ObservationKindEnum
 from taxonomy.db.models.article import Article
@@ -224,7 +225,7 @@ class OccurrenceRecord(BaseModel):
 class OccurrenceRecordTag(ADT):
     ObservationKind(kind=ObservationKindEnum, tag=1)  # type: ignore[name-defined]
     MolecularData(tag=2)  # type: ignore[name-defined]
-    SpecimenDetail(text=Markdown, tag=3)  # type: ignore[name-defined]
+    SpecimenDetail(text=SpecimenDetailText, tag=3)  # type: ignore[name-defined]
     CommentFromSource(text=Markdown, tag=4)  # type: ignore[name-defined]
 
     CommentFromDatabase(text=Markdown, tag=11)  # type: ignore[name-defined]

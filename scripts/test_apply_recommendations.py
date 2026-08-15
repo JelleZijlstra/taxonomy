@@ -1,7 +1,7 @@
 import json
 import sys
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, Self, cast
@@ -14,6 +14,9 @@ from taxonomy.applicator import article as article_recommendations
 from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
+from taxonomy.applicator.proposals import ProposedModel
+from taxonomy.db.constants import RegionKind
+from taxonomy.db.models import Location, Region
 
 
 def _location_row() -> dict[str, object]:
@@ -283,12 +286,40 @@ def test_build_plans_passes_separately_planned_target_name(
         return expected_plans[3]
 
     monkeypatch.setattr(type_recommendations, "build_plan", build_type_plan)
+    monkeypatch.setattr(
+        type_recommendations, "add_virtual_models", lambda plan, builder: None
+    )
+    monkeypatch.setattr(
+        location_recommendations, "add_virtual_models", lambda plan, builder: None
+    )
+    monkeypatch.setattr(
+        generic_recommendations, "add_virtual_models", lambda plan, builder: None
+    )
 
     plans = apply_recommendations.build_plans(
         apply_recommendations.Recommendations((), (), (location_row,), ())
     )
 
     assert plans == expected_plans
+
+
+def test_rejects_cross_family_proposed_location_name_collision() -> None:
+    region = Region.virtual(name="Cameroon", kind=RegionKind.country, tags=())
+    created = Location.virtual(name="Mount Cameroon", region=region, tags=())
+    renamed_origin = Location.virtual(name="Cameroon Mountains", region=region, tags=())
+    renamed = renamed_origin.virtual_copy()
+    renamed.name = "Mount Cameroon"
+
+    with pytest.raises(
+        apply_recommendations.RecommendationError,
+        match="proposed Location name 'Mount Cameroon' is not unique",
+    ):
+        apply_recommendations._validate_proposed_location_name_uniqueness(
+            (
+                ProposedModel(created, ("type-locality manifest line 1",)),
+                ProposedModel(renamed, ("Location manifest line 2",)),
+            )
+        )
 
 
 def test_rejects_unknown_action(tmp_path: Path) -> None:
@@ -553,7 +584,7 @@ def test_individual_review_resolves_editors_in_file_order(tmp_path: Path) -> Non
     assert [item.edit_object for item in items] == [name, generic, location]
 
 
-def test_individual_review_queues_yes_skips_no_and_edits_immediately(
+def test_individual_review_applies_yes_skips_no_and_edits_immediately(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
@@ -575,14 +606,25 @@ def test_individual_review_queues_yes_skips_no_and_edits_immediately(
         editable_options.append(can_edit)
         return next(choices)
 
-    selected = apply_recommendations.review_recommendations_individually(
-        items, choose=choose
+    applied_selections: list[set[int]] = []
+
+    def apply_selected(
+        selected_lines: set[int],
+    ) -> apply_recommendations.ExecutionResult:
+        applied_selections.append(set(selected_lines))
+        events.append(f"apply {sorted(selected_lines)}")
+        return apply_recommendations.ExecutionResult(())
+
+    result = apply_recommendations.review_recommendations_individually(
+        items, apply_selected=apply_selected, choose=choose
     )
 
     output = capsys.readouterr().out
-    assert selected == {1}
+    assert result.applied_lines == {1}
+    assert not result.aborted
+    assert applied_selections == [{1}]
     assert editable_options == [False, False, True]
-    assert events == ["name"]
+    assert events == ["apply [1]", "name"]
     assert "Recommendation 1/3 (manifest line 1)" in output
     assert "Recommendation 2/3 (manifest line 2)" in output
     assert "Recommendation 3/3 (manifest line 3)" in output
@@ -592,6 +634,9 @@ def test_individual_review_queues_yes_skips_no_and_edits_immediately(
     assert output.index("Recommendation 1/3") < output.index("Recommendation 2/3")
     assert output.index("Recommendation 2/3") < output.index("Recommendation 3/3")
     assert output.index("Recommendation 3/3") < output.index("EDIT name")
+    assert output.index("Applied recommendation from manifest line 1") < output.index(
+        "Recommendation 2/3"
+    )
 
 
 def test_individual_review_prompt_only_offers_edit_when_available(
@@ -615,7 +660,83 @@ def test_individual_review_prompt_only_offers_edit_when_available(
     assert "[e]dit" in prompts[1]
 
 
-def test_review_each_replans_only_selected_rows_before_applying(
+def test_individual_review_abort_keeps_earlier_applied_rows(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row(), _location_row()])
+    recommendations = apply_recommendations.read_recommendations(path)
+    items = tuple(
+        apply_recommendations.IndividualReviewItem(
+            row.line_number, row, family, edit_object=None
+        )
+        for family, row in apply_recommendations._all_recommendation_rows(
+            recommendations
+        )
+    )
+    choice_count = 0
+
+    def choose(*, can_edit: bool) -> Literal["yes", "no", "edit"]:
+        nonlocal choice_count
+        choice_count += 1
+        if choice_count == 1:
+            return "yes"
+        raise getinput.StopException
+
+    applied_selections: list[set[int]] = []
+
+    def apply_selected(
+        selected_lines: set[int],
+    ) -> apply_recommendations.ExecutionResult:
+        applied_selections.append(set(selected_lines))
+        return apply_recommendations.ExecutionResult(())
+
+    result = apply_recommendations.review_recommendations_individually(
+        items, apply_selected=apply_selected, choose=choose
+    )
+
+    assert result.aborted
+    assert result.applied_lines == {1}
+    assert applied_selections == [{1}]
+    assert (
+        "1 accepted recommendation(s) were already applied" in capsys.readouterr().out
+    )
+
+
+def test_individual_review_failure_does_not_hide_earlier_applied_rows(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row(), _location_row()])
+    recommendations = apply_recommendations.read_recommendations(path)
+    items = tuple(
+        apply_recommendations.IndividualReviewItem(
+            row.line_number, row, family, edit_object=None
+        )
+        for family, row in apply_recommendations._all_recommendation_rows(
+            recommendations
+        )
+    )
+    applied_selections: list[set[int]] = []
+
+    def apply_selected(
+        selected_lines: set[int],
+    ) -> apply_recommendations.ExecutionResult:
+        applied_selections.append(set(selected_lines))
+        if selected_lines == {1, 2}:
+            raise RuntimeError("simulated failure")
+        return apply_recommendations.ExecutionResult(())
+
+    with pytest.raises(RuntimeError, match="simulated failure"):
+        apply_recommendations.review_recommendations_individually(
+            items, apply_selected=apply_selected, choose=lambda **kwargs: "yes"
+        )
+
+    assert applied_selections == [{1}, {1, 2}]
+    assert "Earlier accepted changes" in capsys.readouterr().out
+
+
+def test_review_each_replans_cumulative_selected_rows_and_applies_each_immediately(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
@@ -643,13 +764,37 @@ def test_review_each_replans_only_selected_rows_before_applying(
         "_resolve_individual_review_items",
         lambda recommendations, plans: (object(),),
     )
+
+    def review_each(
+        items: object,
+        *,
+        apply_selected: Callable[[set[int]], apply_recommendations.ExecutionResult],
+    ) -> apply_recommendations.IndividualReviewResult:
+        first = apply_selected({1})
+        second = apply_selected({1, 2})
+        return apply_recommendations.IndividualReviewResult(
+            frozenset({1, 2}),
+            apply_recommendations.ExecutionResult(
+                (*first.affected_objects, *second.affected_objects)
+            ),
+            aborted=False,
+        )
+
     monkeypatch.setattr(
-        apply_recommendations, "review_recommendations_individually", lambda items: {2}
+        apply_recommendations, "review_recommendations_individually", review_each
     )
+
+    def execute_plans(
+        plans: object, *, apply: bool
+    ) -> apply_recommendations.ExecutionResult:
+        events.append("apply" if apply else "dry-run")
+        return apply_recommendations.ExecutionResult(())
+
+    monkeypatch.setattr(apply_recommendations, "execute_plans", execute_plans)
     monkeypatch.setattr(
         apply_recommendations,
-        "execute_plans",
-        lambda plans, *, apply: events.append("apply" if apply else "dry-run"),
+        "run_virtual_lint",
+        lambda plans, *, issues_only: events.append("virtual lint"),
     )
     monkeypatch.setattr(
         apply_recommendations,
@@ -657,16 +802,18 @@ def test_review_each_replans_only_selected_rows_before_applying(
         lambda: pytest.fail("--review-each entered read-only context"),
     )
     monkeypatch.setattr(
-        sys, "argv", ["apply_recommendations.py", str(path), "--review-each"]
+        sys,
+        "argv",
+        ["apply_recommendations.py", str(path), "--review-each", "--virtual-lint"],
     )
 
     apply_recommendations.main()
 
-    assert build_calls == [[1, 2], [2]]
-    assert events == ["apply"]
+    assert build_calls == [[1, 2], [1], [1, 2]]
+    assert events == ["virtual lint", "apply", "apply"]
 
 
-def test_review_each_abort_does_not_apply_queued_rows(
+def test_review_each_abort_before_yes_does_not_apply_rows(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
@@ -686,7 +833,11 @@ def test_review_each_abort_does_not_apply_queued_rows(
         lambda recommendations, plans: (object(),),
     )
     monkeypatch.setattr(
-        apply_recommendations, "review_recommendations_individually", lambda items: None
+        apply_recommendations,
+        "review_recommendations_individually",
+        lambda items, *, apply_selected: apply_recommendations.IndividualReviewResult(
+            frozenset(), apply_recommendations.ExecutionResult(()), aborted=True
+        ),
     )
     monkeypatch.setattr(
         apply_recommendations,
@@ -1029,9 +1180,16 @@ def test_review_each_combines_with_review_manual_and_edit_manual(
     manual_items = (object(),)
     events: list[str] = []
 
-    def review_each(items: object) -> set[int]:
+    def review_each(
+        items: object,
+        *,
+        apply_selected: Callable[[set[int]], apply_recommendations.ExecutionResult],
+    ) -> apply_recommendations.IndividualReviewResult:
         events.append("review each")
-        return {1}
+        result = apply_selected({1})
+        return apply_recommendations.IndividualReviewResult(
+            frozenset({1}), result, aborted=False
+        )
 
     monkeypatch.setattr(
         apply_recommendations,
@@ -1054,11 +1212,14 @@ def test_review_each_combines_with_review_manual_and_edit_manual(
     monkeypatch.setattr(
         apply_recommendations, "review_recommendations_individually", review_each
     )
-    monkeypatch.setattr(
-        apply_recommendations,
-        "execute_plans",
-        lambda plans, *, apply: events.append("apply" if apply else "dry-run"),
-    )
+
+    def execute_plans(
+        plans: object, *, apply: bool
+    ) -> apply_recommendations.ExecutionResult:
+        events.append("apply" if apply else "dry-run")
+        return apply_recommendations.ExecutionResult(())
+
+    monkeypatch.setattr(apply_recommendations, "execute_plans", execute_plans)
     monkeypatch.setattr(
         apply_recommendations,
         "_edit_manual_review_objects",

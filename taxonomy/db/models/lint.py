@@ -378,6 +378,7 @@ class LintWrapper(Generic[ModelT]):
     label: str
     lint: Lint[ModelT]
     requires_network: bool = False
+    uses_optional_network: bool = False
     skip_virtual: bool = False
 
     @staticmethod
@@ -555,6 +556,7 @@ class Lint(Generic[ModelT]):
         *,
         disabled: bool = False,
         requires_network: bool = False,
+        uses_optional_network: bool = False,
         skip_virtual: bool = False,
         clear_caches: Callable[[], None] | None = None,
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
@@ -566,6 +568,7 @@ class Lint(Generic[ModelT]):
                 label=label,
                 lint=self,
                 requires_network=requires_network,
+                uses_optional_network=uses_optional_network,
                 skip_virtual=skip_virtual,
             )
             if disabled:

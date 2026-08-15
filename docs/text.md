@@ -7,9 +7,12 @@ sources, and similar purposes. There are a few common conventions for these text
   [react-markdown](https://github.com/remarkjs/react-markdown). However, Markdown
   formatting is usually kept to a minimum; most commonly used are underscores for
   italics, and occasionally hyperlinks.
-- The degree symbol for geographic coordinates (°) may be replaced with "\*".
-- The male (♂) and female (♀) symbols may be replaced with "[M]" and "[F]",
-  respectively.
+- The degree symbol for geographic coordinates (°) may be entered as "\*". String
+  cleanup normalizes the shortcut when a directional coordinate, coordinate range, or
+  explicitly labeled angle makes its meaning unambiguous. Other asterisks, including
+  temperature shortcuts such as "13\*C", are left unchanged.
+- The male (♂) and female (♀) symbols may be entered as "[M]" and "[F]", respectively.
+  String cleanup normalizes these shortcuts in specimen-detail text.
 - Text within square brackets is generally an interpolation containing comments that
   were not in the original source. If the original text contained square brackets, "@"
   may be added at the end of the string.
