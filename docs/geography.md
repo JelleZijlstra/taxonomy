@@ -53,17 +53,13 @@ seven continents. Below, we discuss the geographical conventions for each contin
 more detail.
 
 Where the name of a region is shared, the name of the country is added in parentheses
-for disambiguation. This affects Punjab ([province of Pakistan](</r/Punjab_(Pakistan)>)
-and [state of India](</r/Punjab_(India)>)), La Rioja
+for disambiguation. Some of the affected regions are Punjab
+([province of Pakistan](</r/Punjab_(Pakistan)>) and
+[state of India](</r/Punjab_(India)>)), La Rioja
 ([province of Argentina](</r/La_Rioja_(Argentina)>) and
-[autonomous community of Spain](</r/La_Rioja_(Spain)>)), Jura
-([department of France](</r/Jura_(France)>) and
-[canton of Switzerland](</r/Jura_(Switzerland)>)), Distrito Federal (both
-[Brazil](</r/Distrito_Federal_(Brazil)>) and [Mexico](</r/Distrito_Federal_(Mexico)>)
-have one), Córdoba (province of both [Argentina](</r/Córdoba_(Argentina)>) and
-[Spain](</r/Córdoba_(Spain)>)) and Georgia (country and U.S. state). In the last case,
-the country is just "[Georgia](/r/Georgia)" and the state is
-"[Georgia (United States)](</r/Georgia_(United_States)>)".
+[autonomous community of Spain](</r/La_Rioja_(Spain)>)), and Georgia (country and U.S.
+state), among others. In the last case, the country is just "[Georgia](/r/Georgia)" and
+the state is "[Georgia (United States)](</r/Georgia_(United_States)>)".
 
 The arrangement of regions is purely for convenience within the context of the database
 and does not imply or endorse any political view.
@@ -176,8 +172,7 @@ in Oceania, and the regions for Timor and New Guinea are listed as part of Ocean
 Within Indonesia, the provinces on each major island or island group are grouped into a
 region. This is useful because many type localities are just "Sumatra" or "Java" without
 detail. Each province also gets its own region. Within a province, separate islands
-usually get their own region, except very small islands. Within Sumatra, Java, and
-Kalimantan, regions have not yet been created for the provinces.
+usually get their own region, except very small islands.
 
 In more detail:
 
@@ -447,10 +442,8 @@ A few countries are divided further:
   [National Capital District](/r/National_Capital_District). There is another region for
   the island of [New Britain](/r/New_Britain), which is divided into two provinces, and
   another for the island of [Manus](/r/Manus) within Manus Province.
-- Within the [Solomon Islands](/r/Solomon_Islands), there are regions for the major
-  islands of [Choiseul](/r/Choiseul), [Santa Isabel](/r/Santa_Isabel),
-  [Malaita](/r/Malaita), [Makira](/r/Makira) (San Cristobal),
-  [Guadalcanal](/r/Guadalcanal), and [Rennell](/r/Rennell).
+- Within the [Solomon Islands](/r/Solomon_Islands), there are regions for each of the
+  provinces, and within those for many of the major islands.
 
 There are regions for the islands of [Timor](/r/Timor) and [New Guinea](/r/New_Guinea)
 to cover type localities that do not specify the country.
@@ -462,7 +455,7 @@ In addition to independent countries, South America includes
 (Malvinas), [Bouvet](/r/Bouvet), and
 [South Georgia and the South Sandwich Islands](/r/South_Georgia_and_the_South_Sandwich_Islands).
 
-A few countries contain further divisions:
+Most countries contain further divisions:
 
 - [Argentina](/r/Argentina) is divided into regions for each province.
 - [Brazil](/r/Brazil) is divided into regions for each state and the
@@ -472,13 +465,13 @@ A few countries contain further divisions:
 - [Bolivia](/r/Bolivia) is divided into regions for its nine departments.
 - Within [Colombia](/r/Colombia), we recognize regions for each department and for the
   city of [Bogotá](/r/Bogotá).
+- Within [Ecuador](/r/Ecuador), there are regions for each province.
+- Within [Paraguay](/r/Paraguay), there are regions for each department.
 - [Peru](/r/Peru) is divided into regions for its 24 departments and the province of
   Callao.
 - Within [Venezuela](/r/Venezuela), we recognize regions for each state, the
   [Capital District](</r/Capital_District_(Venezuela)>), and the
   [Federal Dependencies](</r/Federal_Dependencies_(Venezuela)>).
-- Within [Ecuador](/r/Ecuador), the [Galápagos Islands](/r/Galápagos_Islands) are a
-  separate region.
 
 ## The oceans
 

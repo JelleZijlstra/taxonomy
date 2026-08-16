@@ -353,36 +353,110 @@ COORDINATE_RGX = re.compile(
 
 
 _COORDINATE_PRIME = r"(?:\\?['′’‘ʹ`])"
-_COORDINATE_DOUBLE_PRIME = r"""(?:\\?["'″”′’‘ʹ`])"""
+_COORDINATE_MINUTE_DOUBLE_PRIME = r"""(?:``|\\?["″”ʺ])"""
+_COORDINATE_DOUBLE_PRIME = r"""(?:``|\\?["*'″”ʺ′’‘ʹ`])"""
+_COORDINATE_SUBDIVISION_NUMBER = r"(?:[0-9O]{1,2}(?:[.,][0-9O]+)?)"
+_ASTERISK_ANGLE_START = r"""(?<![\w°*.\\])(?<!\d['"′″])(?<!\\['"])"""
 _COORDINATE_DIRECTION = (
-    r"(?:\[\s*)?(?P<direction>[NSEWO])(?:\s*\])?"
-    r"|(?P<word_direction>North|South)\s+latitude"
-    r"|(?P<word_longitude_direction>East|West)\s+longitude"
+    r"(?:\[\s*)?(?P<direction>[NSEWOΝΣΕ])(?:\s*\])?"
+    r"|(?P<word_direction>North|South|East|West)"
+    r"(?:\s+(?:latitude|longitude))?"
+    r"|(?P<german_direction>"
+    r"(?:n(?:ördl)?|s(?:üdl)?)\.?\s*Br(?:eite)?\.?)"
+    r"|(?P<german_longitude_direction>"
+    r"(?:ö(?:stl)?|w(?:estl)?)\.?\s*L(?:(?:ä|a)nge)?\.?)"
 )
 _ASTERISK_COORDINATE = re.compile(
     rf"""
-    (?<![\w°*.'\"′″\\])
+    {_ASTERISK_ANGLE_START}
     (?P<degrees>\d{{1,3}}(?:[.,]\d+)?)\s*(?P<star>\*)\s*
     (?:
-        (?P<minutes>[0-5]?\d(?:[.,]\d+)?)\s*{_COORDINATE_PRIME}\s*
+        (?P<minutes>{_COORDINATE_SUBDIVISION_NUMBER})\s*
+        (?:\d+/\d+\s*)?
         (?:
-            (?P<seconds>[0-5]?\d(?:[.,]\d+)?)\s*
-            {_COORDINATE_DOUBLE_PRIME}\s*
-        )?
+            {_COORDINATE_PRIME}\s*
+            (?:
+                (?P<seconds>{_COORDINATE_SUBDIVISION_NUMBER})\s*
+                (?:±\s*\d+(?:[.,]\d+)?)?\s*
+                {_COORDINATE_DOUBLE_PRIME}\s*
+            )?
+            |{_COORDINATE_MINUTE_DOUBLE_PRIME}\s*
+        )
     )?
     (?:{_COORDINATE_DIRECTION})
     (?!\w)
     """,
     re.IGNORECASE | re.VERBOSE,
 )
+_ASTERISK_COORDINATE_PAIR_WITHOUT_DIRECTIONS = re.compile(
+    rf"""
+    {_ASTERISK_ANGLE_START}
+    (?P<latitude_degrees>\d{{1,2}}(?:[.,]\d+)?)\s*
+    (?P<latitude_star>[°*])\s*
+    {_COORDINATE_SUBDIVISION_NUMBER}(?:\s+\d+[/⁄]\d+)?\s*
+    {_COORDINATE_PRIME}\s*
+    (?:
+        {_COORDINATE_SUBDIVISION_NUMBER}\s*{_COORDINATE_MINUTE_DOUBLE_PRIME}
+        (?:\s*±\s*\d+(?:[.,]\d+)?\s*{_COORDINATE_MINUTE_DOUBLE_PRIME})?
+    )?
+    \s*[NS]?\s*[,;:/–—]\s*
+    (?P<longitude_degrees>\d{{1,3}}(?:[.,]\d+)?)\s*
+    (?P<longitude_star>[°*])\s*
+    {_COORDINATE_SUBDIVISION_NUMBER}(?:\s+\d+[/⁄]\d+)?\s*
+    {_COORDINATE_PRIME}\s*
+    (?:
+        {_COORDINATE_SUBDIVISION_NUMBER}\s*{_COORDINATE_MINUTE_DOUBLE_PRIME}
+        (?:\s*±\s*\d+(?:[.,]\d+)?\s*{_COORDINATE_MINUTE_DOUBLE_PRIME})?
+    )?
+    \s*[EWO]?
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_PACKED_COORDINATE_PAIR = re.compile(
+    r"""
+    (?<![\w°*.\\])
+    (?P<latitude_degrees>\d{1,2})\s*(?P<latitude_star>\*)\s*
+    \d{3,4}\s*S\s*[-–—,;/]\s*
+    (?P<longitude_degrees>\d{1,3})\s*(?P<longitude_star>\*)\s*
+    \d{3,4}\s*[EWO]
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_QUADRANT_BEARING = re.compile(
+    r"(?<!\w)[NS]\s*(?P<degrees>\d{1,2}(?:[.,]\d+)?)\s*(?P<star>\*)\s*[EW](?!\w)",
+    re.IGNORECASE,
+)
+_ASTERISK_PREFIXED_COORDINATE = re.compile(
+    rf"""
+    (?<!\w)
+    (?P<direction>[NSEWOΝΣΕ])\.?\s*
+    (?P<degrees>[+−–-]?\d{{1,3}}(?:[.,]\d+)?)\s*(?P<star>\*)
+    (?=
+        \s*(?:
+            {_COORDINATE_SUBDIVISION_NUMBER}\s*{_COORDINATE_PRIME}
+            |[,.;:)\]]
+            |$
+        )
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
 _ASTERISK_COORDINATE_RANGE = re.compile(
     rf"""
-    (?<![\w°*.'\"′″\\])
+    {_ASTERISK_ANGLE_START}
     (?P<first_degrees>\d{{1,3}}(?:[.,]\d+)?)\s*
     (?P<first_star>\*)\s*
-    (?:[-–—]|\b(?:and|to)\b)\s*
+    (?:
+        {_COORDINATE_SUBDIVISION_NUMBER}\s*{_COORDINATE_PRIME}\s*
+        (?:{_COORDINATE_SUBDIVISION_NUMBER}\s*{_COORDINATE_DOUBLE_PRIME}\s*)?
+    )?
+    (?:[-–—]|\b(?:and|to|y)\b)\s*
     (?P<second_degrees>\d{{1,3}}(?:[.,]\d+)?)\s*
     (?P<second_star>[°*])\s*
+    (?:
+        {_COORDINATE_SUBDIVISION_NUMBER}\s*{_COORDINATE_PRIME}\s*
+        (?:{_COORDINATE_SUBDIVISION_NUMBER}\s*{_COORDINATE_DOUBLE_PRIME}\s*)?
+    )?
     (?:{_COORDINATE_DIRECTION})
     (?!\w)
     """,
@@ -390,24 +464,103 @@ _ASTERISK_COORDINATE_RANGE = re.compile(
 )
 _ASTERISK_LABELED_ANGLE = re.compile(
     r"""
-    \b(?P<label>latitude|longitude|bearing|azimuth)\s*
-    (?:of\s+)?[:=]?\s*
+    \b(?P<label>
+        lat(?:itude|\.)|long(?:itude|\.)|bearing|azimuth|strikes?|dips?
+    )\s*
+    (?:(?:austr(?:alis)?|merid(?:ionalis)?|orient(?:alis)?|occid(?:entalis)?)\.?\s+)?
+    (?:(?:of|between)\s+)?[:=]?\s*
     (?P<degrees>\d{1,3}(?:[.,]\d+)?)\s*(?P<star>\*)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_LABELED_ANGLE_RANGE = re.compile(
+    r"""
+    \b(?P<label>bearing|azimuth|strikes?|dips?)\s*
+    (?:between\s+)?
+    (?P<first_degrees>\d{1,3}(?:[.,]\d+)?)\s*(?P<first_star>\*)\s*
+    (?:[-–—]|\b(?:and|to)\b)\s*
+    (?P<second_degrees>\d{1,3}(?:[.,]\d+)?)\s*(?P<second_star>\*)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_AXIS_ANGLE = re.compile(
+    rf"""
+    {_ASTERISK_ANGLE_START}
+    (?P<degrees>\d{{1,3}}(?:[.,]\d+)?)\s*(?P<star>\*)\s*
+    (?:
+        {_COORDINATE_SUBDIVISION_NUMBER}
+        (?:\s+\d+/\d+)?\s*{_COORDINATE_PRIME}?\s*
+    )?
+    (?:de\s+)?
+    (?P<axis>lat(?:itude)?|long(?:it(?:ude)?|itude)?|l)\.?
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_AXIS_ANGLE_RANGE = re.compile(
+    rf"""
+    {_ASTERISK_ANGLE_START}
+    (?P<first_degrees>\d{{1,3}}(?:[.,]\d+)?)\s*
+    (?P<first_star>\*)\s*
+    (?:[-–—]|\b(?:ad|and|et|to)\b)\s*
+    (?P<second_degrees>\d{{1,3}}(?:[.,]\d+)?)\s*
+    (?P<second_star>[°*])\s*
+    (?:
+        {_COORDINATE_SUBDIVISION_NUMBER}
+        (?:\s+\d+/\d+)?\s*{_COORDINATE_PRIME}?\s*
+    )?
+    (?:de\s+)?
+    (?P<axis>lat(?:itude)?|long(?:it(?:ude)?|itude)?|l)\.?
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_RELATIVE_BEARING = re.compile(
+    r"""
+    \b\d+(?:[.,]\d+)?\s*(?:km|miles?)\s+(?:and\s+)?
+    (?P<degrees>\d{1,3}(?:[.,]\d+)?)\s*(?P<star>\*)
+    (?=\s+from\b)
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_CARDINAL_CONTEXT_ANGLE = re.compile(
+    r"""
+    (?:
+        \b(?:north|south|east|west)(?:\s+by\s+[a-z]+)?\s*
+        \((?P<parenthesized_degrees>\d{1,3}(?:[.,]\d+)?)\s*
+        (?P<parenthesized_star>\*)\)
+        |\bas\s+far\s+(?:north|south|east|west)\s+as\s+
+        (?P<extent_degrees>\d{1,3}(?:[.,]\d+)?)\s*(?P<extent_star>\*)
+    )
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+_ASTERISK_TEMPERATURE = re.compile(
+    r"""
+    (?<![\w.])
+    (?P<temperature>[+−-]?\d+(?:[.,]\d+)?)\s*(?P<star>\*)\s*
+    (?P<unit>[CF])(?![\w(])
     """,
     re.IGNORECASE | re.VERBOSE,
 )
 
 
 def _coordinate_direction(match: re.Match[str]) -> str:
-    for group_name in ("direction", "word_direction", "word_longitude_direction"):
+    for group_name in ("direction", "word_direction"):
         if direction := match.groupdict().get(group_name):
-            return direction[0].upper()
+            normalized = direction[0].upper()
+            return {"Ν": "N", "Σ": "S", "Ε": "E"}.get(normalized, normalized)
+    if direction := match.groupdict().get("german_direction"):
+        return direction[0].upper()
+    if direction := match.groupdict().get("german_longitude_direction"):
+        return "E" if direction[0].lower() == "ö" else "W"
     raise AssertionError("coordinate pattern matched without a direction")
 
 
 def _valid_coordinate_degrees(degrees: str, direction: str) -> bool:
     limit = 90 if direction in "NS" else 180
-    return float(degrees.replace(",", ".")) <= limit
+    return (
+        abs(float(degrees.replace("−", "-").replace("–", "-").replace(",", ".")))
+        <= limit
+    )
 
 
 def normalize_asterisk_degree_signs(text: str) -> str:
@@ -431,22 +584,76 @@ def normalize_asterisk_degree_signs(text: str) -> str:
             return match.group()
         return match.group().replace("*", "°", 1)
 
+    def replace_coordinate_pair(match: re.Match[str]) -> str:
+        if float(match["latitude_degrees"].replace(",", ".")) > 90:
+            return match.group()
+        if float(match["longitude_degrees"].replace(",", ".")) > 180:
+            return match.group()
+        return match.group().replace("*", "°")
+
     def replace_labeled_angle(match: re.Match[str]) -> str:
         label = match["label"].lower()
-        if label in {"latitude", "longitude"} and re.match(
-            r"\s*\d", match.string[match.end() :]
-        ):
-            # A complete directional coordinate was handled above. If digits remain
-            # after the asterisk here, the minutes or seconds syntax was malformed.
-            return match.group()
-        limit = 90 if label == "latitude" else 180 if label == "longitude" else 360
+        limit = (
+            90 if label.startswith("lat") else 180 if label.startswith("long") else 360
+        )
         if float(match["degrees"].replace(",", ".")) > limit:
             return match.group()
         return match.group().replace("*", "°", 1)
 
+    def replace_axis_angle(match: re.Match[str]) -> str:
+        limit = 180 if match["axis"].lower().startswith("long") else 90
+        if float(match["degrees"].replace(",", ".")) > limit:
+            return match.group()
+        return match.group().replace("*", "°", 1)
+
+    def replace_angle_range(match: re.Match[str]) -> str:
+        if any(
+            float(match[group_name].replace(",", ".")) > 360
+            for group_name in ("first_degrees", "second_degrees")
+        ):
+            return match.group()
+        return match.group().replace("*", "°")
+
+    def replace_axis_angle_range(match: re.Match[str]) -> str:
+        limit = 180 if match["axis"].lower().startswith("long") else 90
+        if any(
+            float(match[group_name].replace(",", ".")) > limit
+            for group_name in ("first_degrees", "second_degrees")
+        ):
+            return match.group()
+        return match.group().replace("*", "°")
+
+    def replace_relative_bearing(match: re.Match[str]) -> str:
+        if float(match["degrees"].replace(",", ".")) > 360:
+            return match.group()
+        return match.group().replace("*", "°", 1)
+
+    def replace_cardinal_context_angle(match: re.Match[str]) -> str:
+        degrees = match.groupdict().get(
+            "parenthesized_degrees"
+        ) or match.groupdict().get("extent_degrees")
+        assert degrees is not None
+        if float(degrees.replace(",", ".")) > 360:
+            return match.group()
+        return match.group().replace("*", "°")
+
+    text = _ASTERISK_COORDINATE_PAIR_WITHOUT_DIRECTIONS.sub(
+        replace_coordinate_pair, text
+    )
+    text = _ASTERISK_PACKED_COORDINATE_PAIR.sub(replace_coordinate_pair, text)
     text = _ASTERISK_COORDINATE_RANGE.sub(replace_coordinate_range, text)
     text = _ASTERISK_COORDINATE.sub(replace_coordinate, text)
-    return _ASTERISK_LABELED_ANGLE.sub(replace_labeled_angle, text)
+    text = _ASTERISK_PREFIXED_COORDINATE.sub(replace_coordinate, text)
+    text = _ASTERISK_QUADRANT_BEARING.sub(replace_relative_bearing, text)
+    text = _ASTERISK_AXIS_ANGLE_RANGE.sub(replace_axis_angle_range, text)
+    text = _ASTERISK_AXIS_ANGLE.sub(replace_axis_angle, text)
+    text = _ASTERISK_LABELED_ANGLE_RANGE.sub(replace_angle_range, text)
+    text = _ASTERISK_LABELED_ANGLE.sub(replace_labeled_angle, text)
+    text = _ASTERISK_RELATIVE_BEARING.sub(replace_relative_bearing, text)
+    text = _ASTERISK_CARDINAL_CONTEXT_ANGLE.sub(replace_cardinal_context_angle, text)
+    return _ASTERISK_TEMPERATURE.sub(
+        lambda match: match.group().replace("*", "°", 1), text
+    )
 
 
 class InvalidCoordinates(Exception):

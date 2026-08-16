@@ -48,6 +48,7 @@ from taxonomy.db.models.person import AuthorTag, is_more_specific_than
 
 from . import jstor_db
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
+from .lsid import extract_safe_publication_lsid
 from .name_parser import get_name_parser
 
 
@@ -1836,10 +1837,37 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
     if art.numeric_year() < 2012:
         return
     tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
-    if any(
-        tag.present_in_article in (PresenceStatus.present, PresenceStatus.inferred)
-        for tag in tags
-    ):
+    if any(tag.present_in_article is PresenceStatus.present for tag in tags):
+        return
+    pages = art.get_all_pdf_pages()
+    if match := extract_safe_publication_lsid(pages, art.title):
+        new_tag = ArticleTag.LSIDArticle(match.lsid, PresenceStatus.present)
+        replaceable_tags = [
+            tag
+            for tag in tags
+            if tag.text == match.lsid
+            or tag.present_in_article is PresenceStatus.inferred
+        ]
+        if replaceable_tags:
+            new_tags = tuple(
+                new_tag if tag == replaceable_tags[0] else tag
+                for tag in art.tags
+                if tag not in replaceable_tags[1:]
+            )
+            yield field_issue(
+                f"marking PDF-identified LSID as present: {new_tag}",
+                art,
+                "tags",
+                tuple(sorted(set(new_tags))),
+            )
+        elif new_tag not in art.tags:
+            yield add_tag_issue(
+                f"adding PDF-identified LSID ({match.evidence}): {new_tag}",
+                art,
+                new_tag,
+            )
+        return
+    if any(tag.present_in_article is PresenceStatus.inferred for tag in tags):
         return
     new_names = list(art.get_new_names())
     if not new_names:
@@ -1851,7 +1879,6 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
     ]
     if not act_lsids:
         return
-    pages = art.get_all_pdf_pages()
     cleaned_text = "".join(
         re.sub(r"\s", "", page).replace("-", "-").casefold() for page in pages
     ).replace("-", "")

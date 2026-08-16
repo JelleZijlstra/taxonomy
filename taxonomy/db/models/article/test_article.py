@@ -177,6 +177,7 @@ def test_infer_lsid_silently_skips_unavailable_service(
     article = cast(
         Article,
         SimpleNamespace(
+            title=None,
             tags=(),
             numeric_year=Mock(return_value=2021),
             get_tags=_get_tags,
@@ -194,6 +195,103 @@ def test_infer_lsid_silently_skips_unavailable_service(
         == []
     )
     assert capsys.readouterr().out == ""
+
+
+def test_infer_lsid_from_pdf_self_identification() -> None:
+    lsid = "AABBCCDD-1234-4ABC-9DEF-0123456789AB"
+    article = cast(
+        Article,
+        SimpleNamespace(
+            title="A revision of the exceptionally distinctive genus Example",
+            tags=(),
+            numeric_year=Mock(return_value=2021),
+            get_tags=_get_tags,
+            get_all_pdf_pages=Mock(
+                return_value=[
+                    (
+                        "The LSID for this publication is: "
+                        f"urn:lsid:zoobank.org:pub:{lsid}"
+                    )
+                ]
+            ),
+        ),
+    )
+
+    issues = list(
+        article_lint.infer_lsid_from_names.linter(
+            article, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
+    assert len(issues) == 1
+    issue = issues[0]
+    assert isinstance(issue, LintIssue)
+    assert "PDF-identified LSID" in issue.message
+    assert issue.fix is not None
+
+
+def test_pdf_lsid_replaces_different_inferred_lsid() -> None:
+    printed_lsid = "AABBCCDD-1234-4ABC-9DEF-0123456789AB"
+    inferred_lsid = "11223344-5678-4ABC-9DEF-0123456789AB"
+    article = cast(
+        Article,
+        SimpleNamespace(
+            title="A revision of the exceptionally distinctive genus Example",
+            tags=(ArticleTag.LSIDArticle(inferred_lsid, PresenceStatus.inferred),),
+            numeric_year=Mock(return_value=2021),
+            get_tags=_get_tags,
+            get_all_pdf_pages=Mock(
+                return_value=[
+                    (
+                        "The LSID for this publication is: "
+                        f"urn:lsid:zoobank.org:pub:{printed_lsid}"
+                    )
+                ]
+            ),
+        ),
+    )
+
+    issues = list(
+        article_lint.infer_lsid_from_names.linter(
+            article, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
+    assert len(issues) == 1
+    issue = issues[0]
+    assert isinstance(issue, LintIssue)
+    assert issue.fix is not None
+    issue.fix.apply()
+    assert article.tags == (
+        ArticleTag.LSIDArticle(printed_lsid, PresenceStatus.present),
+    )
+
+
+def test_infer_lsid_does_not_read_pdf_when_present() -> None:
+    get_all_pdf_pages = Mock()
+    article = cast(
+        Article,
+        SimpleNamespace(
+            tags=(
+                ArticleTag.LSIDArticle(
+                    "AABBCCDD-1234-4ABC-9DEF-0123456789AB", PresenceStatus.present
+                ),
+            ),
+            numeric_year=Mock(return_value=2021),
+            get_tags=_get_tags,
+            get_all_pdf_pages=get_all_pdf_pages,
+        ),
+    )
+
+    assert (
+        list(
+            article_lint.infer_lsid_from_names.linter(
+                article, LintConfig(autofix=False, interactive=False)
+            )
+        )
+        == []
+    )
+    get_all_pdf_pages.assert_not_called()
 
 
 @pytest.mark.parametrize(

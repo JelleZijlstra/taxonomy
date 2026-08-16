@@ -72,8 +72,53 @@ def test_clean_string_preserves_bracketed_initials_and_markdown_links() -> None:
         ("at 23*29'00'N, long. 68*54'45\" E", "at 23°29'00'N, long. 68°54'45\" E"),
         ("Latitude 26* S; Longitude 152* E", "Latitude 26° S; Longitude 152° E"),
         ("between 27* and 34* South latitude", "between 27° and 34° South latitude"),
+        ("entre 62* 30' y 64° 30' W", "entre 62° 30' y 64° 30' W"),
         ("42*36'29\" [N], 72*32'58\" [W]", "42°36'29\" [N], 72°32'58\" [W]"),
+        ("N 01*30,872', E 125*13,516'", "N 01°30,872', E 125°13,516'"),
+        ("31°31'N/9*46\"W", "31°31'N/9°46\"W"),
+        ("31*8 1/2'S, 140*6 1/3'E", "31°8 1/2'S, 140°6 1/3'E"),
+        ('29*28\'12" ± 2"; 147*45\'59" ± 2"', '29°28\'12" ± 2"; 147°45\'59" ± 2"'),
+        ('"11* 50\' 10" S', '"11° 50\' 10" S'),
+        ("N -20.94472° W -41.045157*;", "N -20.94472° W -41.045157°;"),
+        ("22* 54' : 80* 55'", "22° 54' : 80° 55'"),
+        ("16°52'39\"S, 67*18'23\"", "16°52'39\"S, 67°18'23\""),
+        ("29* 490 S–67* 450 W", "29° 490 S–67° 450 W"),
+        ("approximately 1 km N65*W", "approximately 1 km N65°W"),
+        ("N. 08*; S. 66*", "N. 08°; S. 66°"),
+        ("1* 20' Ν, 127* 31' Ε", "1° 20' Ν, 127° 31' Ε"),
+        ("5* östl. Lange", "5° östl. Lange"),
+        (
+            "Lat. Austr. 6*9', Long. Orient. 39*14'",
+            "Lat. Austr. 6°9', Long. Orient. 39°14'",
+        ),
+        (
+            "10 km south by southwest (200*) of the formation",
+            "10 km south by southwest (200°) of the formation",
+        ),
+        ("found as far north as 67*", "found as far north as 67°"),
+        ("97* 40' East, 28* 10' North", "97° 40' East, 28° 10' North"),
+        ("long. 105*20', lat. 21*50'", "long. 105°20', lat. 21°50'"),
+        (
+            "16*5'5\" östl. Länge, 48*27'13\" nördl. Breite",
+            "16°5'5\" östl. Länge, 48°27'13\" nördl. Breite",
+        ),
         ("bearing 97* and 6400 metres", "bearing 97° and 6400 metres"),
+        (
+            "temperature 13*C; surface 69* F; stored at -70* C",
+            "temperature 13°C; surface 69° F; stored at -70° C",
+        ),
+        (
+            "sur la Kemo par 6* 17' de latitude Nord et 17* 15' de longitude Est",
+            "sur la Kemo par 6° 17' de latitude Nord et 17° 15' de longitude Est",
+        ),
+        ("entre 12* et 15* lat. S", "entre 12° et 15° lat. S"),
+        ("Africa, a 16* ad 18* Lat. aust.", "Africa, a 16° ad 18° Lat. aust."),
+        ("10 km and 260* from Mt Saddleback", "10 km and 260° from Mt Saddleback"),
+        (
+            "strikes between 125* and 145* with dips 7*–15*",
+            "strikes between 125° and 145° with dips 7°–15°",
+        ),
+        ("02*23\\'99\"N 152*50\\'83*E", "02°23\\'99\"N 152°50\\'83*E"),
     ],
 )
 def test_clean_string_normalizes_unambiguous_asterisk_degree_signs(
@@ -83,16 +128,7 @@ def test_clean_string_normalizes_unambiguous_asterisk_degree_signs(
 
 
 @pytest.mark.parametrize(
-    "text",
-    [
-        "2*3",
-        "type* and note *",
-        "temperature 13*C",
-        "02*23\\'99\"N 152*50\\'83*E",
-        "latitude 12*99'N",
-        "91*N, 181*E",
-        "A1*E",
-    ],
+    "text", ["2*3", "type* and note *", "91*N, 181*E", "A1*E", "2*F(x)"]
 )
 def test_clean_string_preserves_ambiguous_or_invalid_asterisk_uses(text: str) -> None:
     assert helpers.clean_string(text) == text

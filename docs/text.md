@@ -9,8 +9,8 @@ sources, and similar purposes. There are a few common conventions for these text
   italics, and occasionally hyperlinks.
 - The degree symbol for geographic coordinates (°) may be entered as "\*". String
   cleanup normalizes the shortcut when a directional coordinate, coordinate range, or
-  explicitly labeled angle makes its meaning unambiguous. Other asterisks, including
-  temperature shortcuts such as "13\*C", are left unchanged.
+  explicitly labeled angle makes its meaning unambiguous. It also normalizes temperature
+  notation with an explicit Celsius or Fahrenheit unit, such as "13\*C".
 - The male (♂) and female (♀) symbols may be entered as "[M]" and "[F]", respectively.
   String cleanup normalizes these shortcuts in specimen-detail text.
 - Text within square brackets is generally an interpolation containing comments that
