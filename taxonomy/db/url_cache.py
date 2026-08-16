@@ -16,6 +16,7 @@ CREATE UNIQUE INDEX `full_key` on `url_cache` (`domain`, `key`);
 import datetime
 import enum
 import functools
+import json
 import sqlite3
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
@@ -49,6 +50,8 @@ class CacheDomain(enum.Enum):
     gpt_item_file_verdict = 18  # mapping from filename -> GPT verdict JSON
     pubmed_nlmcatalog_abbrev = 19  # NLM Catalog: MedlineTA by journal title
     plss = 20  # BLM CadNSDI PLSS and Census county geometry queries
+    zoobank_act_negative = 21
+    zoobank_publication_negative = 22
 
 
 KeyT = TypeVar("KeyT")
@@ -106,35 +109,96 @@ def run_query(sql: str, args: tuple[object, ...]) -> list[tuple[Any, ...]]:
         return cursor.fetchall()
 
 
+def get_cached_value(domain: CacheDomain, key: str) -> str | None:
+    local_key = (domain, key)
+    if local_key in _LOCAL_CACHE:
+        return _LOCAL_CACHE[local_key]
+    cached_rows = run_query(
+        """
+        SELECT content
+        FROM url_cache
+        WHERE domain = ? AND key = ?
+        """,
+        (domain.value, key),
+    )
+    if len(cached_rows) != 1:
+        return None
+    value = cached_rows[0][0]
+    _LOCAL_CACHE[local_key] = value
+    return value
+
+
+def set_cached_value(domain: CacheDomain, key: str, value: str) -> None:
+    _LOCAL_CACHE[(domain, key)] = value
+    run_query(
+        """
+        INSERT INTO url_cache(domain, key, content)
+        VALUES(?, ?, ?)
+        ON CONFLICT(domain, key) DO UPDATE SET content = excluded.content
+        """,
+        (domain.value, key, value),
+    )
+
+
+def get_expiring_cached_value(
+    domain: CacheDomain, key: str, *, now: datetime.datetime | None = None
+) -> str | None:
+    """Return an unexpired cached value, deleting malformed or expired entries."""
+    value = get_cached_value(domain, key)
+    if value is None:
+        return None
+    try:
+        payload = json.loads(value)
+        expires_at = datetime.datetime.fromisoformat(payload["expires_at"])
+        content = payload["content"]
+        if not isinstance(content, str) or expires_at.tzinfo is None:
+            raise ValueError
+    except json.JSONDecodeError, KeyError, TypeError, ValueError:
+        dirty_cache(domain, key)
+        return None
+    if now is None:
+        now = datetime.datetime.now(tz=datetime.UTC)
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    if expires_at <= now:
+        dirty_cache(domain, key)
+        return None
+    return content
+
+
+def set_expiring_cached_value(
+    domain: CacheDomain,
+    key: str,
+    value: str,
+    *,
+    ttl: datetime.timedelta,
+    now: datetime.datetime | None = None,
+) -> None:
+    """Cache a value until ``ttl`` has elapsed without changing the DB schema."""
+    if ttl <= datetime.timedelta():
+        raise ValueError("ttl must be positive")
+    if now is None:
+        now = datetime.datetime.now(tz=datetime.UTC)
+    if now.tzinfo is None:
+        raise ValueError("now must be timezone-aware")
+    payload = json.dumps(
+        {"content": value, "expires_at": (now + ttl).isoformat()},
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    set_cached_value(domain, key, payload)
+
+
 def cached(domain: CacheDomain) -> Callable[[CachedCallable], CachedCallable]:
     def decorator(func: CachedCallable) -> CachedCallable:
         @functools.wraps(func)
         def wrapper(key: str) -> str:
-            local_key = (domain, key)
-            if local_key in _LOCAL_CACHE:
-                return _LOCAL_CACHE[local_key]
-            cached_rows = run_query(
-                """
-                SELECT content
-                FROM url_cache
-                WHERE domain = ? AND key = ?
-                """,
-                (domain.value, key),
-            )
-            if len(cached_rows) == 1:
-                value = cached_rows[0][0]
-                _LOCAL_CACHE[local_key] = value
+            value = get_cached_value(domain, key)
+            if value is not None:
                 return value
 
             value = func(key)
-            _LOCAL_CACHE[local_key] = value
-            run_query(
-                """
-                INSERT INTO url_cache(domain, key, content)
-                VALUES(?, ?, ?)
-                """,
-                (domain.value, key, value),
-            )
+            set_cached_value(domain, key, value)
             return value
 
         return wrapper

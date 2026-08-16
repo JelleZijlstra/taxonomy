@@ -1,11 +1,18 @@
 import json
 import re
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any
 
 import requests
 
-from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache
+from taxonomy.db.url_cache import (
+    CacheDomain,
+    cached,
+    dirty_cache,
+    get_expiring_cached_value,
+    set_expiring_cached_value,
+)
 
 from .util import RateLimiter
 
@@ -26,25 +33,28 @@ def clean_lsid(lsid: str) -> str:
 def is_valid_lsid(lsid: str) -> bool:
     return bool(
         re.fullmatch(
-            r"^[A-Z0-9]{8}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{12}$", lsid
+            r"^[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}$", lsid
         )
     )
 
 
 rate_limiter = RateLimiter(min_interval=0.5)
 REQUEST_TIMEOUT = 10
+NEGATIVE_CACHE_TTL = timedelta(days=30)
 
 
 class ZooBankUnavailableError(RuntimeError):
     """Raised when ZooBank does not return usable API data."""
 
 
+class ZooBankNotFoundError(ZooBankUnavailableError):
+    """Raised when ZooBank returns 404 for a requested record."""
+
+
 def _get_json_response(url: str, *, expected_count: int | None = None) -> str:
     response = requests.get(url, timeout=REQUEST_TIMEOUT)
     if response.status_code == 404:
-        # ZooBank's crawler protection sometimes responds as though valid records do
-        # not exist. Do not cache that response indefinitely.
-        raise ZooBankUnavailableError(f"ZooBank returned 404 for {url}")
+        raise ZooBankNotFoundError(f"ZooBank returned 404 for {url}")
     response.raise_for_status()
     try:
         data = json.loads(response.text)
@@ -64,26 +74,54 @@ def _get_json_response(url: str, *, expected_count: int | None = None) -> str:
     return response.text
 
 
+def _get_zoobank_data_with_negative_cache(
+    query: str,
+    *,
+    negative_domain: CacheDomain,
+    url: str,
+    expected_count: int | None = None,
+) -> str:
+    cached_failure = get_expiring_cached_value(negative_domain, query)
+    if cached_failure is not None:
+        raise ZooBankNotFoundError(cached_failure)
+    rate_limiter.wait()
+    try:
+        return _get_json_response(url, expected_count=expected_count)
+    except ZooBankNotFoundError as exc:
+        set_expiring_cached_value(
+            negative_domain, query, str(exc), ttl=NEGATIVE_CACHE_TTL
+        )
+        raise
+
+
 @cached(CacheDomain.zoobank_act)
 def _get_zoobank_act_data(query: str) -> str:
-    rate_limiter.wait()
-    url = f"https://zoobank.org/NomenclaturalActs.json/{query}"
-    return _get_json_response(url)
+    return _get_zoobank_data_with_negative_cache(
+        query,
+        negative_domain=CacheDomain.zoobank_act_negative,
+        url=f"https://zoobank.org/NomenclaturalActs.json/{query}",
+    )
 
 
 @cached(CacheDomain.zoobank_publication)
 def _get_zoobank_publication_data(query: str) -> str:
-    rate_limiter.wait()
-    url = f"https://zoobank.org/References.json/{query}"
-    return _get_json_response(url, expected_count=1)
+    return _get_zoobank_data_with_negative_cache(
+        query,
+        negative_domain=CacheDomain.zoobank_publication_negative,
+        url=f"https://zoobank.org/References.json/{query}",
+        expected_count=1,
+    )
 
 
 def clear_zoobank_act_cache(query: str) -> None:
     dirty_cache(CacheDomain.zoobank_act, query)
+    dirty_cache(CacheDomain.zoobank_act_negative, query)
 
 
 def clear_zoobank_publication_cache(lsid: str) -> None:
-    dirty_cache(CacheDomain.zoobank_publication, clean_lsid(lsid))
+    lsid = clean_lsid(lsid)
+    dirty_cache(CacheDomain.zoobank_publication, lsid)
+    dirty_cache(CacheDomain.zoobank_publication_negative, lsid)
 
 
 @dataclass(frozen=True)

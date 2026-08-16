@@ -1861,8 +1861,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
             continue
         try:
             datas = get_zoobank_data_for_act(lsid)
-        except (requests.RequestException, zoobank.ZooBankUnavailableError) as e:
-            print(f"Error retrieving ZooBank data for {lsid}: {e!r}")
+        except requests.RequestException, zoobank.ZooBankUnavailableError:
             continue
         for zoobank_data in datas:
             if zoobank_data.citation_lsid:

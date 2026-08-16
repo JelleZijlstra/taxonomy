@@ -80,6 +80,62 @@ def test_get_zoobank_data_for_act_normalizes_lsid(
     get_data.assert_called_once_with("FC07ACBE-03F7-414A-BB64-1BB0711766BF")
 
 
+def test_is_valid_lsid_accepts_hexadecimal_uuid() -> None:
+    assert zoobank.is_valid_lsid("C19C1251-0557-473B-A59D-E10F8F4BAA32")
+
+
+@pytest.mark.parametrize(
+    "lsid",
+    ["644A2B53-7AA7-4DED-8F5A-OBE0729AA1CC", "C19C1251-0557-473B-A59D-E10F8F4BAA3G"],
+)
+def test_is_valid_lsid_rejects_non_hexadecimal_uuid(lsid: str) -> None:
+    assert not zoobank.is_valid_lsid(lsid)
+
+
+def test_act_404_is_negatively_cached(monkeypatch: pytest.MonkeyPatch) -> None:
+    error = zoobank.ZooBankNotFoundError("not found")
+    get_negative = Mock(return_value=None)
+    set_negative = Mock()
+    monkeypatch.setattr(zoobank, "get_expiring_cached_value", get_negative)
+    monkeypatch.setattr(zoobank, "set_expiring_cached_value", set_negative)
+    monkeypatch.setattr(zoobank, "_get_json_response", Mock(side_effect=error))
+    monkeypatch.setattr(zoobank.rate_limiter, "wait", Mock())
+
+    with pytest.raises(zoobank.ZooBankNotFoundError):
+        zoobank._get_zoobank_data_with_negative_cache(
+            "C19C1251-0557-473B-A59D-E10F8F4BAA32",
+            negative_domain=CacheDomain.zoobank_act_negative,
+            url="https://zoobank.example/act",
+        )
+
+    get_negative.assert_called_once_with(
+        CacheDomain.zoobank_act_negative, "C19C1251-0557-473B-A59D-E10F8F4BAA32"
+    )
+    set_negative.assert_called_once_with(
+        CacheDomain.zoobank_act_negative,
+        "C19C1251-0557-473B-A59D-E10F8F4BAA32",
+        "not found",
+        ttl=zoobank.NEGATIVE_CACHE_TTL,
+    )
+
+
+def test_cached_act_404_skips_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        zoobank, "get_expiring_cached_value", Mock(return_value="not found")
+    )
+    get_json = Mock()
+    monkeypatch.setattr(zoobank, "_get_json_response", get_json)
+
+    with pytest.raises(zoobank.ZooBankNotFoundError, match="not found"):
+        zoobank._get_zoobank_data_with_negative_cache(
+            "C19C1251-0557-473B-A59D-E10F8F4BAA32",
+            negative_domain=CacheDomain.zoobank_act_negative,
+            url="https://zoobank.example/act",
+        )
+
+    get_json.assert_not_called()
+
+
 def test_clear_zoobank_cache_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
     dirty_cache = Mock()
     monkeypatch.setattr(zoobank, "dirty_cache", dirty_cache)
@@ -91,5 +147,10 @@ def test_clear_zoobank_cache_helpers(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert dirty_cache.call_args_list == [
         call(CacheDomain.zoobank_act, "Pseudovespertiliavus_parva"),
+        call(CacheDomain.zoobank_act_negative, "Pseudovespertiliavus_parva"),
         call(CacheDomain.zoobank_publication, "FC07ACBE-03F7-414A-BB64-1BB0711766BF"),
+        call(
+            CacheDomain.zoobank_publication_negative,
+            "FC07ACBE-03F7-414A-BB64-1BB0711766BF",
+        ),
     ]

@@ -12,6 +12,7 @@ from taxonomy.db.models.article import lint as article_lint
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.citation_group import CitationGroup
 from taxonomy.db.models.lint_types import LintIssue
+from taxonomy.db.models.name import TypeTag
 
 
 def _get_tags(tags: tuple[object, ...], tag_cls: type[object]) -> Iterable[object]:
@@ -161,6 +162,38 @@ def test_data_from_zoobank_skips_unavailable_service(
         )
         == []
     )
+
+
+def test_infer_lsid_silently_skips_unavailable_service(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    lsid = "C19C1251-0557-473B-A59D-E10F8F4BAA32"
+    monkeypatch.setattr(
+        article_lint,
+        "get_zoobank_data_for_act",
+        Mock(side_effect=zoobank.ZooBankNotFoundError("not found")),
+    )
+    name = SimpleNamespace(type_tags=(TypeTag.LSIDName(lsid),), get_tags=_get_tags)
+    article = cast(
+        Article,
+        SimpleNamespace(
+            tags=(),
+            numeric_year=Mock(return_value=2021),
+            get_tags=_get_tags,
+            get_new_names=Mock(return_value=[name]),
+            get_all_pdf_pages=Mock(return_value=[lsid]),
+        ),
+    )
+
+    assert (
+        list(
+            article_lint.infer_lsid_from_names.linter(
+                article, LintConfig(autofix=False, interactive=False)
+            )
+        )
+        == []
+    )
+    assert capsys.readouterr().out == ""
 
 
 @pytest.mark.parametrize(
