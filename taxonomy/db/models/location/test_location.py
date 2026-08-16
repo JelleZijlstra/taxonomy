@@ -5529,6 +5529,35 @@ def test_reverse_geocoding_accepts_unqualified_region_name(
     reverse.assert_called_once()
 
 
+def test_reverse_geocoding_accepts_geocodejson_administrative_hierarchy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Ecuador", RegionKind.country)
+    province = _make_region("Pichincha Province", RegionKind.province, country)
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Gualea", region=province, min_period=recent, max_period=recent
+    )
+    loc.latitude = "0.1126198°N"
+    loc.longitude = "78.7494316°W"
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name="Quito Canton, Pichincha, Ecuador",
+            address={"country": "Ecuador", "country_code": "ec"},
+            administrative={"level6": "Quito Canton", "level4": "Pichincha"},
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+    monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
+
+    assert (
+        list(location_lint.check_nominatim_region_consistency(loc, LintConfig())) == []
+    )
+    extent = coordinate_lint.make_extent(loc.latitude, loc.longitude)
+    assert extent is not None
+    reverse.assert_called_once_with(extent.point, zoom=8)
+
+
 @pytest.mark.parametrize(
     ("region_name", "region_kind", "country_name", "address"),
     [

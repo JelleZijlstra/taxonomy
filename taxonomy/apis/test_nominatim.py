@@ -73,6 +73,64 @@ def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> No
     }
 
 
+def test_geocodejson_search_returns_normalized_administrative_hierarchy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    get_data = Mock(
+        return_value=json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "geocoding": {
+                                "osm_type": "relation",
+                                "osm_id": 113722,
+                                "osm_key": "boundary",
+                                "osm_value": "administrative",
+                                "type": "state",
+                                "label": "Pichincha, Ecuador",
+                                "name": "Pichincha",
+                                "state": "Pichincha",
+                                "country": "Ecuador",
+                                "country_code": "ec",
+                                "admin": {"level4": "Pichincha"},
+                            }
+                        },
+                    }
+                ],
+            }
+        )
+    )
+    monkeypatch.setattr(nominatim, "get_nominatim_data", get_data)
+
+    results = nominatim.search_geocodejson("Pichincha, Ecuador", limit=10)
+
+    assert results == [
+        nominatim.GeocodeResult(
+            name="Pichincha",
+            display_name="Pichincha, Ecuador",
+            category="boundary",
+            feature_type="administrative",
+            address_type="state",
+            address={"state": "Pichincha", "country": "Ecuador", "country_code": "ec"},
+            administrative={"level4": "Pichincha"},
+            osm_type="relation",
+            osm_id=113722,
+        )
+    ]
+    url = get_data.call_args.args[0]
+    assert urlparse(url).path == "/search"
+    assert parse_qs(urlparse(url).query) == {
+        "q": ["Pichincha, Ecuador"],
+        "format": ["geocodejson"],
+        "addressdetails": ["1"],
+        "limit": ["10"],
+        "accept-language": ["en"],
+    }
+
+
 def test_lookup_uses_stable_osm_object_identifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -110,13 +168,24 @@ def test_reverse_requests_administrative_address(
     get_data = Mock(
         return_value=json.dumps(
             {
-                "display_name": "Carson City, Nevada, United States",
-                "address": {
-                    "city": "Carson City",
-                    "state": "Nevada",
-                    "country": "United States",
-                    "country_code": "us",
-                },
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {
+                            "geocoding": {
+                                "label": "Carson City, Nevada, United States",
+                                "name": "Carson City",
+                                "type": "city",
+                                "city": "Carson City",
+                                "state": "Nevada",
+                                "country": "United States",
+                                "country_code": "us",
+                                "admin": {"level6": "Carson City", "level4": "Nevada"},
+                            }
+                        },
+                    }
+                ],
             }
         )
     )
@@ -132,13 +201,14 @@ def test_reverse_requests_administrative_address(
             "country": "United States",
             "country_code": "us",
         },
+        administrative={"level6": "Carson City", "level4": "Nevada"},
     )
     url = get_data.call_args.args[0]
     assert urlparse(url).path == "/reverse"
     assert parse_qs(urlparse(url).query) == {
         "lat": ["39.16"],
         "lon": ["-119.77"],
-        "format": ["jsonv2"],
+        "format": ["geocodejson"],
         "addressdetails": ["1"],
         "layer": ["address"],
         "zoom": ["5"],
@@ -156,6 +226,34 @@ def test_reverse_returns_none_when_nominatim_cannot_geocode(
     )
 
     assert nominatim.reverse(coordinates.Point(0, 0)) is None
+
+
+def test_reverse_returns_none_for_empty_geocodejson_features(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        nominatim,
+        "get_nominatim_data",
+        Mock(return_value=json.dumps({"type": "FeatureCollection", "features": []})),
+    )
+
+    assert nominatim.reverse(coordinates.Point(0, 0)) is None
+
+
+def test_get_openstreetmap_country_uses_geocodejson_reverse(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    point = coordinates.Point(-78.75, 0.11)
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name="Pichincha, Ecuador",
+            address={"state": "Pichincha", "country": "Ecuador"},
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+
+    assert nominatim.get_openstreetmap_country(point) == "Ecuador"
+    reverse.assert_called_once_with(point)
 
 
 def test_uncached_requests_are_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:

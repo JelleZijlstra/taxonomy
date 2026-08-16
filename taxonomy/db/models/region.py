@@ -10,7 +10,8 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import constants, models
 from taxonomy.db.derived_data import DerivedField
 
-from .base import ADTField, BaseModel, get_tag_based_derived_field
+from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
+from .lint_types import LintResult
 
 
 class Region(BaseModel):
@@ -340,6 +341,17 @@ class Region(BaseModel):
         else:
             return self.parent.has_parent(parent)
 
+    def lint(self, cfg: LintConfig) -> Iterable[LintResult]:
+        from . import region_lint
+
+        yield from region_lint.LINT.run(self, cfg)
+
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        from . import region_lint
+
+        region_lint.LINT.clear_caches()
+
 
 class RegionTag(adt.ADT):
     # The Region's children cover only part of its geographic extent.
@@ -347,3 +359,8 @@ class RegionTag(adt.ADT):
     # Names with a general type locality in this Region or one of its descendants
     # should be migrated to a more precise Location where possible.
     MustHavePreciseTypeLocality(tag=2)  # type: ignore[name-defined]
+    # Stable OpenStreetMap identity used through Nominatim. Do not store
+    # installation-specific Nominatim place_id values here.
+    OpenStreetMap(  # type: ignore[name-defined]
+        osm_type=str, osm_id=int, category=str, tag=3
+    )

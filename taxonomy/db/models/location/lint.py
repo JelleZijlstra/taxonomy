@@ -2968,8 +2968,14 @@ def _reverse_result_matches_region(
 ) -> bool:
     address_names = {
         _normalize_nominatim_region_name(name)
-        for key in _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS
-        if (value := result.address.get(key)) is not None
+        for value in (
+            *(
+                result.address[key]
+                for key in _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS
+                if key in result.address
+            ),
+            *result.administrative.values(),
+        )
         for name in _get_nominatim_address_name_aliases(value)
     }
     expected_names = {
@@ -2980,12 +2986,18 @@ def _reverse_result_matches_region(
 
 
 def _get_reverse_region_value(result: nominatim.ReverseResult) -> str | None:
-    return next(
+    address_value = next(
         (
             result.address[key]
             for key in _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS
             if key in result.address
         ),
+        None,
+    )
+    if address_value is not None:
+        return address_value
+    return next(
+        (value for _, value in sorted(result.administrative.items(), reverse=True)),
         None,
     )
 

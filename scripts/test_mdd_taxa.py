@@ -15,7 +15,7 @@ from taxonomy.db.constants import (
     OccurrenceBasis,
     OccurrenceValidity,
 )
-from taxonomy.db.models.name import Name, TypeTag
+from taxonomy.db.models.name import Name, NameTag, TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.tags import TaxonTag
 from taxonomy.db.models.taxon import Taxon
@@ -30,7 +30,11 @@ def _location_with_regions(*region_names: str) -> SimpleNamespace:
     for index, region in enumerate(regions):
         region.all_parents = lambda index=index: iter(regions[index + 1 :])
     return SimpleNamespace(
-        name=region_names[0], region=regions[0], min_age=None, min_period=None
+        name=region_names[0],
+        region=regions[0],
+        min_age=None,
+        min_period=None,
+        max_period=None,
     )
 
 
@@ -222,31 +226,147 @@ def test_type_locality_country_comparison_keeps_mdd_units_independent(
     assert [item.country for item in evidence] == expected
 
 
+def test_nomen_novum_inherits_type_locality_for_distribution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {"id": "1234", "sciName": "Example_species", "countryDistribution": "Peru"},
+        ),
+    )
+    syn = {
+        "MDD_type_country": "Peru",
+        "MDD_syn_ID": "1",
+        "MDD_original_type_locality": "Ecuador",
+        "MDD_authority_citation": "source.pdf",
+        "MDD_root_name": "replacement",
+        "MDD_authority_parentheses": "0",
+        "MDD_year": "1900",
+        "MDD_nomenclature_status": "available",
+        "MDD_author": "Author",
+    }
+    species_with_syns = mdd_taxa.SpeciesWithSyns(species, {}, [syn])
+    replaced_name = cast(
+        Name,
+        SimpleNamespace(
+            id=2,
+            taxon=SimpleNamespace(age=AgeClass.extant, tags=()),
+            type_locality=_location("Ecuador"),
+            type_tags=(),
+        ),
+    )
+    replacement_name = cast(
+        Name,
+        SimpleNamespace(
+            id=1,
+            type_locality=None,
+            get_tag_target=lambda tag: (
+                replaced_name if tag is NameTag.NomenNovumFor else None
+            ),
+            get_absolute_url=lambda: "https://hesperomys.com/n/1",
+        ),
+    )
+    monkeypatch.setattr(mdd_taxa, "_get_hesp_name", lambda syn: replacement_name)
+
+    evidence = species_with_syns.get_distribution_evidence(None, {"Peru"})
+
+    assert [item.country for item in evidence] == ["Ecuador"]
+    assert evidence[0].record == "N:1 / MDD synonym:1"
+
+
+def test_nomen_novum_inherits_type_locality_validity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    replaced_name = cast(
+        Name,
+        SimpleNamespace(
+            id=2,
+            taxon=SimpleNamespace(age=AgeClass.extant, tags=()),
+            type_locality=_location("Ecuador"),
+            type_tags=(TypeTag.TypeLocalityValidity(OccurrenceValidity.incidental),),
+        ),
+    )
+    replacement_name = cast(
+        Name,
+        SimpleNamespace(
+            id=1,
+            type_locality=None,
+            get_tag_target=lambda tag: (
+                replaced_name if tag is NameTag.NomenNovumFor else None
+            ),
+            get_absolute_url=lambda: "https://hesperomys.com/n/1",
+        ),
+    )
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {"id": "1234", "sciName": "Example_species", "countryDistribution": "Peru"},
+        ),
+    )
+    species_with_syns = mdd_taxa.SpeciesWithSyns(
+        species,
+        {},
+        [
+            {
+                "MDD_type_country": "Ecuador",
+                "MDD_syn_ID": "1",
+                "MDD_original_type_locality": "Ecuador",
+                "MDD_authority_citation": "source.pdf",
+                "MDD_root_name": "replacement",
+                "MDD_authority_parentheses": "0",
+                "MDD_year": "1900",
+                "MDD_nomenclature_status": "available",
+                "MDD_author": "Author",
+            }
+        ],
+    )
+    monkeypatch.setattr(mdd_taxa, "_get_hesp_name", lambda syn: replacement_name)
+
+    assert species_with_syns.get_distribution_evidence(None, {"Peru"}) == []
+
+
+def test_nomen_novum_type_locality_resolution_is_cycle_safe() -> None:
+    first = SimpleNamespace(id=1, type_locality=None)
+    second = SimpleNamespace(id=2, type_locality=None)
+    first.get_tag_target = lambda tag: second
+    second.get_tag_target = lambda tag: first
+    first_name = cast(Name, first)
+
+    assert mdd_taxa._get_name_with_type_locality(first_name) is first_name
+
+
 @pytest.mark.parametrize(
-    ("age", "tags", "youngest_age", "expected"),
+    ("age", "tags", "period_name", "youngest_age", "expected"),
     [
-        (AgeClass.extant, (), None, 1),
-        (AgeClass.extant, (), 0, 1),
-        (AgeClass.extant, (), 11_700, 0),
-        (AgeClass.fossil, (), None, 0),
+        (AgeClass.extant, (), None, None, 1),
+        (AgeClass.extant, (), "Recent", 0, 1),
+        (AgeClass.extant, (), "Quaternary", 0, 0),
+        (AgeClass.extant, (), "Pleistocene", 11_700, 0),
+        (AgeClass.fossil, (), None, None, 0),
         (
             AgeClass.extant,
             (TypeTag.TypeLocalityValidity(OccurrenceValidity.occurrence_dubious),),
             None,
+            None,
             0,
         ),
-        (AgeClass.recently_extinct, (), None, 1),
+        (AgeClass.recently_extinct, (), None, None, 1),
     ],
 )
 def test_name_type_locality_distribution_evidence(
-    age: AgeClass, tags: tuple[object, ...], youngest_age: int | None, expected: int
+    age: AgeClass,
+    tags: tuple[object, ...],
+    period_name: str | None,
+    youngest_age: int | None,
+    expected: int,
 ) -> None:
     period = (
         None
-        if youngest_age is None
-        else SimpleNamespace(
-            name="Recent" if youngest_age == 0 else "Pleistocene", min_age=youngest_age
-        )
+        if period_name is None
+        else SimpleNamespace(name=period_name, min_age=youngest_age)
     )
     location = SimpleNamespace(min_age=None, min_period=period, max_period=period)
     name = SimpleNamespace(
@@ -256,6 +376,24 @@ def test_name_type_locality_distribution_evidence(
     assert mdd_taxa._name_type_locality_is_distribution_evidence(
         cast(Name, name)
     ) is bool(expected)
+
+
+def test_name_extirpation_uses_species_age() -> None:
+    location = _location("Japan")
+    species = SimpleNamespace(
+        age=AgeClass.extant,
+        tags=(
+            TaxonTag.RegionalPresence(
+                location.region, DistributionPresence.extirpated, SimpleNamespace()
+            ),
+        ),
+    )
+    subspecies = SimpleNamespace(
+        age=AgeClass.recently_extinct, tags=(), parent_of_rank=lambda rank: species
+    )
+    name = SimpleNamespace(taxon=subspecies, type_locality=location, type_tags=())
+
+    assert not mdd_taxa._name_type_locality_is_distribution_evidence(cast(Name, name))
 
 
 @pytest.mark.parametrize(
@@ -666,6 +804,31 @@ def test_write_distribution_problems_one_row_per_country(
     assert rows[0]["suggested_country_distribution"] == "Guyana|Venezuela"
     assert rows[0]["evidence_count"] == "1"
     assert rows[0]["evidence_types"] == "OccurrenceRecord"
+
+
+@pytest.mark.parametrize("country_distribution", ["Domesticated", "NA"])
+def test_distribution_problems_ignore_non_country_sentinels(
+    country_distribution: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Homo_sapiens",
+                "countryDistribution": country_distribution,
+            },
+        ),
+    )
+    species_with_syns = mdd_taxa.SpeciesWithSyns(species, {}, [])
+    monkeypatch.setattr(
+        mdd_taxa.SpeciesWithSyns,
+        "get_hesp_taxon",
+        lambda self: _taxon_with_occurrence_record(),
+    )
+
+    assert species_with_syns.get_distribution_problems() == []
 
 
 def test_parse_changefile_with_comments_and_manual_review(tmp_path: Path) -> None:

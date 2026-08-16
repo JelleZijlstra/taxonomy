@@ -32,7 +32,7 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models import Name, Taxon
 from taxonomy.db.models.article import Article
-from taxonomy.db.models.name import TypeTag
+from taxonomy.db.models.name import NameTag, TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.tags import TaxonTag, get_effective_regional_tag
 
@@ -1147,6 +1147,14 @@ _NON_DISTRIBUTION_VALIDITIES = {
 _GLOBALLY_EXTINCT_AGES = {AgeClass.recently_extinct, AgeClass.holocene}
 
 
+def _taxon_is_globally_extinct(taxon: Taxon) -> bool:
+    try:
+        taxon = taxon.parent_of_rank(Rank.species)
+    except AttributeError, ValueError:
+        pass
+    return taxon.age in _GLOBALLY_EXTINCT_AGES
+
+
 def _occurrence_record_validities(
     record: Any, *, assessment: bool
 ) -> set[OccurrenceValidity]:
@@ -1194,9 +1202,8 @@ def _occurrence_record_is_distribution_evidence(record: Any, taxon: Taxon) -> bo
     if _regional_origin_excludes_distribution_evidence(taxon, record.location.region):
         return False
     presence = _occurrence_record_presence(record, taxon)
-    if (
-        presence is DistributionPresence.extirpated
-        and taxon.age not in _GLOBALLY_EXTINCT_AGES
+    if presence is DistributionPresence.extirpated and not _taxon_is_globally_extinct(
+        taxon
     ):
         return False
     return True
@@ -1259,6 +1266,20 @@ def _get_hesp_name(syn: Syn) -> Name | None:
         return None
 
 
+def _get_name_with_type_locality(name: Name) -> Name:
+    """Follow nomen-novum links to the Name that owns the type locality."""
+    seen_ids: set[int] = set()
+    while name.type_locality is None:
+        if name.id in seen_ids:
+            break
+        seen_ids.add(name.id)
+        replaced_name = name.get_tag_target(NameTag.NomenNovumFor)
+        if replaced_name is None:
+            break
+        name = replaced_name
+    return name
+
+
 def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
     if name.taxon.age not in {
         AgeClass.extant,
@@ -1267,12 +1288,16 @@ def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
     }:
         return False
     location = name.type_locality
-    if location is not None and location.min_period is not None:
+    if location is not None and (
+        location.min_period is not None or location.max_period is not None
+    ):
         min_period = location.min_period
         max_period = location.max_period
-        if (min_period.name != "Recent" and min_period.min_age != 0) or (
-            max_period is None
-            or (max_period.name != "Recent" and max_period.min_age != 0)
+        if (
+            min_period is None
+            or min_period.name != "Recent"
+            or max_period is None
+            or max_period.name != "Recent"
         ):
             return False
     validities = [
@@ -1298,7 +1323,7 @@ def _name_type_locality_is_distribution_evidence(name: Name) -> bool:
     presence = regional_presence.presence if regional_presence is not None else None
     return not (
         presence is DistributionPresence.extirpated
-        and name.taxon.age not in _GLOBALLY_EXTINCT_AGES
+        and not _taxon_is_globally_extinct(name.taxon)
     )
 
 
@@ -1697,14 +1722,22 @@ class SpeciesWithSyns:
         for syn in self.syns:
             country = syn.get("MDD_type_country", "")
             name = _get_hesp_name(syn)
-            if name is not None and name.type_locality is not None:
-                country = _country_for_location(name.type_locality) or country
+            type_locality_name = (
+                _get_name_with_type_locality(name) if name is not None else None
+            )
+            if (
+                type_locality_name is not None
+                and type_locality_name.type_locality is not None
+            ):
+                country = (
+                    _country_for_location(type_locality_name.type_locality) or country
+                )
             if not country or country not in COUNTRIES:
                 continue
             if _mdd_distribution_has_country(country, mdd_countries):
                 continue
-            if name is not None and not _name_type_locality_is_distribution_evidence(
-                name
+            if type_locality_name is not None and not (
+                _name_type_locality_is_distribution_evidence(type_locality_name)
             ):
                 continue
             syn_id = syn.get("MDD_syn_ID", "")
@@ -1736,7 +1769,7 @@ class SpeciesWithSyns:
 
     def get_distribution_problems(self) -> list[DistributionProblem]:
         mdd_countries = self.species.get_countries()
-        if "Domesticated" in mdd_countries:
+        if mdd_countries & {"Domesticated", "NA"}:
             return []
         taxon = self.get_hesp_taxon()
         by_country: dict[str, list[DistributionEvidence]] = defaultdict(list)

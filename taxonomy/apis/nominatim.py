@@ -2,7 +2,7 @@ import json
 import os
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import httpx
@@ -38,6 +38,36 @@ class SearchResult:
 class ReverseResult:
     display_name: str
     address: dict[str, str]
+    administrative: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class GeocodeResult:
+    name: str
+    display_name: str
+    category: str
+    feature_type: str
+    address_type: str
+    address: dict[str, str]
+    administrative: dict[str, str]
+    osm_type: str | None = None
+    osm_id: int | None = None
+
+
+_GEOCODEJSON_ADDRESS_FIELDS = frozenset(
+    {
+        "housenumber",
+        "street",
+        "locality",
+        "district",
+        "postcode",
+        "city",
+        "county",
+        "state",
+        "country",
+        "country_code",
+    }
+)
 
 
 def search(query: str, *, limit: int = 5) -> list[SearchResult]:
@@ -59,6 +89,30 @@ def search(query: str, *, limit: int = 5) -> list[SearchResult]:
     if not isinstance(data, list):
         raise TypeError(data)
     return [_parse_search_result(row) for row in data]
+
+
+def search_geocodejson(query: str, *, limit: int = 5) -> list[GeocodeResult]:
+    """Search for places using Nominatim's normalized GeocodeJSON schema."""
+    url = str(
+        httpx.URL(f"{BASE_URL}/search").copy_with(
+            params=httpx.QueryParams(
+                {
+                    "q": query,
+                    "format": "geocodejson",
+                    "addressdetails": "1",
+                    "limit": str(limit),
+                    "accept-language": "en",
+                }
+            )
+        )
+    )
+    data = json.loads(get_nominatim_data(url))
+    if not isinstance(data, dict):
+        raise TypeError(data)
+    features = data.get("features")
+    if not isinstance(features, list):
+        raise TypeError(data)
+    return [_parse_geocodejson_search_result(feature) for feature in features]
 
 
 def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
@@ -100,7 +154,7 @@ def reverse(point: coordinates.Point, *, zoom: int = 5) -> ReverseResult | None:
                 {
                     "lat": str(point.latitude),
                     "lon": str(point.longitude),
-                    "format": "jsonv2",
+                    "format": "geocodejson",
                     "addressdetails": "1",
                     "layer": "address",
                     "zoom": str(zoom),
@@ -115,17 +169,82 @@ def reverse(point: coordinates.Point, *, zoom: int = 5) -> ReverseResult | None:
     if data.get("error") == "Unable to geocode":
         return None
     try:
-        raw_address = data["address"]
-        if not isinstance(raw_address, dict):
+        features = data["features"]
+        if not isinstance(features, list) or len(features) > 1:
             raise TypeError
-        address = {
-            str(key): str(value)
-            for key, value in raw_address.items()
-            if isinstance(value, str)
-        }
-        return ReverseResult(display_name=str(data["display_name"]), address=address)
+        if not features:
+            return None
+        geocoding = _get_geocodejson_properties(features[0])
+        address, administrative = _parse_geocodejson_address(geocoding)
+        return ReverseResult(
+            display_name=str(geocoding["label"]),
+            address=address,
+            administrative=administrative,
+        )
     except (KeyError, TypeError) as exc:
         raise ValueError(data) from exc
+
+
+def _get_geocodejson_properties(feature: Any) -> dict[str, Any]:
+    if not isinstance(feature, dict):
+        raise TypeError
+    properties = feature["properties"]
+    if not isinstance(properties, dict):
+        raise TypeError
+    geocoding = properties["geocoding"]
+    if not isinstance(geocoding, dict):
+        raise TypeError
+    return geocoding
+
+
+def _parse_geocodejson_address(
+    geocoding: dict[str, Any],
+) -> tuple[dict[str, str], dict[str, str]]:
+    address = {
+        str(key): value
+        for key, value in geocoding.items()
+        if key in _GEOCODEJSON_ADDRESS_FIELDS and isinstance(value, str)
+    }
+    raw_administrative = geocoding.get("admin", {})
+    if not isinstance(raw_administrative, dict):
+        raise TypeError
+    administrative = {
+        str(key): value
+        for key, value in raw_administrative.items()
+        if isinstance(value, str)
+    }
+    return address, administrative
+
+
+def _parse_geocodejson_search_result(feature: Any) -> GeocodeResult:
+    try:
+        geocoding = _get_geocodejson_properties(feature)
+        address, administrative = _parse_geocodejson_address(geocoding)
+        raw_osm_type = geocoding.get("osm_type")
+        if raw_osm_type is not None and not isinstance(raw_osm_type, str):
+            raise TypeError
+        raw_osm_id = geocoding.get("osm_id")
+        if raw_osm_id is None:
+            osm_id = None
+        elif isinstance(raw_osm_id, int) and not isinstance(raw_osm_id, bool):
+            osm_id = raw_osm_id
+        elif isinstance(raw_osm_id, str) and raw_osm_id.isdigit():
+            osm_id = int(raw_osm_id)
+        else:
+            raise TypeError
+        return GeocodeResult(
+            name=str(geocoding["name"]),
+            display_name=str(geocoding["label"]),
+            category=str(geocoding["osm_key"]),
+            feature_type=str(geocoding["osm_value"]),
+            address_type=str(geocoding["type"]),
+            address=address,
+            administrative=administrative,
+            osm_type=raw_osm_type,
+            osm_id=osm_id,
+        )
+    except (KeyError, TypeError) as exc:
+        raise ValueError(feature) from exc
 
 
 def _parse_search_result(row: Any) -> SearchResult:
@@ -185,15 +304,8 @@ def _parse_search_result(row: Any) -> SearchResult:
 
 
 def get_openstreetmap_country(point: coordinates.Point) -> str | None:
-    url = f"{BASE_URL}/reverse?format=jsonv2&lat={point.latitude}&lon={point.longitude}&accept-language=en"
-    data = json.loads(get_nominatim_data(url))
-    # maybe in the ocean
-    if data.get("error") == "Unable to geocode":
-        return None
-    try:
-        return data["address"]["country"]
-    except KeyError:
-        raise ValueError(data) from None
+    result = reverse(point)
+    return None if result is None else result.address.get("country")
 
 
 @cached(CacheDomain.nominatim)
