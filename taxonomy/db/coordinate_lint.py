@@ -299,11 +299,15 @@ def _get_direction(value: float, *, is_latitude: bool) -> str:
 
 
 def check_extent_in_region(
-    extent: CoordinateExtent, region: Region, *, require_full_containment: bool = False
+    extent: CoordinateExtent,
+    region: Region,
+    *,
+    require_full_containment: bool = False,
+    allow_network: bool = True,
 ) -> Iterable[str]:
     point = extent.point
     if point is not None:
-        yield from check_point_in_region(point, region)
+        yield from check_point_in_region(point, region, allow_network=allow_network)
         return
 
     country = region.parent_of_kind(RegionKind.country)
@@ -311,7 +315,9 @@ def check_extent_in_region(
         return
     detailed_region_and_path = _get_detailed_region_path(region, country)
     if detailed_region_and_path is None:
-        yield from check_point_in_region(extent.center, region)
+        yield from check_point_in_region(
+            extent.center, region, allow_network=allow_network
+        )
         return
     detailed_region, path = detailed_region_and_path
     if _extent_intersects_path(extent, path):
@@ -333,7 +339,21 @@ def _extent_intersects_path(extent: CoordinateExtent, path: str) -> bool:
     corners = _get_extent_corners(extent)
     if any(coordinates.is_in_polygon(point, path) for point in corners):
         return True
-    for polygon in coordinates.get_polygon(path):
+    for polygon, bounds in zip(
+        coordinates.get_polygon(path),
+        coordinates.get_polygon_bounding_boxes(path),
+        strict=True,
+    ):
+        minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude = (
+            bounds
+        )
+        if (
+            extent.longitude.maximum < minimum_longitude
+            or extent.longitude.minimum > maximum_longitude
+            or extent.latitude.maximum < minimum_latitude
+            or extent.latitude.minimum > maximum_latitude
+        ):
+            continue
         if any(_extent_contains_point(extent, line.p1) for line in polygon):
             return True
         box_edges = (
@@ -389,7 +409,9 @@ def _extent_contains_point(extent: CoordinateExtent, point: coordinates.Point) -
     )
 
 
-def check_point_in_region(point: coordinates.Point, region: Region) -> Iterable[str]:
+def check_point_in_region(
+    point: coordinates.Point, region: Region, *, allow_network: bool = True
+) -> Iterable[str]:
     country = region.parent_of_kind(RegionKind.country)
     if country is None:
         return
@@ -426,7 +448,7 @@ def check_point_in_region(point: coordinates.Point, region: Region) -> Iterable[
                 )
                 return
 
-    yield from _check_country(point, country)
+    yield from _check_country(point, country, allow_network=allow_network)
 
 
 def _get_detailed_region_path(
@@ -471,9 +493,13 @@ def _get_nearest_child_region(
     return nearest[1] if nearest is not None else None
 
 
-def _check_country(point: coordinates.Point, country: Region) -> Iterable[str]:
+def _check_country(
+    point: coordinates.Point, country: Region, *, allow_network: bool
+) -> Iterable[str]:
     polygon_path = coordinates.get_path(country.name)
     if polygon_path is not None and coordinates.is_in_polygon(point, polygon_path):
+        return
+    if not allow_network:
         return
     osm_country = nominatim.get_openstreetmap_country(point)
     if osm_country is None:

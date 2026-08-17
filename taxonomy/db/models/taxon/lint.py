@@ -65,18 +65,26 @@ def _first_ranked_parent(taxon: Taxon | None, *, depth: int = 20) -> Taxon | Non
     return _first_ranked_parent(taxon.parent, depth=depth - 1)
 
 
-@LINT.add("parent_cycle")
+_known_acyclic_taxa: set[Taxon] = set()
+
+
+@LINT.add("parent_cycle", clear_caches=_known_acyclic_taxa.clear)
 def check_parent_cycle(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     if taxon.parent is None:
+        _known_acyclic_taxa.add(taxon)
         return
     current = taxon
-    seen = set()
+    seen: set[Taxon] = set()
     while current is not None:
-        seen.add(current)
-        current = current.parent
-        if current == taxon or current in seen:
+        if current in _known_acyclic_taxa:
+            _known_acyclic_taxa.update(seen)
+            return
+        if current in seen:
             yield f"{taxon}: parent cycle detected: {current} -> {taxon}"
             return
+        seen.add(current)
+        current = current.parent
+    _known_acyclic_taxa.update(seen)
 
 
 @LINT.add("rank")

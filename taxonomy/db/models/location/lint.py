@@ -1840,7 +1840,7 @@ def check_period(location: Location, cfg: LintConfig) -> Iterable[str]:
         yield "missing max_period"
 
 
-@LINT.add("coordinates", required_resources={LintResource.SLOW})
+@LINT.add("coordinates", optional_resources={LintResource.SLOW, LintResource.NETWORK})
 def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     if location.latitude is None and location.longitude is None:
         return
@@ -1864,21 +1864,25 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[LintResul
             (location, "latitude", latitude),
             (location, "longitude", longitude),
         )
-    if location.is_general() and extent.point is not None:
+    is_general = location.is_general()
+    is_reviewed_unplaced = location.has_tag(LocationTag.Unplaced)
+    if is_general and extent.point is not None:
         yield "general location should use a coordinate range, not point coordinates"
         return
-    if location.has_tag(LocationTag.Unplaced) and extent.point is not None:
+    if is_reviewed_unplaced and extent.point is not None:
         yield "unplaced location should use a coordinate range, not point coordinates"
         return
-    is_reviewed_unplaced = location.has_tag(LocationTag.Unplaced)
+    if not cfg.is_resource_available(LintResource.SLOW):
+        return
     yield from coordinate_lint.check_extent_in_region(
         extent,
         location.region,
-        require_full_containment=not location.is_general() and not is_reviewed_unplaced,
+        require_full_containment=not is_general and not is_reviewed_unplaced,
+        allow_network=cfg.is_resource_available(LintResource.NETWORK),
     )
     if (
         extent.point is not None
-        or location.is_general()
+        or is_general
         or is_reviewed_unplaced
         or not is_recent_location(location)
     ):

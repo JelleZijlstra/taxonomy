@@ -21,9 +21,6 @@ class Point:
         return f"https://www.openstreetmap.org/?mlat={self.latitude}&mlon={self.longitude}&zoom=12"
 
 
-_ORIGIN = Point(0, 0)
-
-
 @dataclass(frozen=True, slots=True)
 class Line:
     a: float
@@ -106,6 +103,21 @@ def get_polygon(path: str) -> list[list[LineSegment]]:
     return result
 
 
+@functools.lru_cache(maxsize=256)
+def get_polygon_bounding_boxes(
+    path: str,
+) -> tuple[tuple[float, float, float, float], ...]:
+    return tuple(
+        (
+            min(line.p1.longitude for line in polygon),
+            min(line.p1.latitude for line in polygon),
+            max(line.p1.longitude for line in polygon),
+            max(line.p1.latitude for line in polygon),
+        )
+        for polygon in get_polygon(path)
+    )
+
+
 def _get_coordinate_rings(geometry: dict[str, Any]) -> list[list[list[float]]]:
     match geometry["type"]:
         case "Polygon":
@@ -125,20 +137,33 @@ def _make_point(coords: list[float]) -> Point:
 
 
 def is_in_polygon(p: Point, path: str) -> bool:
-    polygons = get_polygon(path)
-    for polygon in polygons:
+    for polygon, bounds in zip(
+        get_polygon(path), get_polygon_bounding_boxes(path), strict=True
+    ):
+        minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude = (
+            bounds
+        )
+        if not (
+            minimum_longitude <= p.longitude <= maximum_longitude
+            and minimum_latitude <= p.latitude <= maximum_latitude
+        ):
+            continue
         if is_in_polygon_single(p, polygon):
             return True
     return False
 
 
 def is_in_bounding_box(p: Point, path: str) -> bool:
-    for polygon in get_polygon(path):
-        latitudes = [line.p1.latitude for line in polygon]
-        longitudes = [line.p1.longitude for line in polygon]
-        if min(latitudes) <= p.latitude <= max(latitudes) and min(
-            longitudes
-        ) <= p.longitude <= max(longitudes):
+    for (
+        minimum_longitude,
+        minimum_latitude,
+        maximum_longitude,
+        maximum_latitude,
+    ) in get_polygon_bounding_boxes(path):
+        if (
+            minimum_longitude <= p.longitude <= maximum_longitude
+            and minimum_latitude <= p.latitude <= maximum_latitude
+        ):
             return True
     return False
 
@@ -172,13 +197,39 @@ def get_distance_to_line_segment(p: Point, line: LineSegment) -> float:
 
 def is_in_polygon_single(p: Point, polygon: list[LineSegment]) -> bool:
     num_intersections = 0
-    origin_to_point = LineSegment.from_points(_ORIGIN, p)
+    origin_line: Line | VerticalLine
+    if p.longitude == 0:
+        origin_line = VerticalLine(0)
+    else:
+        origin_line = Line(p.latitude / p.longitude, 0)
+    ray_minimum_latitude = min(0, p.latitude)
+    ray_maximum_latitude = max(0, p.latitude)
+    ray_minimum_longitude = min(0, p.longitude)
+    ray_maximum_longitude = max(0, p.longitude)
     for line in polygon:
-        intersection = get_intersection(origin_to_point.line, line.line)
+        match origin_line, line.line:
+            case Line() as ray, Line() as edge:
+                if ray.a == edge.a:
+                    continue
+                longitude = (edge.b - ray.b) / (ray.a - edge.a)
+                latitude = ray.a * longitude + ray.b
+            case VerticalLine() as ray, Line() as edge:
+                longitude = ray.x
+                latitude = edge.a * ray.x + edge.b
+            case Line() as ray, VerticalLine() as edge:
+                longitude = edge.x
+                latitude = ray.a * edge.x + ray.b
+            case VerticalLine(), VerticalLine():
+                continue
         if (
-            intersection is not None
-            and line.segment_contains_point_on_line(intersection)
-            and origin_to_point.segment_contains_point_on_line(intersection)
+            min(line.p1.latitude, line.p2.latitude)
+            <= latitude
+            <= max(line.p1.latitude, line.p2.latitude)
+            and min(line.p1.longitude, line.p2.longitude)
+            <= longitude
+            <= max(line.p1.longitude, line.p2.longitude)
+            and ray_minimum_latitude <= latitude <= ray_maximum_latitude
+            and ray_minimum_longitude <= longitude <= ray_maximum_longitude
         ):
             num_intersections += 1
     return num_intersections % 2 == 1

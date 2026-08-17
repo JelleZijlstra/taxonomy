@@ -2,6 +2,7 @@ import math
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Self, cast
+from unittest.mock import Mock
 
 import pytest
 
@@ -264,6 +265,22 @@ def test_check_point_in_region_allows_french_overseas_country_mapping(
     monkeypatch.setattr(nominatim, "get_openstreetmap_country", lambda point: "France")
 
     assert list(coordinate_lint.check_point_in_region(point, country)) == []
+
+
+def test_check_point_in_region_does_not_reverse_geocode_without_network(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = cast(Region, FakeRegion("Country"))
+    point = coordinates.Point(1, 1)
+    reverse_geocode = Mock()
+    monkeypatch.setattr(coordinates, "get_path", lambda country_name: None)
+    monkeypatch.setattr(nominatim, "get_openstreetmap_country", reverse_geocode)
+
+    assert (
+        list(coordinate_lint.check_point_in_region(point, country, allow_network=False))
+        == []
+    )
+    reverse_geocode.assert_not_called()
 
 
 def test_check_extent_in_region_allows_overlapping_range(

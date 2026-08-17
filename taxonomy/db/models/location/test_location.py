@@ -3735,7 +3735,30 @@ def test_unplaced_significant_coordinate_range_is_not_reported(
     monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_region)
 
     assert list(location_lint.check_coordinates(loc, LintConfig())) == []
-    assert check_region.call_args.kwargs == {"require_full_containment": False}
+    assert check_region.call_args.kwargs == {
+        "require_full_containment": False,
+        "allow_network": True,
+    }
+
+
+def test_coordinate_format_checks_run_without_slow_resource(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    loc = _location_without_coordinates()
+    loc.latitude = "37.9"
+    loc.longitude = "-122.1"
+    check_region = Mock(side_effect=AssertionError("slow region check should not run"))
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_region)
+
+    messages = list(
+        location_lint.check_coordinates(
+            loc, LintConfig(autofix=False, available_resources=frozenset())
+        )
+    )
+
+    assert len(messages) == 1
+    assert "coordinates should be 37.9°N, 122.1°W" in str(messages[0])
+    check_region.assert_not_called()
 
 
 def test_general_location_rejects_point_coordinates(

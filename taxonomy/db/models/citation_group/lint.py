@@ -14,7 +14,7 @@ from taxonomy import config, getinput
 from taxonomy.apis import bhl
 from taxonomy.apis.util import RateLimiter
 from taxonomy.db import constants, helpers, models
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
@@ -181,7 +181,7 @@ def check_too_many_bhl_bibliographies(
         yield f"has {num_bhl_biblios} BHL bibliographies"
 
 
-@LINT.add("infer_bhl_from_children")
+@LINT.add("infer_bhl_from_children", required_resources={LintResource.SLOW})
 def infer_bhl_biblio_from_children(
     cg: CitationGroup, cfg: LintConfig
 ) -> Iterable[LintResult]:
