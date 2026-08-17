@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from taxonomy.db import models
-from taxonomy.db.models.base import BaseModel, LintConfig
+from taxonomy.db.models.base import BaseModel, LintConfig, LintResource
 from taxonomy.db.models.tags import LocationTag
 
 
@@ -78,6 +78,31 @@ def test_lint_all_uses_read_only_context_without_autofix(
 
     assert models.Location.lint_all(linter, autofix=False, query=[]) == []
     assert events == ["enter", "exit"]
+
+
+def test_lint_all_passes_explicit_available_resources(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    seen: list[LintConfig] = []
+
+    def linter(_obj: object, cfg: LintConfig) -> tuple[()]:
+        seen.append(cfg)
+        return ()
+
+    monkeypatch.setattr(
+        models.Location, "clear_lint_caches", classmethod(lambda cls: None)
+    )
+
+    assert (
+        models.Location.lint_all(
+            linter,
+            autofix=False,
+            query=[object()],  # type: ignore[list-item]
+            available_resources=frozenset({LintResource.SLOW}),
+        )
+        == []
+    )
+    assert seen[0].available_resources == frozenset({LintResource.SLOW})
 
 
 def test_read_only_lint_reports_invalid_model_reference_in_tag(

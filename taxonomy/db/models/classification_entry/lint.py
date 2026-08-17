@@ -22,7 +22,7 @@ from taxonomy.db.constants import (
     Status,
 )
 from taxonomy.db.models.article.article import Article, ArticleTag
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
@@ -261,9 +261,17 @@ MISSPELLING_TAGS = (
 
 
 def _is_misspelling_of(misspelling: Name, correct: Name) -> bool:
-    return any(
-        misspelling.get_tag_target(tag_cls) == correct for tag_cls in MISSPELLING_TAGS
-    )
+    return correct in _get_misspelling_targets(misspelling)
+
+
+def _get_misspelling_targets(misspelling: Name) -> set[Name]:
+    targets = set()
+    seen_tag_types = set()
+    for tag in misspelling.tags or ():
+        if isinstance(tag, MISSPELLING_TAGS) and type(tag) not in seen_tag_types:
+            seen_tag_types.add(type(tag))
+            targets.add(tag.name)
+    return targets
 
 
 def _get_same_level_ces(ce: ClassificationEntry) -> Iterable[ClassificationEntry]:
@@ -275,7 +283,7 @@ def _get_same_level_ces(ce: ClassificationEntry) -> Iterable[ClassificationEntry
         )
 
 
-@LINT.add("needs_auxiliary_name")
+@LINT.add("needs_auxiliary_name", required_resources={LintResource.SLOW})
 def check_needs_auxiliary_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[LintResult]:
@@ -285,6 +293,9 @@ def check_needs_auxiliary_name(
         or ce.has_tag(ClassificationEntryTag.AuxiliaryName)
     ):
         return
+    misspelling_targets = _get_misspelling_targets(ce.mapped_name)
+    if not misspelling_targets:
+        return
     correct_ces = [
         other_ce
         for other_ce in _get_same_level_ces(ce)
@@ -292,7 +303,7 @@ def check_needs_auxiliary_name(
         and other_ce.rank is ce.rank
         and other_ce.mapped_name is not None
         and not other_ce.has_tag(ClassificationEntryTag.AuxiliaryName)
-        and _is_misspelling_of(ce.mapped_name, other_ce.mapped_name)
+        and other_ce.mapped_name in misspelling_targets
     ]
     if not correct_ces:
         return
@@ -865,7 +876,7 @@ def _expand_candidates(candidates: Iterable[Name]) -> Iterable[Name]:
                 yield target
 
 
-@LINT.add("mapped_name_inference")
+@LINT.add("mapped_name_inference", required_resources={LintResource.SLOW})
 def check_mapped_name_inference(
     ce: ClassificationEntry, cfg: LintConfig, *, conservative: bool = False
 ) -> Iterable[LintResult]:
@@ -909,7 +920,7 @@ def get_allowed_family_group_names(nam: Name) -> Container[str]:
     return allowed
 
 
-@LINT.add("predates_mapped_name")
+@LINT.add("predates_mapped_name", required_resources={LintResource.SLOW})
 def check_predates_mapped_name(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[str]:
@@ -1925,7 +1936,7 @@ def _get_ce_key(ce: ClassificationEntry) -> tuple[Rank, str] | None:
             assert_never(group)
 
 
-@LINT.add("mapped_name_matches_other_ces")
+@LINT.add("mapped_name_matches_other_ces", required_resources={LintResource.SLOW})
 def check_mapped_name_matches_other_ces(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[LintResult]:

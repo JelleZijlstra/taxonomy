@@ -838,6 +838,20 @@ def test_needs_auxiliary_name_finds_misspelled_sibling() -> None:
     assert "convert to AuxiliaryName under sibling CE" in str(messages[0])
 
 
+def test_needs_auxiliary_name_skips_sibling_query_for_non_misspelling() -> None:
+    ce = _make_ce(parent=_make_ce(parent=None, auxiliary=False), auxiliary=False)
+    ce.rank = Rank.genus
+    ce.mapped_name = _make_name("valid")
+
+    with patch(
+        "taxonomy.db.models.classification_entry.lint._get_same_level_ces"
+    ) as get_same_level_ces:
+        messages = list(check_needs_auxiliary_name(ce, LintConfig(autofix=False)))
+
+    assert messages == []
+    get_same_level_ces.assert_not_called()
+
+
 def test_needs_auxiliary_name_autofix() -> None:
     original_parent = _make_ce(parent=None, auxiliary=False)
     correct_name = _make_name("correct")

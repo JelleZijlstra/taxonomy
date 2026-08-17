@@ -77,7 +77,7 @@ from .db.models import (
     Taxon,
     TypeTag,
 )
-from .db.models.base import LintConfig, Linter, ModelT
+from .db.models.base import LintConfig, Linter, LintResource, ModelT
 from .db.models.ignored_doi import IgnoreReason
 from .db.models.item_file import ItemFile
 from .db.models.person import PersonLevel
@@ -1750,8 +1750,19 @@ def run_linter_and_fix(
     manual_mode: bool = False,
     enable_all: bool = False,
     experimental: bool = False,
+    slow: bool = True,
 ) -> None:
     """Helper for running a lint on a subset of objects and fixing the issues."""
+    available_resources = (
+        None
+        if slow
+        else frozenset(
+            resource
+            for resource in LintResource
+            if resource is not LintResource.SLOW
+            and resource.value in config.get_available_lint_resources()
+        )
+    )
     bad = model_cls.lint_all(
         linter,
         query=query,
@@ -1760,6 +1771,7 @@ def run_linter_and_fix(
         manual_mode=manual_mode,
         enable_all=enable_all,
         experimental=experimental,
+        available_resources=available_resources,
     )
     print(f"Found {len(bad)} issues")
     if not bad:
@@ -1770,6 +1782,7 @@ def run_linter_and_fix(
         verbose=verbose,
         manual_mode=manual_mode,
         experimental=experimental,
+        available_resources=available_resources,
     )
     for obj, messages in getinput.print_every_n(bad, label="issues", n=5):
         obj.load()
@@ -1800,7 +1813,10 @@ def resolve_redirects(*, dry_run: bool = False) -> None:
 
 @command
 def run_maintenance(
-    *, skip_slow: bool = True, interactive: bool = False
+    *,
+    skip_slow: bool = True,
+    interactive: bool = False,
+    include_slow_lints: bool = True,
 ) -> dict[Any, Any]:
     """Runs maintenance checks that are expected to pass for the entire database."""
     fns: list[Callable[[], Any]] = [
@@ -1818,11 +1834,26 @@ def run_maintenance(
     # these each take >60 s
     slow: list[Callable[[], Any]] = (
         [
-            functools.partial(run_linter_and_fix, cls)
+            functools.partial(run_linter_and_fix, cls, slow=include_slow_lints)
             for cls in models.BaseModel.__subclasses__()
         ]
         if interactive
-        else [cls.lint_all for cls in models.BaseModel.__subclasses__()]
+        else [
+            functools.partial(
+                cls.lint_all,
+                available_resources=(
+                    None
+                    if include_slow_lints
+                    else frozenset(
+                        resource
+                        for resource in LintResource
+                        if resource is not LintResource.SLOW
+                        and resource.value in config.get_available_lint_resources()
+                    )
+                ),
+            )
+            for cls in models.BaseModel.__subclasses__()
+        ]
     )
     if not skip_slow:
         fns += slow
@@ -2885,6 +2916,17 @@ def add_coordinates(names: Iterable[Name]) -> None:
 def set_network_available() -> None:
     available = getinput.yes_no("Is the network available? ")
     config.set_network_available(value=available)
+
+
+@command
+def set_lint_resources() -> None:
+    """Choose the resources available to lints in this shell process."""
+    available = {
+        resource.value
+        for resource in LintResource
+        if getinput.yes_no(f"Is the {resource.value!r} lint resource available? ")
+    }
+    config.set_available_lint_resources(available)
 
 
 @command

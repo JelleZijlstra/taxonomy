@@ -5,7 +5,7 @@ from typing import Any, ClassVar, cast
 
 import pytest
 
-from taxonomy.db.models.base import BaseModel, LintConfig
+from taxonomy.db.models.base import BaseModel, LintConfig, LintResource
 from taxonomy.db.models.lint import (
     Lint,
     LintFix,
@@ -139,6 +139,16 @@ def test_bulk_ignore_validates_code_and_comment() -> None:
         lint.add_ignore_lint_to_all("problem", "  ")
 
 
+def test_duplicate_lint_label_is_rejected() -> None:
+    lint = make_lint([])
+
+    with pytest.raises(ValueError, match="duplicate FakeModel lint label 'problem'"):
+
+        @lint.add("problem", disabled=True)
+        def check_other_problem(_obj: FakeObject, _cfg: Any) -> list[str]:
+            return []
+
+
 def test_bulk_ignore_finishes_scan_before_writing() -> None:
     first = FakeObject(1, needs_ignore=True)
     second = FakeObject(2, needs_ignore=True, raises=True)
@@ -246,6 +256,94 @@ def test_linter_can_skip_virtual_objects_and_preserve_ignore() -> None:
     ]
     assert calls == []
     assert obj.tags == [FakeIgnore("persisted_only", "requires database state")]
+
+
+def test_unavailable_resource_skips_linter_and_preserves_ignore() -> None:
+    obj = FakeObject(
+        1,
+        needs_ignore=False,
+        tags=[FakeIgnore("slow_problem", "requires a full lint run")],
+    )
+    lint = make_lint([obj])
+    calls: list[FakeObject] = []
+
+    @lint.add("slow_problem", required_resources={LintResource.SLOW})
+    def check_slow_problem(item: FakeObject, _cfg: Any) -> list[str]:
+        calls.append(item)
+        return []
+
+    messages = list(
+        lint.run(
+            obj,
+            LintConfig(
+                autofix=True, interactive=False, available_resources=frozenset()
+            ),
+        )
+    )
+
+    assert messages == []
+    assert calls == []
+    assert obj.tags == [FakeIgnore("slow_problem", "requires a full lint run")]
+
+
+def test_available_resource_runs_linter_and_cleans_unused_ignore() -> None:
+    obj = FakeObject(
+        1,
+        needs_ignore=False,
+        tags=[FakeIgnore("slow_problem", "requires a full lint run")],
+    )
+    lint = make_lint([obj])
+    calls: list[FakeObject] = []
+
+    @lint.add("slow_problem", required_resources={LintResource.SLOW})
+    def check_slow_problem(item: FakeObject, _cfg: Any) -> list[str]:
+        calls.append(item)
+        return []
+
+    messages = list(
+        lint.run(
+            obj,
+            LintConfig(
+                autofix=True,
+                interactive=False,
+                available_resources=frozenset({LintResource.SLOW}),
+            ),
+        )
+    )
+
+    assert messages == []
+    assert calls == [obj]
+    assert list(obj.tags) == []
+
+
+def test_missing_optional_resource_runs_partial_lint_and_preserves_ignore() -> None:
+    obj = FakeObject(
+        1,
+        needs_ignore=False,
+        tags=[FakeIgnore("partial_problem", "requires the complete check")],
+    )
+    lint = make_lint([obj])
+    calls: list[FakeObject] = []
+
+    @lint.add("partial_problem", optional_resources={LintResource.NETWORK})
+    def check_partial_problem(item: FakeObject, _cfg: Any) -> list[str]:
+        calls.append(item)
+        return []
+
+    messages = list(
+        lint.run(
+            obj,
+            LintConfig(
+                autofix=True,
+                interactive=False,
+                available_resources=frozenset({LintResource.SLOW}),
+            ),
+        )
+    )
+
+    assert messages == []
+    assert calls == [obj]
+    assert obj.tags == [FakeIgnore("partial_problem", "requires the complete check")]
 
 
 def test_decorator_adds_code_to_plain_lint_issue() -> None:

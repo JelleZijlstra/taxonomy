@@ -10,11 +10,11 @@ from typing import Any
 
 import httpx
 
-from taxonomy import adt, config, coordinates
+from taxonomy import adt, coordinates
 from taxonomy.apis import geonames, nominatim, plss
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import RegionKind, SpeciesGroupType
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
@@ -1276,7 +1276,11 @@ def _get_likely_synonym_map() -> dict[int, tuple[Location, tuple[Location, ...]]
     return _build_likely_synonym_map(Location.select_valid())
 
 
-@LINT.add("likely_synonymous", clear_caches=_get_likely_synonym_map.cache_clear)
+@LINT.add(
+    "likely_synonymous",
+    required_resources={LintResource.SLOW},
+    clear_caches=_get_likely_synonym_map.cache_clear,
+)
 def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str]:
     match = _get_likely_synonym_map().get(location.id)
     if match is None:
@@ -1380,7 +1384,9 @@ def _same_location_identity(first: Location, second: Location) -> bool:
 
 
 @LINT.add(
-    "explicit_location_equivalence", clear_caches=_get_locations_by_region.cache_clear
+    "explicit_location_equivalence",
+    required_resources={LintResource.SLOW},
+    clear_caches=_get_locations_by_region.cache_clear,
 )
 def check_explicit_location_equivalence(
     location: Location, cfg: LintConfig
@@ -1834,7 +1840,7 @@ def check_period(location: Location, cfg: LintConfig) -> Iterable[str]:
         yield "missing max_period"
 
 
-@LINT.add("coordinates")
+@LINT.add("coordinates", required_resources={LintResource.SLOW})
 def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     if location.latitude is None and location.longitude is None:
         return
@@ -2462,7 +2468,7 @@ def check_geonames_coordinates(
     )
 
 
-@LINT.add("geonames_coordinate_consistency")
+@LINT.add("geonames_coordinate_consistency", required_resources={LintResource.SLOW})
 def check_geonames_coordinate_consistency(
     location: Location, cfg: LintConfig
 ) -> Iterable[str]:
@@ -3929,7 +3935,7 @@ def _get_backfill_coordinate_provenance(
 def check_coordinate_provenance(
     location: Location, cfg: LintConfig
 ) -> Iterable[LintResult]:
-    allow_network = config.is_network_available()
+    allow_network = cfg.is_resource_available(LintResource.NETWORK)
     provenance_tags = [
         tag for tag in location.tags or () if is_coordinate_provenance_tag(tag)
     ]

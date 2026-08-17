@@ -3,7 +3,7 @@ import functools
 import json
 import os
 import sys
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from pathlib import Path
 from typing import NamedTuple
 
@@ -90,17 +90,43 @@ def parse_optional_path(section: Mapping[str, str], key: str, base_path: Path) -
 
 
 _network_available: bool | None = None
+_available_lint_resources: frozenset[str] | None = None
 
 
 def set_network_available(*, value: bool) -> None:
-    global _network_available
+    global _available_lint_resources, _network_available
     _network_available = value
+    if _available_lint_resources is not None:
+        resources = set(_available_lint_resources)
+        if value:
+            resources.add("network")
+        else:
+            resources.discard("network")
+        _available_lint_resources = frozenset(resources)
 
 
 def is_network_available() -> bool:
     if _network_available is not None:
         return _network_available
     return _is_network_available_from_env()
+
+
+def set_available_lint_resources(resources: Iterable[str]) -> None:
+    """Set the resources available to model lints in this process."""
+    global _available_lint_resources, _network_available
+    _available_lint_resources = frozenset(resources)
+    _network_available = "network" in _available_lint_resources
+
+
+def get_available_lint_resources() -> frozenset[str]:
+    if _available_lint_resources is not None:
+        return _available_lint_resources
+    resources = set()
+    if is_network_available():
+        resources.add("network")
+    if not os.environ.get("TAXONOMY_NO_SLOW_LINTS"):
+        resources.add("slow")
+    return frozenset(resources)
 
 
 @functools.cache

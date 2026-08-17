@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import traceback
 from collections import Counter
-from collections.abc import Callable, Generator, Hashable, Iterable
+from collections.abc import Callable, Collection, Generator, Hashable, Iterable
 from dataclasses import dataclass, replace
 from dataclasses import field as dataclass_field
 from functools import cache
@@ -15,7 +15,7 @@ from clirm import UnsetVirtualFieldError
 from taxonomy import getinput
 from taxonomy.config import is_network_available
 
-from .base import BaseModel, LintConfig
+from .base import BaseModel, LintConfig, LintResource
 from .lint_types import LintIssue, LintResult
 
 ModelT = TypeVar("ModelT", bound=BaseModel)
@@ -377,9 +377,37 @@ class LintWrapper(Generic[ModelT]):
     disabled: bool
     label: str
     lint: Lint[ModelT]
-    requires_network: bool = False
-    uses_optional_network: bool = False
+    required_resources: frozenset[LintResource] = frozenset()
+    optional_resources: frozenset[LintResource] = frozenset()
     skip_virtual: bool = False
+
+    @property
+    def requires_network(self) -> bool:
+        return LintResource.NETWORK in self.required_resources
+
+    @property
+    def uses_optional_network(self) -> bool:
+        return LintResource.NETWORK in self.optional_resources
+
+    @staticmethod
+    def _missing_resources(
+        resources: Collection[LintResource], cfg: LintConfig
+    ) -> frozenset[LintResource]:
+        return frozenset(
+            resource
+            for resource in resources
+            if not (
+                is_network_available()
+                if resource is LintResource.NETWORK and cfg.available_resources is None
+                else cfg.is_resource_available(resource)
+            )
+        )
+
+    def missing_resources(self, cfg: LintConfig) -> frozenset[LintResource]:
+        return self._missing_resources(self.required_resources, cfg)
+
+    def missing_optional_resources(self, cfg: LintConfig) -> frozenset[LintResource]:
+        return self._missing_resources(self.optional_resources, cfg)
 
     @staticmethod
     def _format_object(obj: ModelT) -> str:
@@ -393,7 +421,7 @@ class LintWrapper(Generic[ModelT]):
     def __call__(
         self, obj: ModelT, cfg: LintConfig
     ) -> Generator[LintIssue, None, set[str]]:
-        if self.requires_network and not is_network_available():
+        if self.missing_resources(cfg):
             return {self.label}
         if self.skip_virtual and obj.is_virtual:
             return {self.label}
@@ -409,6 +437,10 @@ class LintWrapper(Generic[ModelT]):
             # Preserve it rather than allowing Lint.run() to remove it as unused.
             return {self.label}
         if not issues:
+            # A partially evaluated lint cannot establish that an IgnoreLint is
+            # obsolete. Keep the label used while any optional resource is absent.
+            if self.missing_optional_resources(cfg):
+                return {self.label}
             return set()
         ignored_lints = self.lint.get_ignored_lints(obj)
         if self.label in ignored_lints:
@@ -498,15 +530,18 @@ class Lint(Generic[ModelT]):
                 f"{self.model_cls.__name__} has multiple lints labeled {label!r}"
             )
         linter = matching_linters[0]
-        if linter.requires_network and not is_network_available():
+        cfg = LintConfig(autofix=False, interactive=False, enable_all=linter.disabled)
+        missing_resources = linter.missing_resources(cfg)
+        if missing_resources:
+            resources = ", ".join(
+                sorted(resource.value for resource in missing_resources)
+            )
             raise RuntimeError(
-                f"cannot evaluate network-required lint {label!r} while network "
-                "linting is unavailable"
+                f"cannot evaluate lint {label!r}; unavailable resources: {resources}"
             )
 
         if query is None:
             query = self.model_cls.select_valid()
-        cfg = LintConfig(autofix=False, interactive=False, enable_all=linter.disabled)
         targets: list[IgnoreLintTarget[ModelT]] = []
         already_ignored: list[IgnoreLintTarget[ModelT]] = []
         self.clear_caches()
@@ -557,18 +592,33 @@ class Lint(Generic[ModelT]):
         disabled: bool = False,
         requires_network: bool = False,
         uses_optional_network: bool = False,
+        required_resources: Collection[LintResource] = (),
+        optional_resources: Collection[LintResource] = (),
         skip_virtual: bool = False,
         clear_caches: Callable[[], None] | None = None,
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
 
         def decorator(linter: Linter[ModelT]) -> LintWrapper[ModelT]:
+            if any(
+                wrapper.label == label
+                for wrapper in (*self.linters, *self.disabled_linters)
+            ):
+                raise ValueError(
+                    f"duplicate {self.model_cls.__name__} lint label {label!r}"
+                )
+            required = set(required_resources)
+            optional = set(optional_resources)
+            if requires_network:
+                required.add(LintResource.NETWORK)
+            if uses_optional_network:
+                optional.add(LintResource.NETWORK)
             lint_wrapper = LintWrapper(
                 linter=linter,
                 disabled=disabled,
                 label=label,
                 lint=self,
-                requires_network=requires_network,
-                uses_optional_network=uses_optional_network,
+                required_resources=frozenset(required),
+                optional_resources=frozenset(optional),
                 skip_virtual=skip_virtual,
             )
             if disabled:

@@ -79,6 +79,11 @@ class _FieldEditor:
         return ["all", *sorted(self.instance.clirm_fields.keys())]
 
 
+class LintResource(enum.StrEnum):
+    NETWORK = "network"
+    SLOW = "slow"
+
+
 @dataclass(frozen=True)
 class LintConfig:
     autofix: bool = True
@@ -92,6 +97,14 @@ class LintConfig:
     enable_all: bool = False
     # Enables lints that I am aiming to enable but that are not clean yet.
     experimental: bool = False
+    # None uses the process/environment defaults from taxonomy.config. An explicit
+    # empty set means that no optional lint resources are available.
+    available_resources: frozenset[LintResource] | None = None
+
+    def is_resource_available(self, resource: LintResource) -> bool:
+        if self.available_resources is not None:
+            return resource in self.available_resources
+        return resource.value in config.get_available_lint_resources()
 
 
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -176,6 +189,7 @@ class BaseModel(Model):
         manual_mode: bool = False,
         enable_all: bool = False,
         experimental: bool = False,
+        available_resources: Collection[LintResource] | None = None,
         query: Iterable[Self] | None = None,
     ) -> list[tuple[Self, list[LintResult]]]:
         context = nullcontext() if autofix else cls.clirm.readonly()
@@ -188,6 +202,11 @@ class BaseModel(Model):
                 manual_mode=manual_mode,
                 enable_all=enable_all,
                 experimental=experimental,
+                available_resources=(
+                    None
+                    if available_resources is None
+                    else frozenset(available_resources)
+                ),
             )
             if query is None:
                 if linter is None:

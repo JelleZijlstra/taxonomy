@@ -7,8 +7,8 @@ from typing import Any, TypeVar, cast
 
 from clirm import substitute_virtual_models
 
-from taxonomy import adt, config
-from taxonomy.db.models.base import BaseModel, LintConfig
+from taxonomy import adt
+from taxonomy.db.models.base import BaseModel, LintConfig, LintResource
 from taxonomy.db.models.lint import Lint, count_lint_codes
 from taxonomy.db.models.lint_types import LintIssue, LintResult
 
@@ -269,25 +269,51 @@ def lint_proposals(
 
 def get_skipped_network_lints(
     proposals: tuple[ProposedModel, ...],
+    *,
+    cfg: LintConfig = LintConfig(autofix=False, interactive=False),
 ) -> dict[str, tuple[str, ...]]:
     """Return active lint checks wholly or partly incomplete offline."""
-    if config.is_network_available():
-        return {}
-    skipped: dict[str, tuple[str, ...]] = {}
+    skipped_by_resource = get_skipped_lints(proposals, cfg=cfg)
+    return {
+        model_name: by_resource[LintResource.NETWORK]
+        for model_name, by_resource in skipped_by_resource.items()
+        if LintResource.NETWORK in by_resource
+    }
+
+
+def get_skipped_lints(
+    proposals: tuple[ProposedModel, ...],
+    *,
+    cfg: LintConfig = LintConfig(autofix=False, interactive=False),
+) -> dict[str, dict[LintResource, tuple[str, ...]]]:
+    """Return active lint checks incomplete because resources are unavailable."""
+    skipped: dict[str, dict[LintResource, tuple[str, ...]]] = {}
+    unavailable = {
+        resource for resource in LintResource if not cfg.is_resource_available(resource)
+    }
+    if not unavailable:
+        return skipped
     for model_type in {type(proposal.model) for proposal in proposals}:
         try:
             registry = Lint.for_model(model_type)
         except ValueError:
             continue
-        labels = tuple(
-            sorted(
-                wrapper.label
-                for wrapper in registry.linters
-                if wrapper.requires_network or wrapper.uses_optional_network
+        by_resource = {
+            resource: tuple(
+                sorted(
+                    wrapper.label
+                    for wrapper in registry.linters
+                    if resource in wrapper.required_resources
+                    or resource in wrapper.optional_resources
+                )
             )
-        )
-        if labels:
-            skipped[model_type.__name__] = labels
+            for resource in unavailable
+        }
+        by_resource = {
+            resource: labels for resource, labels in by_resource.items() if labels
+        }
+        if by_resource:
+            skipped[model_type.__name__] = by_resource
     return skipped
 
 

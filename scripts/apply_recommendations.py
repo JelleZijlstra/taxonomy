@@ -1337,16 +1337,18 @@ def run_virtual_lint(
     plans: AnyRecommendationPlans, *, issues_only: bool = False
 ) -> None:
     proposals = build_virtual_proposals(plans)
+    cfg = LintConfig(autofix=False, interactive=False)
     virtual_proposals.print_lint_results(
-        virtual_proposals.lint_proposals(proposals), issues_only=issues_only
+        virtual_proposals.lint_proposals(proposals, cfg=cfg), issues_only=issues_only
     )
-    for model_name, labels in sorted(
-        virtual_proposals.get_skipped_network_lints(proposals).items()
+    for model_name, by_resource in sorted(
+        virtual_proposals.get_skipped_lints(proposals, cfg=cfg).items()
     ):
-        print(
-            f"VIRTUAL_LINT_INCOMPLETE model={model_name} "
-            f"network_incomplete_lints={','.join(labels)}"
-        )
+        for resource, labels in sorted(by_resource.items(), key=lambda pair: pair[0]):
+            print(
+                f"VIRTUAL_LINT_INCOMPLETE model={model_name} "
+                f"{resource.value}_incomplete_lints={','.join(labels)}"
+            )
 
 
 def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionResult:

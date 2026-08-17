@@ -28,7 +28,7 @@ from taxonomy.db.constants import (
     Group,
     Rank,
 )
-from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, LintResource
 from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
@@ -1627,7 +1627,7 @@ def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
             yield add_tag_issue(msg, art, tag)
 
 
-@LINT.add("find_jstor")
+@LINT.add("find_jstor", required_resources={LintResource.SLOW})
 def find_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     # Try to infer JSTOR id from local DB by journal+volume+title
     if art.has_tag(ArticleTag.JSTOR):
@@ -1832,7 +1832,7 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         yield f"end page {end_page} does not match regex {tag.pages_regex} for {cg}"
 
 
-@LINT.add("infer_lsid")
+@LINT.add("infer_lsid", required_resources={LintResource.SLOW})
 def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.numeric_year() < 2012:
         return
@@ -2364,7 +2364,7 @@ def dupe_journal(art: Article) -> tuple[object, ...] | None:
 
 
 @LINT.add_duplicate_finder(
-    "dupe_journal",
+    "dupe_journal_title",
     query=Article.select_valid().filter(
         Article.type == ArticleType.JOURNAL,
         Article.kind != ArticleKind.alternative_version,
@@ -2409,7 +2409,7 @@ def get_url_from_doi(doi: str) -> str | None:
     return None
 
 
-@LINT.add("replace_duplicate_url")
+@LINT.add("replace_duplicate_url", required_resources={LintResource.SLOW})
 def replace_duplicate_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.url is None:
         if art.doi is not None:
@@ -2935,7 +2935,7 @@ def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
                     yield f"journal mismatch: {journal_name} (Zoobank) vs. {art.citation_group.name} (article)"
 
 
-@LINT.add("raw_page_regex")
+@LINT.add("raw_page_regex", required_resources={LintResource.SLOW})
 def must_have_raw_page_regex(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.has_tag(ArticleTag.RawPageRegex) or art.parent is not None:
         return

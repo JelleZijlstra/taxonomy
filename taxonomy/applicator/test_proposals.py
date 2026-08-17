@@ -5,12 +5,14 @@ from taxonomy.applicator.proposals import (
     ProposalBuilder,
     ProposalLintResult,
     ProposedModel,
+    get_skipped_lints,
     get_skipped_network_lints,
     lint_proposals,
     print_lint_results,
 )
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models import Location, OccurrenceRecord, Region
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import (
     Lint,
     LintWrapper,
@@ -174,6 +176,21 @@ def test_get_skipped_network_lints_reports_incomplete_offline_run(
     assert "Location" in skipped
     assert "geonames_coordinates" in skipped["Location"]
     assert "coordinate_provenance" in skipped["Location"]
+
+
+def test_get_skipped_lints_reports_unavailable_slow_resource() -> None:
+    location = Location.virtual(name="Place", tags=())
+    proposals = (ProposedModel(location, ("manifest line 1",)),)
+    cfg = LintConfig(
+        autofix=False,
+        interactive=False,
+        available_resources=frozenset({LintResource.NETWORK}),
+    )
+
+    skipped = get_skipped_lints(proposals, cfg=cfg)
+
+    assert LintResource.SLOW in skipped["Location"]
+    assert "geonames_coordinate_consistency" in skipped["Location"][LintResource.SLOW]
 
 
 def test_lint_proposals_clears_model_caches_once_per_batch(

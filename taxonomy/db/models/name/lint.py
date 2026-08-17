@@ -26,7 +26,6 @@ import requests
 from taxonomy import adt, getinput, urlparse
 from taxonomy.apis import bhl, plss
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
-from taxonomy.config import is_network_available
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
@@ -51,7 +50,7 @@ from taxonomy.db.constants import (
     TypeSpeciesDesignation,
 )
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
@@ -3748,7 +3747,7 @@ def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         )
 
 
-@LINT.add("corrected_original_name")
+@LINT.add("infer_corrected_original_name")
 def autoset_corrected_original_name(
     nam: Name, cfg: LintConfig, *, aggressive: bool = False
 ) -> Iterable[LintResult]:
@@ -4288,14 +4287,18 @@ def _clear_homonym_caches() -> None:
     _get_secondary_names_of_genus.cache_clear()
 
 
-@LINT.add("species_secondary_homonym", clear_caches=_clear_homonym_caches)
+@LINT.add(
+    "species_secondary_homonym",
+    required_resources={LintResource.SLOW},
+    clear_caches=_clear_homonym_caches,
+)
 def check_species_group_secondary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(
         nam, reason=SelectionReason.secondary_homonymy, fuzzy=False, cfg=cfg
     )
 
 
-@LINT.add("species_primary_homonym")
+@LINT.add("species_primary_homonym", required_resources={LintResource.SLOW})
 def check_species_group_primary_homonyms(nam: Name, cfg: LintConfig) -> Iterable[str]:
     yield from _check_species_group_homonyms(
         nam, reason=SelectionReason.primary_homonymy, fuzzy=False, cfg=cfg
@@ -4318,7 +4321,7 @@ def check_species_group_reverse_mixed_homonyms(
     )
 
 
-@LINT.add("species_fuzzy_secondary_homonym")
+@LINT.add("species_fuzzy_secondary_homonym", required_resources={LintResource.SLOW})
 def check_species_group_fuzzy_secondary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -4327,7 +4330,7 @@ def check_species_group_fuzzy_secondary_homonyms(
     )
 
 
-@LINT.add("species_fuzzy_primary_homonym")
+@LINT.add("species_fuzzy_primary_homonym", required_resources={LintResource.SLOW})
 def check_species_group_fuzzy_primary_homonyms(
     nam: Name, cfg: LintConfig
 ) -> Iterable[str]:
@@ -5685,7 +5688,7 @@ def infer_bhl_page_id(
             else:
                 page_id = 53729560 + ((numeric_page - 2) // 2) * 4 + 1
             return page_id, "corrected from known BHL page numbering error"
-    if not is_network_available():
+    if not cfg.is_resource_available(LintResource.NETWORK):
         return None
     if art.url is None:
         return None
@@ -5890,7 +5893,8 @@ SpeciesNameEnding.save_event.on(lambda _: get_species_name_complex_finder.cache_
 
 
 @LINT.add(
-    "infer_species_name_complex",
+    "infer_species_name_complex_from_endings",
+    required_resources={LintResource.SLOW},
     clear_caches=get_species_name_complex_finder.cache_clear,
 )
 def infer_species_name_complex(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
@@ -5945,7 +5949,11 @@ class SuffixTree(Generic[T]):
 _checked_root_names: set[str] = set()
 
 
-@LINT.add("infer_species_name_complex", clear_caches=_checked_root_names.clear)
+@LINT.add(
+    "infer_species_name_complex",
+    required_resources={LintResource.SLOW},
+    clear_caches=_checked_root_names.clear,
+)
 def infer_species_name_complex_from_other_names(
     nam: Name, cfg: LintConfig
 ) -> Iterable[LintResult]:
@@ -6061,7 +6069,7 @@ def duplicate_name(name: Name) -> tuple[object, ...]:
     )
 
 
-@LINT.add("guess_repository")
+@LINT.add("guess_repository", required_resources={LintResource.SLOW})
 def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.collection is not None:
         return
