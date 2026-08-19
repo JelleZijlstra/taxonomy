@@ -79,11 +79,15 @@ Use `CLIRM_READONLY=1` for every inspection. Check for:
 Do not create or reconcile Persons during research. The action uses
 `Person.get_or_create_unchecked()` at application time, after the row is approved.
 
-### 4. Choose and validate the Article name
+### 4. Choose target and validate the Article name
 
-Choose a concise content description under `docs/article-naming.md`. The source title is
-not the filename. Electronic Article names must be printable ASCII and end in lowercase
-`.pdf`; a no-copy parent BOOK must be printable ASCII and have no extension.
+Create an Article object for PDFs with a single publication. For PDFs covering a whole
+volume of a journal, instead create an ItemFile object.
+
+To name the Article, choose a concise content description under
+`docs/article-naming.md`. The source title is not the filename. Electronic Article names
+must be printable ASCII and end in lowercase `.pdf`; a no-copy parent BOOK must be
+printable ASCII and have no extension.
 
 Validate it with the catalog parser:
 
