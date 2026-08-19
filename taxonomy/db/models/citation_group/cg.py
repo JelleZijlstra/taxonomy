@@ -119,8 +119,11 @@ class CitationGroup(BaseModel):
     ) -> "CitationGroup":
         if name is None:
             name = cls.getter("name").get_one_key("name> ", allow_empty=False)
+        while kwargs.get("type") is None:
+            kwargs["type"] = cls.get_value_for_field_on_class("type")
         obj = cls.create(name=name, **kwargs)
         obj.fill_required_fields()
+        obj.edit()
         return obj
 
     @classmethod

@@ -275,10 +275,16 @@ def get_possible_pages(item_id: int, page_number: str) -> list[int]:
 
 
 def _get_matching_pages(pages: list[dict[str, Any]], page_number: str) -> list[int]:
+    occurrence = 0
+    if match := re.fullmatch(r"([0-9]+)bis", page_number):
+        page_number = match.group(1)
+        occurrence = 1
     page_ids = []
     for page in pages:
         if _page_number_matches(page, page_number):
             page_ids.append(page["PageID"])
+    if occurrence:
+        return page_ids[occurrence : occurrence + 1]
     return page_ids
 
 

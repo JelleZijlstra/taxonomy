@@ -382,7 +382,7 @@ def roman_to_int(text: str) -> int | None:
 
 
 def page_number(page: str) -> int | None:
-    page = normalize_page(page)
+    page = normalize_page(page).removesuffix("bis")
     if page.isdigit():
         return int(page)
     return roman_to_int(page)

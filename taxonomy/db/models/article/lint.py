@@ -32,7 +32,7 @@ from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, LintResourc
 from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
-from taxonomy.db.models.issue_date import IssueDate
+from taxonomy.db.models.issue_date import IssueDate, parse_page_number
 from taxonomy.db.models.lint import (
     IgnoreLint,
     Lint,
@@ -50,6 +50,7 @@ from . import jstor_db
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .lsid import extract_safe_publication_lsid
 from .name_parser import get_name_parser
+from .publication_date import PublicationDateEvidence, extract_publication_date_evidence
 
 
 def get_ignores(art: Article) -> Iterable[IgnoreLint]:
@@ -343,15 +344,16 @@ def infer_publication_date_from_issue_date(
         and art.volume
         and art.start_page
         and art.end_page
-        and art.start_page.isnumeric()
-        and art.end_page.isnumeric()
+        and parse_page_number(art.start_page) is not None
+        and parse_page_number(art.end_page) is not None
     ):
         issue_date = IssueDate.find_matching_issue(
             art.citation_group,
             art.series,
             art.volume,
-            int(art.start_page),
-            int(art.end_page),
+            art.start_page,
+            art.end_page,
+            issue=art.issue,
         )
         if isinstance(issue_date, IssueDate):
             return issue_date.date, issue_date.issue
@@ -511,6 +513,7 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
         or "-" in art.year
     ):
         return None
+    start_page = int(art.start_page)
     # If there is a DOI, we can get more reliable data
     if art.doi is not None:
         return None
@@ -528,9 +531,9 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
     ]
     if len(siblings) <= 1:
         return None
-    siblings = sorted(siblings, key=lambda art: int(art.start_page))
+    siblings = sorted(siblings, key=lambda sibling: int(sibling.start_page or ""))
     index = bisect.bisect_left(
-        siblings, int(art.start_page), key=lambda art: int(art.start_page)
+        siblings, start_page, key=lambda sibling: int(sibling.start_page or "")
     )
     if index == 0 or index == len(siblings):
         return None
@@ -541,11 +544,11 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
 
 @LINT.add("unsupported_year", disabled=True)
 def check_unsupported_year(art: Article, cfg: LintConfig) -> Iterable[str]:
-    if art.id < 67_000 and (
-        not has_new_names(art)
-        or art.type in (ArticleType.CHAPTER, ArticleType.PART, ArticleType.SUPPLEMENT)
-    ):
-        return
+    # if art.id < 67_000 and (
+    #     not has_new_names(art)
+    #     or art.type in (ArticleType.CHAPTER, ArticleType.PART, ArticleType.SUPPLEMENT)
+    # ):
+    #     return
     if not has_unsupported_publication_date(art):
         return
     yield f"precise date {art.year} is not supported by any evidence"
@@ -555,8 +558,6 @@ def has_unsupported_publication_date(art: Article) -> bool:
     if art.year is None or "-" not in art.year or helpers.is_date_range(art.year):
         return False
     if art.has_tag(ArticleTag.PublicationDate):
-        return False
-    if get_inferred_date_from_position(art) is not None:
         return False
     if infer_publication_date_from_issue_date(art) is not None:
         return False
@@ -573,49 +574,90 @@ def has_unsupported_publication_date(art: Article) -> bool:
     return True
 
 
-def text_contains_date(art: Article) -> bool:
-    if art.year is None:
-        return False
-    date = art.get_date_object()
-    if art.year.count("-") == 2:
-        day = date.strftime("%d").lstrip("0")
-        possible_dates = {
-            date.strftime(f"{day} %B %Y"),
-            date.strftime(f"%B {day}, %Y"),
-            date.strftime(f"%B {day}st, %Y"),
-            date.strftime(f"%B {day}nd, %Y"),
-            date.strftime(f"%B {day}th, %Y"),
-        }
-    else:
-        possible_dates = {date.strftime("%B %Y"), date.strftime("%B, %Y")}
-    possible_dates = {date.casefold() for date in possible_dates}
-    pages = art.get_all_pdf_pages()
-    if pages:
-        first_page = re.sub(r"\s+", " ", pages[0].casefold())
-        if any(date.casefold() in first_page for date in possible_dates):
-            return True
-    if page_id := get_bhl_page_id(art):
-        text = bhl.get_page_metadata(page_id).get("OcrText", "")
-        text = re.sub(r"\s+", " ", text.casefold())
-        if any(date.casefold() in text for date in possible_dates):
-            return True
-    return False
+@functools.cache
+def get_pdf_publication_date_evidence(
+    art: Article,
+) -> tuple[PublicationDateEvidence, ...]:
+    """Extract evidence from the Article PDF without consulting ``Article.year``."""
+    pdf_article = art
+    if art.is_virtual:
+        if not isinstance(art.virtual_origin, Article):
+            return ()
+        pdf_article = art.virtual_origin
+    try:
+        pages = pdf_article.get_all_pdf_pages()
+    except OSError, ValueError, subprocess.CalledProcessError:
+        return ()
+    return extract_publication_date_evidence(pages, art.title or pdf_article.title)
 
 
-@LINT.add("add_internal_publication_date")
-def add_internal_publication_date(
+def _internal_publication_date_tags(art: Article) -> tuple[Any, ...]:
+    return tuple(
+        tag
+        for tag in art.get_tags(art.tags, ArticleTag.PublicationDate)
+        if tag.source is DateSource.internal
+    )
+
+
+def _publication_date_comment(evidence: PublicationDateEvidence) -> str:
+    return (
+        f'Printed on PDF page {evidence.page_number} as "{evidence.matched_text}" '
+        f"({evidence.kind})."
+    )
+
+
+@LINT.add(
+    "infer_internal_publication_date",
+    disabled=True,
+    required_resources={LintResource.SLOW},
+    clear_caches=get_pdf_publication_date_evidence.cache_clear,
+)
+def infer_internal_publication_date(
     art: Article, cfg: LintConfig
 ) -> Iterable[LintResult]:
-    # A newly proposed electronic Article still points at its future catalog path;
-    # the staged PDF is deliberately not installed during virtual lint.
-    if art.is_virtual and art.virtual_origin is None:
+    """Add a uniquely supported internal PublicationDate without changing year."""
+    if _internal_publication_date_tags(art):
         return
-    if art.year is None or not has_unsupported_publication_date(art):
+    evidence = get_pdf_publication_date_evidence(art)
+    dates = {item.date for item in evidence}
+    if len(dates) != 1:
         return
-    if text_contains_date(art):
-        tag = ArticleTag.PublicationDate(DateSource.internal, art.year)
-        message = f"adding PublicationDate tag for {art.year}: {tag}"
-        yield add_tag_issue(message, art, tag)
+    (date,) = dates
+    witness = next(item for item in evidence if item.date == date)
+    tag = ArticleTag.PublicationDate(
+        DateSource.internal, date, comment=_publication_date_comment(witness)
+    )
+    message = f"adding internal PublicationDate tag from PDF evidence: {tag}"
+    yield add_tag_issue(message, art, tag)
+
+
+@LINT.add(
+    "internal_publication_date_matches_pdf",
+    required_resources={LintResource.SLOW},
+    clear_caches=get_pdf_publication_date_evidence.cache_clear,
+)
+def internal_publication_date_matches_pdf(
+    art: Article, cfg: LintConfig
+) -> Iterable[str]:
+    """Require exact agreement between internal tags and independent PDF evidence."""
+    tags = _internal_publication_date_tags(art)
+    if not tags:
+        return
+    evidence = get_pdf_publication_date_evidence(art)
+    dates = {item.date for item in evidence}
+    if not dates:
+        return
+    evidence_text = "; ".join(
+        f"{item.date} on PDF page {item.page_number} as {item.matched_text!r}"
+        for item in evidence
+    )
+    for tag in tags:
+        if tag.date in dates:
+            continue
+        yield (
+            f"internal PublicationDate {tag.date!r} does not exactly match PDF "
+            f"publication-date evidence: {evidence_text}"
+        )
 
 
 _JSTOR_URL_REGEX = r"https?://www\.jstor\.org/stable/(\d+)"
@@ -1802,17 +1844,20 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
     tag = cg.get_tag(CitationGroupTag.PageRegex)
     allow_standard = tag is None or tag.allow_standard
+    parsed_start_page = parse_page_number(start_page)
+    parsed_end_page = None if end_page is None else parse_page_number(end_page)
 
-    # Standard pages: both numeric, at most 4 digits, end >= start
+    # Standard pages: ordinary or ``bis``, at most 4 digits, end >= start.
     if (
         allow_standard
         and end_page is not None
-        and start_page.isnumeric()
-        and len(start_page) <= 4
-        and end_page.isnumeric()
-        and len(end_page) <= 4
+        and parsed_start_page is not None
+        and len(start_page.removesuffix("bis")) <= 4
+        and parsed_end_page is not None
+        and len(end_page.removesuffix("bis")) <= 4
+        and parsed_start_page[1] == parsed_end_page[1]
     ):
-        if int(end_page) < int(start_page):
+        if parsed_end_page[0] < parsed_start_page[0]:
             yield f"end page is before start page: {start_page}"
         return
     if tag is None:

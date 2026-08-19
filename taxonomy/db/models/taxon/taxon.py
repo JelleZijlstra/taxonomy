@@ -22,6 +22,7 @@ from taxonomy.db.constants import (
     OccurrenceStatus,
     OriginalCitationDataLevel,
     Rank,
+    RegionKind,
     Status,
 )
 from taxonomy.db.derived_data import DerivedField, SetLater
@@ -637,17 +638,37 @@ class Taxon(BaseModel):
                 by_locality[nam.type_locality].append(nam)
 
         def display_locs(
-            by_locality: dict[models.Location, list[models.Name]], depth: int = 0
+            by_locality: dict[models.Location, list[models.Name]],
+            depth: int = 0,
+            *,
+            region_context: bool = False,
         ) -> None:
+            def region_path(region: models.Region) -> tuple[models.Region, ...]:
+                path = []
+                while True:
+                    path.append(region)
+                    if region.kind in (RegionKind.country, RegionKind.sea):
+                        break
+                    if region.parent is None:
+                        break
+                    region = region.parent
+                return tuple(reversed(path))
+
             current_periods: tuple[models.Period | None, models.Period | None] = (
                 None,
                 None,
             )
+            current_regions: tuple[models.Region, ...] = ()
             for loc, nams in sorted(
                 by_locality.items(),
                 key=lambda pair: (
                     models.period.period_sort_key(pair[0].min_period),
                     models.period.period_sort_key(pair[0].max_period),
+                    (
+                        tuple(region.name for region in region_path(pair[0].region))
+                        if region_context
+                        else ()
+                    ),
                     pair[0].name,
                 ),
             ):
@@ -659,8 +680,28 @@ class Taxon(BaseModel):
                         period_str = f"{loc.max_period}–{loc.min_period}"
                     file.write(f"{' ' * depth}{period_str}\n")
                     current_periods = periods
-                file.write(f"{' ' * (4 + depth)}{loc}\n")
-                models.name.name.write_names(nams, full=full, depth=depth)
+                    current_regions = ()
+                if region_context:
+                    regions = region_path(loc.region)
+                    common_prefix_length = 0
+                    for previous, current in zip(
+                        current_regions, regions, strict=False
+                    ):
+                        if previous != current:
+                            break
+                        common_prefix_length += 1
+                    for index, current in enumerate(
+                        regions[common_prefix_length:], start=common_prefix_length
+                    ):
+                        file.write(f"{' ' * (depth + 4 * (index + 1))}{current}\n")
+                    current_regions = regions
+                    location_depth = depth + 4 * (len(regions) + 1)
+                else:
+                    location_depth = depth + 4
+                file.write(f"{' ' * location_depth}{loc}\n")
+                models.name.name.write_names(
+                    nams, full=full, depth=location_depth - 4, file=file
+                )
                 getinput.flush()
 
         if geographically:
@@ -703,7 +744,7 @@ class Taxon(BaseModel):
                     for loc, nams in by_locality.items()
                     if loc.region.has_parent(region)
                 }
-            display_locs(by_locality)
+            display_locs(by_locality, region_context=True)
 
     def add_static(
         self,
