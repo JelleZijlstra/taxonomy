@@ -129,11 +129,11 @@ _RECENT_TAXON_AGES = frozenset({AgeClass.extant, AgeClass.recently_extinct})
 
 
 def get_ignores(nam: Name) -> Iterable[IgnoreLint]:
-    return nam.get_tags(nam.type_tags, TypeTag.IgnoreLintName)
+    return nam.get_tags(nam.type_tags, TypeTag.IgnoreLint)
 
 
 def add_ignore(nam: Name, label: str, comment: str) -> None:
-    nam.add_type_tag(TypeTag.IgnoreLintName(label, comment=comment))
+    nam.add_type_tag(TypeTag.IgnoreLint(label, comment=comment))
 
 
 LINT = Lint(Name, get_ignores, add_ignore, ignore_field="type_tags")
@@ -794,9 +794,9 @@ def _check_all_type_tags(
             if TypeTag.LocationDetail not in by_type:
                 yield "has Coordinates tag but no LocationDetail tag"
 
-        case TypeTag.LSIDName():
+        case TypeTag.LSID():
             lsid = clean_lsid(tag.text)
-            tag = TypeTag.LSIDName(lsid)
+            tag = TypeTag.LSID(lsid)
             if not is_valid_lsid(lsid):
                 yield f"invalid LSID {lsid}"
 
@@ -3108,18 +3108,18 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     type_tags = []
     art_tags = []
     art = nam.original_citation
-    name_lsids = {tag.text for tag in nam.get_tags(nam.type_tags, TypeTag.LSIDName)}
+    name_lsids = {tag.text for tag in nam.get_tags(nam.type_tags, TypeTag.LSID)}
     rejected_lsids = {
-        tag.text for tag in nam.get_tags(nam.type_tags, TypeTag.RejectedLSIDName)
+        tag.text for tag in nam.get_tags(nam.type_tags, TypeTag.RejectedLSID)
     }
-    art_lsids = {tag.text for tag in art.get_tags(art.tags, ArticleTag.LSIDArticle)}
+    art_lsids = {tag.text for tag in art.get_tags(art.tags, ArticleTag.LSID)}
     for zoobank_data in zoobank_data_list:
         if zoobank_data.name_lsid in rejected_lsids:
             continue
         if zoobank_data.name_lsid not in name_lsids:
-            type_tags.append(TypeTag.LSIDName(zoobank_data.name_lsid))
+            type_tags.append(TypeTag.LSID(zoobank_data.name_lsid))
         if zoobank_data.citation_lsid and zoobank_data.citation_lsid not in art_lsids:
-            art_tag = ArticleTag.LSIDArticle(
+            art_tag = ArticleTag.LSID(
                 zoobank_data.citation_lsid,
                 present_in_article=PresenceStatus.to_be_determined,
             )
@@ -3837,7 +3837,7 @@ def no_page_ranges(nam: Name, cfg: LintConfig) -> Iterable[str]:
         if not part.is_raw and re.fullmatch(r"[0-9]+-[0-9]+", part.text):
             # Ranges should only be used in very rare cases (e.g., where the
             # name itself literally extends across multiple pages). Enforce
-            # an explicit IgnoreLintName in such cases.
+            # an explicit IgnoreLint in such cases.
             yield f"page_described contains range: {part}"
 
 
@@ -7020,8 +7020,8 @@ def check_matches_mapped_classification_entry(
             )
 
     for tag in ce.tags:
-        if isinstance(tag, ClassificationEntryTag.LSIDCE):
-            new_tag = TypeTag.LSIDName(tag.text)
+        if isinstance(tag, ClassificationEntryTag.LSID):
+            new_tag = TypeTag.LSID(tag.text)
             if new_tag not in nam.type_tags:
                 message = f"adding LSID from {ce} to {nam}: {new_tag}"
                 yield add_tag_issue(message, nam, new_tag, field="type_tags")

@@ -735,7 +735,7 @@ def test_occurrence_record_lint_can_be_ignored() -> None:
         basis=OccurrenceBasis.listing,
         tags=(
             OccurrenceRecordTag.ObservationKind(ObservationKind.acoustic),
-            OccurrenceRecordTag.IgnoreLintOccurrenceRecord("basis_tags"),
+            OccurrenceRecordTag.IgnoreLint("basis_tags"),
         ),
     )
 

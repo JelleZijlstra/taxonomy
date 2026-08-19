@@ -52,13 +52,11 @@ _SOURCE_COORDINATE_REWRITE_TOLERANCE_KM = 0.001
 
 
 def get_ignores(record: OccurrenceRecord) -> Iterable[IgnoreLint]:
-    return record.get_tags(record.tags, OccurrenceRecordTag.IgnoreLintOccurrenceRecord)
+    return record.get_tags(record.tags, OccurrenceRecordTag.IgnoreLint)
 
 
 def add_ignore(record: OccurrenceRecord, label: str, comment: str) -> None:
-    record.add_tag(
-        OccurrenceRecordTag.IgnoreLintOccurrenceRecord(label, comment=comment)
-    )
+    record.add_tag(OccurrenceRecordTag.IgnoreLint(label, comment=comment))
 
 
 LINT = Lint(OccurrenceRecord, get_ignores, add_ignore)

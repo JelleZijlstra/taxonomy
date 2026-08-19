@@ -1035,7 +1035,7 @@ def export_articles(filename: str) -> None:
                 "JSTOR": get_tag_value(art, ArticleTag.JSTOR),
                 "HDL": get_tag_value(art, ArticleTag.HDL),
                 "ISBN": get_tag_value(art, ArticleTag.ISBN),
-                "LSID": get_tag_value(art, ArticleTag.LSIDArticle),
+                "LSID": get_tag_value(art, ArticleTag.LSID),
                 "BatLit_zotero_id": "",
                 "BatLit_zenodo_doi": "",
             }

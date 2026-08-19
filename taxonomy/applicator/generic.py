@@ -40,6 +40,30 @@ ALLOWED_ACTIONS = {
 }
 ALLOWED_CONFIDENCES = {"high", "medium", "low"}
 
+# Structured recommendation manifests use constructor names because they are easier
+# to review than numeric ADT tags. Keep manifests written before the GraphQL tag-name
+# cleanup executable; persisted database values already use the unchanged numeric tags.
+_LEGACY_ADT_MEMBER_NAMES = {
+    ("ArticleTag", "ArticleISSN"): "ISSN",
+    ("ArticleTag", "BiblioNoteArticle"): "BiblioNote",
+    ("ArticleTag", "LSIDArticle"): "LSID",
+    ("ArticleTag", "Date"): "PublicationDate",
+    ("CitationGroupTag", "CitationGroupComment"): "Comment",
+    ("CitationGroupTag", "CitationGroupURL"): "URL",
+    ("CitationGroupTag", "IgnoreLintCitationGroup"): "IgnoreLint",
+    ("CitationGroupTag", "OnlineRepository"): "Repository",
+    ("ClassificationEntryTag", "AgeClassCE"): "AgeClass",
+    ("ClassificationEntryTag", "IgnoreLintClassificationEntry"): "IgnoreLint",
+    ("ClassificationEntryTag", "LSIDCE"): "LSID",
+    ("IssueDateTag", "CommentIssueDate"): "Comment",
+    ("LocationTag", "IgnoreLintLocation"): "IgnoreLint",
+    ("OccurrenceRecordTag", "IgnoreLintOccurrenceRecord"): "IgnoreLint",
+    ("TaxonTag", "IgnoreLintTaxon"): "IgnoreLint",
+    ("TypeTag", "IgnoreLintName"): "IgnoreLint",
+    ("TypeTag", "LSIDName"): "LSID",
+    ("TypeTag", "RejectedLSIDName"): "RejectedLSID",
+}
+
 
 class RecommendationError(Exception):
     pass
@@ -602,6 +626,7 @@ def _decode_structured_adt(
         raise RecommendationError(
             f"{context}: structured tag requires string tag and object arguments"
         )
+    tag_name = _LEGACY_ADT_MEMBER_NAMES.get((adt_type.__name__, tag_name), tag_name)
     member = next(
         (
             candidate

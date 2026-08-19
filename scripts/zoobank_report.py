@@ -39,14 +39,14 @@ def run_names(output_f: IO[str]) -> None:
     print("## Names", file=output_f)
     print(file=output_f)
     query = Name.select_valid().filter(
-        Name.type_tags.contains(f"[{TypeTag.LSIDName._tag},")
+        Name.type_tags.contains(f"[{TypeTag.LSID._tag},")
     )
     for nam in getinput.print_every_n(query, label="names"):
-        tags = list(nam.get_tags(nam.type_tags, TypeTag.LSIDName))
+        tags = list(nam.get_tags(nam.type_tags, TypeTag.LSID))
         if len(tags) < 2 or nam.original_citation is None:
             continue
         nam.edit_until_clean()
-        tags = list(nam.get_tags(nam.type_tags, TypeTag.LSIDName))
+        tags = list(nam.get_tags(nam.type_tags, TypeTag.LSID))
         if len(tags) < 2:
             continue
         print(f"- {nam!s}", file=output_f)
@@ -63,13 +63,13 @@ def run_articles(output_f: IO[str]) -> None:
     print("## References", file=output_f)
     print(file=output_f)
     for art in getinput.print_every_n(
-        Article.with_tag(ArticleTag.LSIDArticle), label="articles"
+        Article.with_tag(ArticleTag.LSID), label="articles"
     ):
-        tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
+        tags = list(art.get_tags(art.tags, ArticleTag.LSID))
         if len(tags) < 2:
             continue
         art.edit_until_clean()
-        tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
+        tags = list(art.get_tags(art.tags, ArticleTag.LSID))
         if len(tags) < 2:
             continue
         print(f"- {art.cite()}", file=output_f)

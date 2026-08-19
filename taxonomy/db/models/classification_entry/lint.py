@@ -50,13 +50,11 @@ from .ce import ClassificationEntry, ClassificationEntryStatus, ClassificationEn
 
 
 def get_ignores(ce: ClassificationEntry) -> Iterable[IgnoreLint]:
-    return ce.get_tags(ce.tags, ClassificationEntryTag.IgnoreLintClassificationEntry)
+    return ce.get_tags(ce.tags, ClassificationEntryTag.IgnoreLint)
 
 
 def add_ignore(ce: ClassificationEntry, label: str, comment: str) -> None:
-    ce.add_tag(
-        ClassificationEntryTag.IgnoreLintClassificationEntry(label, comment=comment)
-    )
+    ce.add_tag(ClassificationEntryTag.IgnoreLint(label, comment=comment))
 
 
 LINT = Lint(ClassificationEntry, get_ignores, add_ignore)
@@ -186,9 +184,9 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
             else:
                 new_tags.append(tag)
 
-        elif isinstance(tag, ClassificationEntryTag.LSIDCE):
+        elif isinstance(tag, ClassificationEntryTag.LSID):
             lsid = clean_lsid(tag.text)
-            tag = ClassificationEntryTag.LSIDCE(lsid)
+            tag = ClassificationEntryTag.LSID(lsid)
             if not is_valid_lsid(lsid):
                 yield f"invalid LSID {lsid}"
             new_tags.append(tag)
@@ -460,7 +458,7 @@ def _materialized_root_name(ce: ClassificationEntry, corrected_name: str) -> str
 
 
 def _materialized_age(ce: ClassificationEntry, parent: Taxon) -> AgeClass:
-    age_tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.AgeClassCE))
+    age_tags = list(ce.get_tags(ce.tags, ClassificationEntryTag.AgeClass))
     return age_tags[0].age if len(age_tags) == 1 else parent.age
 
 
@@ -2049,8 +2047,8 @@ def infer_lsid_from_mapped(
     if ce.mapped_name is None or ce.mapped_name.original_citation != ce.article:
         return
     for tag in ce.mapped_name.type_tags:
-        if isinstance(tag, models.name.TypeTag.LSIDName):
-            new_tag = ClassificationEntryTag.LSIDCE(tag.text)
+        if isinstance(tag, models.name.TypeTag.LSID):
+            new_tag = ClassificationEntryTag.LSID(tag.text)
             if new_tag in ce.tags:
                 continue
             message = f"inferred LSID from mapped name: {new_tag}"

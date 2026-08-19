@@ -43,12 +43,12 @@ EXCLUDED = {
     "StratigraphyDetail",
     "NoOriginalParent",
     "Habitat",
-    "IgnoreLintName",
+    "IgnoreLint",
     "NoAge",
     "DifferentAuthority",
     "NoLocation",
     "NoOrgan",
-    "RejectedLSIDName",
+    "RejectedLSID",
     "NoCollector",
     "NoGender",
     "IncorrectGrammar",
@@ -127,7 +127,7 @@ def test_clear_zoobank_caches_clears_name_and_act_lsid_queries(
         SimpleNamespace(
             corrected_original_name="Pseudovespertiliavus parva",
             type_tags=(
-                TypeTag.LSIDName(
+                TypeTag.LSID(
                     "urn:lsid:zoobank.org:act:fc07acbe-03f7-414a-bb64-1bb0711766bf"
                 ),
             ),

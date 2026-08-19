@@ -71,13 +71,13 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     tags: list[ArticleTag] = []
     original_tags = list(art.tags)
     for tag in original_tags:
-        if isinstance(tag, ArticleTag.LSIDArticle):
+        if isinstance(tag, ArticleTag.LSID):
             if not tag.text:
                 continue
-            tag = ArticleTag.LSIDArticle(clean_lsid(tag.text), tag.present_in_article)
+            tag = ArticleTag.LSID(clean_lsid(tag.text), tag.present_in_article)
             if not is_valid_lsid(tag.text):
                 yield f"invalid LSID {tag.text}"
-        elif isinstance(tag, ArticleTag.BiblioNoteArticle):
+        elif isinstance(tag, ArticleTag.BiblioNote):
             if tag.text not in get_biblio_pages():
                 yield f"references non-existent page {tag.text!r}"
         elif isinstance(tag, ArticleTag.HDL):
@@ -295,7 +295,7 @@ def infer_publication_date_from_tags(
         if isinstance(tag, ArticleTag.PublicationDate):
             by_source[tag.source].append(tag)
         elif (
-            isinstance(tag, ArticleTag.LSIDArticle)
+            isinstance(tag, ArticleTag.LSID)
             # "inferred" strictly doesn't count but we'll allow it
             and tag.present_in_article
             in (PresenceStatus.present, PresenceStatus.inferred)
@@ -1886,7 +1886,7 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
 def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     if art.numeric_year() < 2012:
         return
-    tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
+    tags = list(art.get_tags(art.tags, ArticleTag.LSID))
     if any(tag.present_in_article is PresenceStatus.present for tag in tags):
         return
     pdf_article = art
@@ -1899,7 +1899,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
         pdf_article = art.virtual_origin
     pages = pdf_article.get_all_pdf_pages()
     if match := extract_safe_publication_lsid(pages, art.title):
-        new_tag = ArticleTag.LSIDArticle(match.lsid, PresenceStatus.present)
+        new_tag = ArticleTag.LSID(match.lsid, PresenceStatus.present)
         conflicting_tags = [tag for tag in tags if tag.text != match.lsid]
         if conflicting_tags:
             existing = ", ".join(
@@ -1939,7 +1939,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
     act_lsids = [
         clean_lsid(tag.text).casefold()
         for nam in new_names
-        for tag in nam.get_tags(nam.type_tags, models.name.TypeTag.LSIDName)
+        for tag in nam.get_tags(nam.type_tags, models.name.TypeTag.LSID)
     ]
     if not act_lsids:
         return
@@ -1956,7 +1956,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
             continue
         for zoobank_data in datas:
             if zoobank_data.citation_lsid:
-                new_tag = ArticleTag.LSIDArticle(
+                new_tag = ArticleTag.LSID(
                     zoobank_data.citation_lsid, PresenceStatus.inferred
                 )
                 if new_tag not in art.tags and new_tag not in inferred_tags:
@@ -1968,7 +1968,7 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
 
 @LINT.add("lsid")
 def check_lsid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
-    tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
+    tags = list(art.get_tags(art.tags, ArticleTag.LSID))
     if not tags:
         return
     original_tags = list(art.tags)
@@ -1988,7 +1988,7 @@ def check_lsid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         # present > inferred > absent
         new_tags = []
         for tag in original_tags:
-            if isinstance(tag, ArticleTag.LSIDArticle):
+            if isinstance(tag, ArticleTag.LSID):
                 if tag.present_in_article is PresenceStatus.absent and (
                     tag.text in by_status[PresenceStatus.present]
                     or tag.text in by_status[PresenceStatus.inferred]
@@ -2037,28 +2037,22 @@ def check_lsid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         yield f"LSID {', '.join(prob_absent)} is really absent in article"
     resolved_tags = []
     for tag in new_tags:
-        if isinstance(tag, ArticleTag.LSIDArticle):
+        if isinstance(tag, ArticleTag.LSID):
             if (
                 tag.present_in_article is PresenceStatus.probably_absent
                 and tag.text in prob_absent
             ):
-                resolved_tags.append(
-                    ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
-                )
+                resolved_tags.append(ArticleTag.LSID(tag.text, PresenceStatus.absent))
             elif (
                 tag.present_in_article is PresenceStatus.to_be_determined
                 and tag.text in tbd_present
             ):
-                resolved_tags.append(
-                    ArticleTag.LSIDArticle(tag.text, PresenceStatus.present)
-                )
+                resolved_tags.append(ArticleTag.LSID(tag.text, PresenceStatus.present))
             elif (
                 tag.present_in_article is PresenceStatus.to_be_determined
                 and tag.text in tbd_absent
             ):
-                resolved_tags.append(
-                    ArticleTag.LSIDArticle(tag.text, PresenceStatus.absent)
-                )
+                resolved_tags.append(ArticleTag.LSID(tag.text, PresenceStatus.absent))
             else:
                 # Others left for manual check
                 resolved_tags.append(tag)
@@ -2388,13 +2382,13 @@ def dupe_pmc(art: Article) -> str | None:
 
 @LINT.add_duplicate_finder(
     "dupe_lsid_article",
-    query=Article.with_tag(ArticleTag.LSIDArticle).filter(
+    query=Article.with_tag(ArticleTag.LSID).filter(
         Article.kind != ArticleKind.alternative_version
     ),
     interactive_fixer=dupe_fixer,
 )
 def dupe_lsid_article(art: Article) -> str | None:
-    return art.get_identifier(ArticleTag.LSIDArticle)
+    return art.get_identifier(ArticleTag.LSID)
 
 
 @LINT.add_duplicate_finder(
@@ -2944,7 +2938,7 @@ def _check_zoobank_year(art: Article, data: dict[str, Any]) -> Iterable[str]:
 def data_from_zoobank(art: Article, cfg: LintConfig) -> Iterable[str]:
     if art.kind is ArticleKind.alternative_version:
         return
-    for tag in art.get_tags(art.tags, ArticleTag.LSIDArticle):
+    for tag in art.get_tags(art.tags, ArticleTag.LSID):
         lsid = tag.text
         try:
             data = zoobank.get_zoobank_data_for_article(lsid)

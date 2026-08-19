@@ -372,7 +372,7 @@ def test_name_coordinates_respect_ignore_lint_during_autofix() -> None:
     coordinates = name.type_tags[0]
     name.type_tags = (  # type: ignore[assignment]
         coordinates,
-        TypeTag.IgnoreLintName("coordinates", comment="retain source coordinates"),
+        TypeTag.IgnoreLint("coordinates", comment="retain source coordinates"),
     )
 
     assert list(check_coordinates(name, LintConfig(autofix=True))) == []

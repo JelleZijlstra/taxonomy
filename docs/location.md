@@ -72,13 +72,13 @@ written in parenthetical, comma-separated, or unqualified form when the relation
 unambiguous; for example, the Region `Limburg (Netherlands)` supports the disambiguator
 `Limburg, Netherlands`. A stable geographic qualifier may exceptionally disambiguate
 places with the same base name in the same Region; document such an exception with an
-`IgnoreLintLocation` tag if the disambiguator lint cannot verify it. The generic
-disambiguators `island`, `region`, and `historical region` are always allowed for
-geographic features whose scope would otherwise be unclear, as in
-`Saint Martin (island)` and `Guinea (region)`. If there is a modifier and the location
-is outside the region designated by the base name (for example, the nearby coast, or an
-"X km N" locality that crosses a border), the region of the base name is acceptable as a
-disambiguator; this can be indicated with a "NearbyRegion" tag on the location.
+`IgnoreLint` tag if the disambiguator lint cannot verify it. The generic disambiguators
+`island`, `region`, and `historical region` are always allowed for geographic features
+whose scope would otherwise be unclear, as in `Saint Martin (island)` and
+`Guinea (region)`. If there is a modifier and the location is outside the region
+designated by the base name (for example, the nearby coast, or an "X km N" locality that
+crosses a border), the region of the base name is acceptable as a disambiguator; this
+can be indicated with a "NearbyRegion" tag on the location.
 
 ### modifier
 
@@ -164,8 +164,8 @@ Locations have the following fields:
     _CoordinatesFromGeoNames_, _CoordinatesFromNominatim_,
     _CoordinatesFromLocationName_, and _CoordinatesManual_, which document the evidence
     supporting the coordinate fields
-  - _IgnoreLintLocation_, which records a reviewed exception to a named Location lint;
-    it should include a useful explanation whenever the reason is not self-evident
+  - _IgnoreLint_, which records a reviewed exception to a named Location lint; it should
+    include a useful explanation whenever the reason is not self-evident
   - Three tags indicating that the location corresponds to a location in another
     database: _PBDB_ for the [Paleobiology Database](https://paleobiodb.org/#/), _NOW_
     for the [New and Old Worlds](https://nowdatabase.org/) database, and _ETMNA_ for

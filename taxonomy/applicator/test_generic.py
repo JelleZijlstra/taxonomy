@@ -721,6 +721,17 @@ def test_structured_tag_resolves_manifest_reference() -> None:
     assert tag.collection is collection
 
 
+def test_structured_tag_accepts_legacy_constructor_name() -> None:
+    tag = recommendations._decode_tag(
+        Location.tags,
+        {"tag": "IgnoreLintLocation", "arguments": {"label": "coordinate_provenance"}},
+        context="test tag",
+    )
+
+    assert isinstance(tag, LocationTag.IgnoreLint)
+    assert tag.label == "coordinate_provenance"
+
+
 def test_later_action_can_edit_created_object_by_ref() -> None:
     edit = _common(recommendations.SET_FIELD, "comment")
     edit.update(
@@ -835,9 +846,7 @@ def test_add_and_remove_tag() -> None:
 def test_review_renders_adt_constructor_instead_of_numeric_tag(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    tag = LocationTag.IgnoreLintLocation(
-        "coordinate_provenance", comment="Reviewed evidence."
-    )
+    tag = LocationTag.IgnoreLint("coordinate_provenance", comment="Reviewed evidence.")
     data = _common(recommendations.ADD_TAG, "tags")
     data["tag"] = tag.serialize()
     row = recommendations.parse_recommendation(data, 1)
@@ -845,7 +854,7 @@ def test_review_renders_adt_constructor_instead_of_numeric_tag(
     recommendations.print_review_table([row])
 
     output = capsys.readouterr().out
-    assert "IgnoreLintLocation(" in output
+    assert "IgnoreLint(" in output
     assert "label='coordinate_provenance'" in output
     assert f"tags: [{tag._tag}," not in output
 
@@ -923,8 +932,8 @@ def test_plan_can_be_applied_to_virtual_copy_without_mutating_original() -> None
 
 
 def test_tag_mutations_canonicalize_unordered_adt_fields() -> None:
-    later = LocationTag.IgnoreLintLocation("nominatim_coordinates")
-    earlier = LocationTag.IgnoreLintLocation("coordinate_collision")
+    later = LocationTag.IgnoreLint("nominatim_coordinates")
+    earlier = LocationTag.IgnoreLint("coordinate_collision")
     data = _common(recommendations.ADD_TAG, "tags")
     data["tag"] = earlier.serialize()
     location = _make_location(tags=(later,))

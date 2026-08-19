@@ -12,10 +12,9 @@ from clirm import DoesNotExist, Field, Query
 
 from taxonomy import command_set, events, getinput
 from taxonomy.adt import ADT
-from taxonomy.db import helpers, models
+from taxonomy.db import constants, helpers, models
 from taxonomy.db.constants import (
     URL,
-    AgeClass,
     Group,
     Managed,
     Markdown,
@@ -686,8 +685,8 @@ class ClassificationEntryTag(ADT):
     TypeSpecimenData(text=SpecimenDetailText, tag=5)  # type: ignore[name-defined]
     OriginalCombination(text=Managed, tag=6)  # type: ignore[name-defined]
     OriginalPageDescribed(text=Managed, tag=7)  # type: ignore[name-defined]
-    IgnoreLintClassificationEntry(label=Managed, comment=NotRequired[Markdown], tag=8)  # type: ignore[name-defined]
-    AgeClassCE(age=AgeClass, tag=9)  # type: ignore[name-defined]
+    IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=8)  # type: ignore[name-defined]
+    AgeClass(age=constants.AgeClass, tag=9)  # type: ignore[name-defined]
     CommonName(name=Managed, language=SourceLanguage, tag=10)  # type: ignore[name-defined]
     # Indicates we should not look for a mapped name
     Informal(tag=11)  # type: ignore[name-defined]
@@ -700,7 +699,7 @@ class ClassificationEntryTag(ADT):
     StructuredData(label=Managed, text=Markdown, tag=15)  # type: ignore[name-defined]
 
     ReferencedUsage(ce=ClassificationEntry, comment=NotRequired[Markdown], tag=16)  # type: ignore[name-defined]
-    LSIDCE(text=Managed, tag=17)  # type: ignore[name-defined]
+    LSID(text=Managed, tag=17)  # type: ignore[name-defined]
     # A name used by the source only as a mistake for another name. Its parent is the
     # primary CE that the source apparently intended.
     AuxiliaryName(tag=18)  # type: ignore[name-defined]

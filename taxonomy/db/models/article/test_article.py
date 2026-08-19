@@ -119,7 +119,7 @@ def test_clear_zoobank_caches_clears_article_lsids(
         Article,
         SimpleNamespace(
             tags=(
-                ArticleTag.LSIDArticle(
+                ArticleTag.LSID(
                     "FC07ACBE-03F7-414A-BB64-1BB0711766BF", PresenceStatus.present
                 ),
                 ArticleTag.AlternativeURL("https://doi.org/10.5252/g2016n3a3"),
@@ -146,7 +146,7 @@ def test_data_from_zoobank_skips_unavailable_service(
         SimpleNamespace(
             kind=ArticleKind.electronic,
             tags=(
-                ArticleTag.LSIDArticle(
+                ArticleTag.LSID(
                     "FC07ACBE-03F7-414A-BB64-1BB0711766BF", PresenceStatus.present
                 ),
             ),
@@ -173,7 +173,7 @@ def test_infer_lsid_silently_skips_unavailable_service(
         "get_zoobank_data_for_act",
         Mock(side_effect=zoobank.ZooBankNotFoundError("not found")),
     )
-    name = SimpleNamespace(type_tags=(TypeTag.LSIDName(lsid),), get_tags=_get_tags)
+    name = SimpleNamespace(type_tags=(TypeTag.LSID(lsid),), get_tags=_get_tags)
     article = cast(
         Article,
         SimpleNamespace(
@@ -237,7 +237,7 @@ def test_pdf_lsid_conflict_with_existing_lsid_is_not_autofixed() -> None:
         Article,
         SimpleNamespace(
             title="A revision of the exceptionally distinctive genus Example",
-            tags=(ArticleTag.LSIDArticle(existing_lsid, PresenceStatus.absent),),
+            tags=(ArticleTag.LSID(existing_lsid, PresenceStatus.absent),),
             numeric_year=Mock(return_value=2021),
             get_tags=_get_tags,
             get_all_pdf_pages=Mock(
@@ -263,9 +263,7 @@ def test_pdf_lsid_conflict_with_existing_lsid_is_not_autofixed() -> None:
             f"{existing_lsid} (absent)"
         )
     ]
-    assert article.tags == (
-        ArticleTag.LSIDArticle(existing_lsid, PresenceStatus.absent),
-    )
+    assert article.tags == (ArticleTag.LSID(existing_lsid, PresenceStatus.absent),)
 
 
 def test_pdf_lsid_marks_same_inferred_lsid_as_present() -> None:
@@ -274,7 +272,7 @@ def test_pdf_lsid_marks_same_inferred_lsid_as_present() -> None:
         Article,
         SimpleNamespace(
             title="A revision of the exceptionally distinctive genus Example",
-            tags=(ArticleTag.LSIDArticle(lsid, PresenceStatus.inferred),),
+            tags=(ArticleTag.LSID(lsid, PresenceStatus.inferred),),
             numeric_year=Mock(return_value=2021),
             get_tags=_get_tags,
             get_all_pdf_pages=Mock(
@@ -299,7 +297,7 @@ def test_pdf_lsid_marks_same_inferred_lsid_as_present() -> None:
     assert isinstance(issue, LintIssue)
     assert issue.fix is not None
     issue.fix.apply()
-    assert article.tags == (ArticleTag.LSIDArticle(lsid, PresenceStatus.present),)
+    assert article.tags == (ArticleTag.LSID(lsid, PresenceStatus.present),)
 
 
 def test_infer_lsid_does_not_read_pdf_when_present() -> None:
@@ -308,7 +306,7 @@ def test_infer_lsid_does_not_read_pdf_when_present() -> None:
         Article,
         SimpleNamespace(
             tags=(
-                ArticleTag.LSIDArticle(
+                ArticleTag.LSID(
                     "AABBCCDD-1234-4ABC-9DEF-0123456789AB", PresenceStatus.present
                 ),
             ),

@@ -62,11 +62,11 @@ def get_series_regex(cg: CitationGroup) -> str | None:
 
 
 def get_ignores(cg: CitationGroup) -> Iterable[IgnoreLint]:
-    return cg.get_tags(cg.tags, CitationGroupTag.IgnoreLintCitationGroup)
+    return cg.get_tags(cg.tags, CitationGroupTag.IgnoreLint)
 
 
 def add_ignore(cg: CitationGroup, label: str, comment: str) -> None:
-    cg.add_tag(CitationGroupTag.IgnoreLintCitationGroup(label, comment=comment))
+    cg.add_tag(CitationGroupTag.IgnoreLint(label, comment=comment))
 
 
 LINT = Lint(CitationGroup, get_ignores, add_ignore)
@@ -96,7 +96,7 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
         ):
             if (
                 not cg.archive
-                and not cg.get_tag(CitationGroupTag.CitationGroupURL)
+                and not cg.get_tag(CitationGroupTag.URL)
                 and not cg.get_tag(CitationGroupTag.BHLBibliography)
             ):
                 yield "has MustHave tag but no URL"
@@ -107,8 +107,8 @@ def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
             CitationGroupTag.SeriesRegex
         ):
             yield "MustHaveSeries tag but no SeriesRegex tag"
-        if isinstance(tag, CitationGroupTag.OnlineRepository):
-            yield "use of deprecated OnlineRepository tag"
+        if isinstance(tag, CitationGroupTag.Repository):
+            yield "use of deprecated Repository tag"
         if isinstance(tag, (CitationGroupTag.ISSN, CitationGroupTag.ISSNOnline)):
             # TODO: check that the checksum digit is right
             if not re.fullmatch(r"^\d{4}-\d{3}[X\d]$", tag.text):
@@ -156,7 +156,7 @@ def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[LintResult]:
     for tag_type, count in counts.items():
         if count > 1 and tag_type not in (
             CitationGroupTag.Predecessor,
-            CitationGroupTag.CitationGroupURL,
+            CitationGroupTag.URL,
             CitationGroupTag.ISSN,
             CitationGroupTag.ISSNOnline,
             CitationGroupTag.BHLBibliography,

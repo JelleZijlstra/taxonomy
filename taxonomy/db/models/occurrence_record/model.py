@@ -242,7 +242,7 @@ class OccurrenceRecordTag(ADT):
     CoordinateUncertaintyFromSource(text=Managed, tag=20)  # type: ignore[name-defined]
     VerbatimDate(text=Managed, tag=21)  # type: ignore[name-defined]
     Date(date=Managed, tag=22)  # type: ignore[name-defined]
-    IgnoreLintOccurrenceRecord(  # type: ignore[name-defined]
+    IgnoreLint(  # type: ignore[name-defined]
         label=Managed, comment=NotRequired[Markdown], tag=23
     )
 

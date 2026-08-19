@@ -226,7 +226,7 @@ class IssueDate(BaseModel):
 
 
 class IssueDateTag(ADT):
-    CommentIssueDate(text=Markdown, optional_source=NotRequired[Article], tag=1)  # type: ignore[name-defined]
+    Comment(text=Markdown, optional_source=NotRequired[Article], tag=1)  # type: ignore[name-defined]
 
 
 @cache

@@ -2183,7 +2183,7 @@ def add_classification_entries(
         if name.get("textual_rank"):
             tags.append(ClassificationEntryTag.TextualRank(name["textual_rank"]))
         if name.get("age_class"):
-            tags.append(ClassificationEntryTag.AgeClassCE(name["age_class"]))
+            tags.append(ClassificationEntryTag.AgeClass(name["age_class"]))
         if name.get("corrected_name"):
             tags.append(ClassificationEntryTag.CorrectedName(name["corrected_name"]))
         for key, value in name.get("extra_fields", {}).items():

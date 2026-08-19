@@ -1941,7 +1941,7 @@ def test_location_plss_ignore_suppresses_autofix_and_warning(
         region=_plss_county(), names=(name,), general=True
     )
     loc.tags = (  # type: ignore[assignment]
-        LocationTag.IgnoreLintLocation(
+        LocationTag.IgnoreLint(
             "plss", comment="The source explicitly questions this provenance."
         ),
     )
@@ -1953,7 +1953,7 @@ def test_location_plss_ignore_suppresses_autofix_and_warning(
 
     assert messages == []
     assert loc.tags == (
-        LocationTag.IgnoreLintLocation(
+        LocationTag.IgnoreLint(
             "plss", comment="The source explicitly questions this provenance."
         ),
     )
@@ -2346,7 +2346,7 @@ def test_location_coordinate_evidence_honors_name_coordinate_ignore() -> None:
     name = _tagged_object(
         (
             TypeTag.LocationDetail("Referred specimen at 37.9°N, 122.1°W", source),
-            TypeTag.IgnoreLintName(
+            TypeTag.IgnoreLint(
                 "location_detail_coordinates",
                 comment="The coordinate belongs to a referred specimen.",
             ),
@@ -5914,7 +5914,7 @@ def test_location_does_not_query_nominatim_without_network(
 def test_location_lint_can_be_ignored() -> None:
     name = _tagged_object((TypeTag.Coordinates("37.9", "-122.1"),), name_tags=True)
     loc = _location_without_coordinates(names=(name,))
-    loc.tags = (LocationTag.IgnoreLintLocation("linked_coordinates"),)  # type: ignore[assignment]
+    loc.tags = (LocationTag.IgnoreLint("linked_coordinates"),)  # type: ignore[assignment]
 
     assert list(location_lint.check_linked_coordinates(loc, LintConfig())) == []
     assert loc.latitude is None

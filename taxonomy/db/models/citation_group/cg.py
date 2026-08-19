@@ -13,7 +13,7 @@ from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import article_lsid_has_valid_data
 from taxonomy.db import constants, helpers, models
-from taxonomy.db.constants import URL, ArticleIdentifier, Managed, Markdown, Regex
+from taxonomy.db.constants import ArticleIdentifier, Managed, Markdown, Regex
 from taxonomy.db.derived_data import DerivedField, LazyType
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
 from taxonomy.db.models.lint_types import LintResult
@@ -68,7 +68,7 @@ class CitationGroup(BaseModel):
     def get_search_dicts(self) -> list[dict[str, Any]]:
         tags = []
         for tag in self.tags or ():
-            if isinstance(tag, CitationGroupTag.OnlineRepository):
+            if isinstance(tag, CitationGroupTag.Repository):
                 tags.append(f"Repository: {tag.url}")
             elif isinstance(tag, CitationGroupTag.ISSN):
                 tags.append(f"ISSN: {tag.text}")
@@ -76,7 +76,7 @@ class CitationGroup(BaseModel):
                 tags.append(f"BHL: {tag.text}")
             elif isinstance(tag, CitationGroupTag.ISSNOnline):
                 tags.append(f"ISSN (online): {tag.text}")
-            elif isinstance(tag, CitationGroupTag.CitationGroupURL):
+            elif isinstance(tag, CitationGroupTag.URL):
                 tags.append(f"URL: {tag.text}")
             elif isinstance(tag, CitationGroupTag.DatingTools):
                 tags.append(f"Dating tools: {tag.text}")
@@ -370,7 +370,7 @@ class CitationGroup(BaseModel):
 
     def open_url(self) -> None:
         for tag in self.tags:
-            if isinstance(tag, CitationGroupTag.CitationGroupURL):
+            if isinstance(tag, CitationGroupTag.URL):
                 subprocess.check_call(["open", tag.text])
             elif isinstance(tag, CitationGroupTag.BHLBibliography):
                 url = f"https://www.biodiversitylibrary.org/bibliography/{tag.text}"
@@ -581,7 +581,7 @@ class CitationGroup(BaseModel):
 
     def get_invalid_lsids(self) -> Iterable[tuple[models.Article, str]]:
         for art in self.get_articles():
-            for tag in art.get_tags(art.tags, models.article.ArticleTag.LSIDArticle):
+            for tag in art.get_tags(art.tags, models.article.ArticleTag.LSID):
                 if not article_lsid_has_valid_data(tag.text):
                     yield art, tag.text
 
@@ -640,12 +640,12 @@ class CitationGroupTag(adt.ADT):
     # Articles in this citation group must have a series set.
     MustHaveSeries(comment=NotRequired[Markdown], tag=11)  # type: ignore[name-defined]
     # Information on where to find it.
-    OnlineRepository(url=URL, comment=NotRequired[Markdown], tag=12)  # type: ignore[name-defined]
+    Repository(url=constants.URL, comment=NotRequired[Markdown], tag=12)  # type: ignore[name-defined]
     ISSN(text=Managed, tag=13)  # type: ignore[name-defined]
     BHLBibliography(text=Managed, tag=14)  # type: ignore[name-defined]
     # ISSN for online edition
     ISSNOnline(text=Managed, tag=15)  # type: ignore[name-defined]
-    CitationGroupURL(text=URL, tag=16)  # type: ignore[name-defined]
+    URL(text=constants.URL, tag=16)  # type: ignore[name-defined]
     # The journal existed during this period
     YearRange(start=Managed, end=NotRequired[Managed], tag=17)  # type: ignore[name-defined]
     # If a journal got renamed, a reference to the previous name
@@ -667,14 +667,14 @@ class CitationGroupTag(adt.ADT):
     MustHavePreciseDate(tag=25)  # type: ignore[name-defined]
     # Articles must have a URL (or DOI, HDL, etc.)
     MustHaveURL(tag=26)  # type: ignore[name-defined]
-    URLPattern(text=URL, tag=27)  # type: ignore[name-defined]
+    URLPattern(text=constants.URL, tag=27)  # type: ignore[name-defined]
     # Do not add more BHL bibliographies based on children
     SkipExtraBHLBibliographies(tag=28)  # type: ignore[name-defined]
-    CitationGroupComment(text=Markdown, tag=29)  # type: ignore[name-defined]
+    Comment(text=Markdown, tag=29)  # type: ignore[name-defined]
     # This exists mostly so we can avoid complaining about missing BHL links. Should
     # not be exposed on the website.
     BHLYearRange(start=NotRequired[Managed], end=NotRequired[Markdown], tag=30)  # type: ignore[name-defined]
-    IgnoreLintCitationGroup(label=Managed, comment=NotRequired[Markdown], tag=31)  # type: ignore[name-defined]
+    IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=31)  # type: ignore[name-defined]
     ArticleNumberRegex(text=Regex, tag=32)  # type: ignore[name-defined]
 
     # DOI data includes an article number but it should not be used as the primary identifier.

@@ -42,7 +42,7 @@ class LocationTag(adt.ADT):
     # Neogene of the Old World database
     NOW(id=Managed, tag=4)  # type: ignore[name-defined]
 
-    IgnoreLintLocation(  # type: ignore[name-defined]
+    IgnoreLint(  # type: ignore[name-defined]
         label=Managed, comment=NotRequired[Markdown], tag=5
     )
 
@@ -99,7 +99,7 @@ class TaxonTag(adt.ADT):
     EnglishCommonName(name=Managed, tag=4)  # type: ignore[name-defined]
     IncertaeSedis(comment=NotRequired[Markdown], tag=5)  # type: ignore[name-defined]
     Basal(comment=NotRequired[Markdown], tag=6)  # type: ignore[name-defined]
-    IgnoreLintTaxon(label=Managed, comment=NotRequired[Markdown], tag=7)  # type: ignore[name-defined]
+    IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=7)  # type: ignore[name-defined]
 
     # These statuses apply in the named Region and all its descendants. A tag on
     # a species is inherited by its infraspecific taxa, while a direct infraspecific

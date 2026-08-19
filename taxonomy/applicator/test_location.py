@@ -931,8 +931,8 @@ def test_apply_edit_replaces_tag() -> None:
 
 
 def test_apply_edit_sorts_location_tags() -> None:
-    later = LocationTag.IgnoreLintLocation("nominatim_coordinates")
-    earlier = LocationTag.IgnoreLintLocation("coordinate_collision")
+    later = LocationTag.IgnoreLint("nominatim_coordinates")
+    earlier = LocationTag.IgnoreLint("coordinate_collision")
     data = edit_row()
     data["changes"] = []
     data["add_tags"] = [earlier.serialize()]

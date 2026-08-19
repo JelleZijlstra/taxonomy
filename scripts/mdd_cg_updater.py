@@ -67,7 +67,7 @@ def get_hesp_row(
     else:
         start_year, end_year = map(str, year_range)
     title_ids = cg.get_bhl_title_ids()
-    url_tag = cg.get_tag(models.citation_group.CitationGroupTag.CitationGroupURL)
+    url_tag = cg.get_tag(models.citation_group.CitationGroupTag.URL)
     return {
         "MDD_citation_group": cg.name,
         "BHL_biblio": " | ".join(
@@ -386,7 +386,7 @@ def run(*, dry_run: bool = True, taxon: Taxon) -> None:
                                     diff.cg.add_tag(tag)
                                     skip_sheet_update = True
                         if mdd_column == "Non_BHL_link" and not diff.hesp_value:
-                            tag = CitationGroupTag.CitationGroupURL(diff.mdd_value)
+                            tag = CitationGroupTag.URL(diff.mdd_value)
                             print(f"Add tag to {diff.cg}: {tag}")
                             diff.cg.add_tag(tag)
                             skip_sheet_update = True

@@ -783,7 +783,7 @@ class Name(BaseModel):
         cache_keys: set[str] = set()
         if self.corrected_original_name is not None:
             cache_keys.add(self.corrected_original_name.replace(" ", "_"))
-        for tag in self.get_tags(self.type_tags, TypeTag.LSIDName):
+        for tag in self.get_tags(self.type_tags, TypeTag.LSID):
             # Older callers did not normalize act LSIDs before caching them, so
             # clear the historical forms as well as the canonical current key.
             cleaned_lsid = zoobank.clean_lsid(tag.text)
@@ -2326,7 +2326,7 @@ class Name(BaseModel):
         self.target = into
 
     def open_zoobank(self) -> None:
-        lsids = {tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSIDName)}
+        lsids = {tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSID)}
         if self.corrected_original_name:
             lsids |= {
                 zoobank_data.name_lsid
@@ -2337,7 +2337,7 @@ class Name(BaseModel):
             subprocess.check_call(["open", url])
 
     def print_zoobank_data(self) -> None:
-        lsids = {tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSIDName)}
+        lsids = {tag.text for tag in self.get_tags(self.type_tags, TypeTag.LSID)}
         for lsid in lsids:
             for data in get_zoobank_data_for_act(lsid):
                 pprint.pprint(data, sort_dicts=False)
@@ -2470,7 +2470,7 @@ class Name(BaseModel):
 
     def has_lint_ignore(self, label: str) -> bool:
         return any(
-            isinstance(tag, TypeTag.IgnoreLintName) and tag.label == label
+            isinstance(tag, TypeTag.IgnoreLint) and tag.label == label
             for tag in self.type_tags
         )
 
@@ -3222,11 +3222,11 @@ class TypeTag(adt.ADT):
     # Denotes that this name does something grammatically incorrect. A published
     # paper should correct it.
     IncorrectGrammar(text=Markdown, tag=43)  # type: ignore[name-defined]
-    LSIDName(text=Managed, tag=44)  # type: ignore[name-defined]
+    LSID(text=Managed, tag=44)  # type: ignore[name-defined]
     TypeSpecimenLink(url=URL, tag=45)  # type: ignore[name-defined]
     # Ignore lints with a specific label
-    IgnoreLintName(label=Managed, comment=NotRequired[Markdown], tag=46)  # type: ignore[name-defined]
-    RejectedLSIDName(text=Managed, tag=47)  # type: ignore[name-defined]
+    IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=46)  # type: ignore[name-defined]
+    RejectedLSID(text=Managed, tag=47)  # type: ignore[name-defined]
     # For hybrids and composites
     PartialTaxon(taxon=Taxon, tag=48)  # type: ignore[name-defined]
     FormerRepository(repository=Collection, tag=49)  # type: ignore[name-defined]

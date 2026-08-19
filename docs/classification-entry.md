@@ -45,7 +45,7 @@ And the following tags:
 - _OriginalCombination_: The original combination for the name, as given in the source.
 - _OriginalPageDescribed_: The page on which the name was coined, according to the
   source.
-- _AgeClassCE_: May be used if the name is marked as extinct in a source mostly dealing
+- _AgeClass_: May be used if the name is marked as extinct in a source mostly dealing
   with extant animals.
 - _CommonName_: Common name provided by the source.
 - _Informal_: This name represents an informal grouping in the source, which does not

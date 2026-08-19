@@ -57,6 +57,7 @@ else:
 
 TYPE_TO_GRAPHENE = {str: String, bool: Boolean, int: Int}
 TYPES: list[ObjectType] = []
+_ADT_MEMBER_GRAPHQL_OWNERS: dict[str, tuple[type[BaseModel], type[ADT], object]] = {}
 
 
 class Model(Interface):
@@ -94,8 +95,24 @@ def build_graphene_field_from_adt_arg(typ: object, *, is_required: bool) -> Fiel
     return Field(graphene_type)
 
 
+def get_adt_member_graphql_name(model_cls: type[BaseModel], adt: object) -> str:
+    if isinstance(adt, type):
+        member_name = adt.__name__
+    else:
+        member_name = type(adt).__name__
+    graphql_name = f"{member_name}{model_cls.call_sign}"
+    if re.fullmatch(r"[_A-Za-z][_0-9A-Za-z]*", graphql_name) is None:
+        raise ValueError(
+            f"invalid GraphQL name {graphql_name!r} for {model_cls.__name__} tag "
+            f"{member_name}"
+        )
+    return graphql_name
+
+
 @cache
-def build_adt_member(adt_cls: type[ADT], adt: type[ADT]) -> type[ObjectType]:
+def build_adt_member(
+    model_cls: type[BaseModel], adt_cls: type[ADT], adt: type[ADT] | ADT
+) -> type[ObjectType]:
     namespace = {}
     for name, typ in adt._attributes.items():
         graphene_field = build_graphene_field_from_adt_arg(
@@ -109,14 +126,17 @@ def build_adt_member(adt_cls: type[ADT], adt: type[ADT]) -> type[ObjectType]:
 
     namespace["Meta"] = Meta
 
-    if adt._has_args:
-        member_name = adt.__name__
+    graphql_name = get_adt_member_graphql_name(model_cls, adt)
+    owner = (model_cls, adt_cls, adt)
+    if previous_owner := _ADT_MEMBER_GRAPHQL_OWNERS.get(graphql_name):
+        if previous_owner != owner:
+            raise ValueError(
+                f"GraphQL tag type name {graphql_name!r} is shared by "
+                f"{previous_owner!r} and {owner!r}"
+            )
     else:
-        member_name = type(adt).__name__
-
-    # GraphQL type names share one global namespace. Qualifying ADT members avoids
-    # collisions with enums and with same-named members of other ADTs.
-    return type(f"{adt_cls.__name__}{member_name}", (ObjectType,), namespace)
+        _ADT_MEMBER_GRAPHQL_OWNERS[graphql_name] = owner
+    return type(graphql_name, (ObjectType,), namespace)
 
 
 @cache
@@ -128,10 +148,10 @@ def build_adt_interface(adt_cls: type[ADT]) -> type[Interface]:
 
 
 @cache
-def build_adt(adt_cls: type[ADT]) -> type[Interface]:
+def build_adt(model_cls: type[BaseModel], adt_cls: type[ADT]) -> type[Interface]:
     interface = build_adt_interface(adt_cls)
     for member in adt_cls._tag_to_member.values():
-        TYPES.append(build_adt_member(adt_cls, member))
+        TYPES.append(build_adt_member(model_cls, adt_cls, member))
     return interface
 
 
@@ -194,10 +214,10 @@ def build_graphene_field(
             out = []
             for adt in adts:
                 if not adt._has_args:
-                    graphene_cls = build_adt_member(adt_cls, adt)
+                    graphene_cls = build_adt_member(model_cls, adt_cls, adt)
                     out.append(graphene_cls())
                 else:
-                    graphene_cls = build_adt_member(adt_cls, type(adt))
+                    graphene_cls = build_adt_member(model_cls, adt_cls, type(adt))
                     out.append(
                         graphene_cls(
                             **{
@@ -208,7 +228,9 @@ def build_graphene_field(
                     )
             return out
 
-        return List(NonNull(build_adt(adt_cls)), required=True, resolver=adt_resolver)
+        return List(
+            NonNull(build_adt(model_cls, adt_cls)), required=True, resolver=adt_resolver
+        )
     elif (
         isinstance(clirm_field, (TextField, TextOrNullField))
         or name in model_cls.markdown_fields

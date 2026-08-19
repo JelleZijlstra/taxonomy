@@ -348,7 +348,7 @@ class Article(BaseModel):
                 tags.append(f"PMID {tag.text}")
             elif isinstance(tag, ArticleTag.PMC):
                 tags.append(f"PMC {tag.text}")
-            elif isinstance(tag, ArticleTag.LSIDArticle):
+            elif isinstance(tag, ArticleTag.LSID):
                 tags.append(f"LSID {tag.text}")
             elif isinstance(tag, ArticleTag.PublicationDate):
                 tags.append(
@@ -618,7 +618,7 @@ class Article(BaseModel):
                 bhl.clear_caches_related_to_url(tag.url)
 
     def clear_zoobank_caches(self) -> None:
-        for tag in self.get_tags(self.tags, ArticleTag.LSIDArticle):
+        for tag in self.get_tags(self.tags, ArticleTag.LSID):
             zoobank.clear_zoobank_publication_cache(tag.text)
 
     def get_new_names(self) -> Query[models.Name]:
@@ -1462,7 +1462,7 @@ class Article(BaseModel):
         pprint.pprint(rec, sort_dicts=False)
 
     def print_zoobank_data(self) -> None:
-        for lsid in self.get_tags(self.tags, ArticleTag.LSIDArticle):
+        for lsid in self.get_tags(self.tags, ArticleTag.LSID):
             data = zoobank.get_zoobank_data_for_article(lsid.text)
             pprint.pprint(data, sort_dicts=False)
 
@@ -1948,7 +1948,7 @@ class ArticleTag(adt.ADT):
     JSTOR(text=Managed, tag=4)  # type: ignore[name-defined]
     PMID(text=Managed, tag=5)  # type: ignore[name-defined]
     # TODO: Why does this exist? Should be on the CitationGroup
-    ArticleISSN(text=Managed, tag=6)  # type: ignore[name-defined]
+    ISSN(text=Managed, tag=6)  # type: ignore[name-defined]
     PMC(text=Managed, tag=7)  # type: ignore[name-defined]
 
     # other
@@ -1964,7 +1964,7 @@ class ArticleTag(adt.ADT):
     IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=13)  # type: ignore[name-defined]
 
     PublicationDate(source=DateSource, date=Managed, comment=NotRequired[Markdown], tag=14)  # type: ignore[name-defined]
-    LSIDArticle(text=Managed, present_in_article=PresenceStatus, tag=15)  # type: ignore[name-defined]
+    LSID(text=Managed, present_in_article=PresenceStatus, tag=15)  # type: ignore[name-defined]
 
     # All references must be moved to children
     MustUseChildren(tag=16)  # type: ignore[name-defined]
@@ -1976,7 +1976,7 @@ class ArticleTag(adt.ADT):
     InPress(comment=NotRequired[Markdown], tag=18)  # type: ignore[name-defined]
 
     # Link to a relevant page in docs/biblio/
-    BiblioNoteArticle(text=Managed, tag=19)  # type: ignore[name-defined]
+    BiblioNote(text=Managed, tag=19)  # type: ignore[name-defined]
 
     AlternativeURL(url=URL, tag=20)  # type: ignore[name-defined]
 

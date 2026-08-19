@@ -538,11 +538,11 @@ class GeoNamesCoordinateCandidate:
 
 
 def get_ignores(location: Location) -> Iterable[IgnoreLint]:
-    return location.get_tags(location.tags, LocationTag.IgnoreLintLocation)
+    return location.get_tags(location.tags, LocationTag.IgnoreLint)
 
 
 def add_ignore(location: Location, label: str, comment: str) -> None:
-    location.add_tag(LocationTag.IgnoreLintLocation(label, comment=comment))
+    location.add_tag(LocationTag.IgnoreLint(label, comment=comment))
 
 
 LINT = Lint(Location, get_ignores, add_ignore)

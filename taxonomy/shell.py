@@ -865,6 +865,171 @@ def type_locality_tree() -> None:
         print(line)
 
 
+def _type_locality_summary_lines(names: Sequence[Name]) -> list[str]:
+    total = len(names)
+
+    def count_text(count: int) -> str:
+        percentage = count / total * 100 if total else 0
+        return f"{count:,} ({percentage:.1f}%)"
+
+    without_locality = [name for name in names if name.type_locality is None]
+    locality_not_required = [
+        name
+        for name in without_locality
+        if "type_locality" not in name.get_required_fields()
+    ]
+    locality_required = [
+        name
+        for name in without_locality
+        if "type_locality" in name.get_required_fields()
+    ]
+    extant_without_required_locality = [
+        name
+        for name in locality_not_required
+        if name.taxon.age in {AgeClass.extant, AgeClass.recently_extinct}
+    ]
+    fossil_without_required_locality = [
+        name
+        for name in locality_not_required
+        if name.taxon.age not in {AgeClass.extant, AgeClass.recently_extinct}
+    ]
+    extant_with_required_locality = [
+        name
+        for name in locality_required
+        if name.taxon.age in {AgeClass.extant, AgeClass.recently_extinct}
+    ]
+    fossil_with_required_locality = [
+        name
+        for name in locality_required
+        if name.taxon.age not in {AgeClass.extant, AgeClass.recently_extinct}
+    ]
+
+    with_locality = [name for name in names if name.type_locality is not None]
+
+    def has_recent_locality(name: Name) -> bool:
+        assert name.type_locality is not None
+        return models.location.age.is_recent_location(name.type_locality)
+
+    recent_localities = [name for name in with_locality if has_recent_locality(name)]
+    fossil_localities = [
+        name for name in with_locality if not has_recent_locality(name)
+    ]
+
+    def is_regionwide(name: Name) -> bool:
+        assert name.type_locality is not None
+        return name.type_locality.name == name.type_locality.region.name
+
+    def is_general(name: Name) -> bool:
+        assert name.type_locality is not None
+        return name.type_locality.has_tag(models.tags.LocationTag.General)
+
+    def is_unplaced(name: Name) -> bool:
+        assert name.type_locality is not None
+        return name.type_locality.has_tag(models.tags.LocationTag.Unplaced)
+
+    def partition_locations(
+        locations: Sequence[Name],
+    ) -> tuple[list[Name], list[Name], list[Name], list[Name]]:
+        regionwide = [name for name in locations if is_regionwide(name)]
+        general = [
+            name for name in locations if not is_regionwide(name) and is_general(name)
+        ]
+        unplaced = [
+            name
+            for name in locations
+            if not is_regionwide(name) and not is_general(name) and is_unplaced(name)
+        ]
+        other = [
+            name
+            for name in locations
+            if not is_regionwide(name)
+            and not is_general(name)
+            and not is_unplaced(name)
+        ]
+        return regionwide, general, unplaced, other
+
+    recent_regionwide, recent_general, recent_unplaced, recent_other = (
+        partition_locations(recent_localities)
+    )
+    fossil_general = [name for name in fossil_localities if is_general(name)]
+    fossil_unplaced = [
+        name for name in fossil_localities if not is_general(name) and is_unplaced(name)
+    ]
+    fossil_other = [
+        name
+        for name in fossil_localities
+        if not is_general(name) and not is_unplaced(name)
+    ]
+
+    def partition_imprecise(locations: Sequence[Name]) -> tuple[int, int]:
+        imprecise = sum(
+            name.has_type_tag(TypeTag.ImpreciseLocality) for name in locations
+        )
+        return imprecise, len(locations) - imprecise
+
+    recent_regionwide_imprecise, recent_regionwide_not_imprecise = partition_imprecise(
+        recent_regionwide
+    )
+    recent_general_imprecise, recent_general_not_imprecise = partition_imprecise(
+        recent_general
+    )
+    recent_other_with_coordinates = sum(
+        name.type_locality is not None
+        and name.type_locality.latitude is not None
+        and name.type_locality.longitude is not None
+        for name in recent_other
+    )
+
+    return [
+        f"Of {count_text(total)}:",
+        f"- {count_text(len(without_locality))}: type locality not set",
+        f"  - {count_text(len(locality_not_required))}: type locality not required",
+        (f"    - {count_text(len(fossil_without_required_locality))}: fossil"),
+        (f"    - {count_text(len(extant_without_required_locality))}: Recent"),
+        f"  - {count_text(len(locality_required))}: type locality required",
+        (f"    - {count_text(len(fossil_with_required_locality))}: fossil"),
+        (f"    - {count_text(len(extant_with_required_locality))}: Recent"),
+        f"- {count_text(len(with_locality))}: type locality set",
+        f"  - {count_text(len(recent_localities))}: Recent location",
+        f"    - {count_text(len(recent_regionwide))}: regionwide location",
+        (
+            f"      - {count_text(recent_regionwide_imprecise)}: ImpreciseLocality"
+            " tag set"
+        ),
+        (
+            f"      - {count_text(recent_regionwide_not_imprecise)}: no"
+            " ImpreciseLocality tag"
+        ),
+        f"    - {count_text(len(recent_general))}: General location",
+        (f"      - {count_text(recent_general_imprecise)}: ImpreciseLocality"),
+        (
+            f"      - {count_text(recent_general_not_imprecise)}: no"
+            " ImpreciseLocality"
+        ),
+        f"    - {count_text(len(recent_unplaced))}: Unplaced location",
+        f"    - {count_text(len(recent_other))}: precise location",
+        (f"      - {count_text(recent_other_with_coordinates)}: coordinates set"),
+        (
+            f"      - {count_text(len(recent_other) - recent_other_with_coordinates)}"
+            ": coordinates not set"
+        ),
+        (f"  - {count_text(len(fossil_localities))}: fossil location"),
+        f"    - {count_text(len(fossil_general))}: General location",
+        f"    - {count_text(len(fossil_unplaced))}: Unplaced location",
+        f"    - {count_text(len(fossil_other))}: other location",
+    ]
+
+
+@command
+def type_locality_summary(taxon: Taxon | None = None) -> None:
+    """Summarize type-locality coverage for species-group names."""
+    if taxon is None:
+        names = list(Name.select_valid().filter(Name.group == Group.species))
+    else:
+        names = [name for name in taxon.all_names() if name.group is Group.species]
+    print("\n".join(_type_locality_summary_lines(names)))
+
+
 def _tl_count(region: models.Region) -> tuple[int, list[str]]:
     print(f"processing {region}")
     count = 0

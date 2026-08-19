@@ -651,7 +651,7 @@ names should have at least one. They fall into several groups:
   - _GenusCoelebs_: Indicates that a genus-group name was originally proposed without
     any included species.
   - _Host_: Name of the type host of a symbiont.
-  - _LSIDName_: Life Science Identifier (LSID) for the name.
+  - _LSID_: Life Science Identifier (LSID) for the name.
   - _AuthorityPageLink_: Link to an online resource (usually the Biodiversity Heritage
     Library) that provides access to the page where the name was originally introduced.
   - _TextualOriginalRank_: For names that were originally published at an unusual rank,
