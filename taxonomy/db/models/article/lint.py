@@ -542,13 +542,8 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
     return siblings[index - 1], siblings[index]
 
 
-@LINT.add("unsupported_year", disabled=True)
+@LINT.add("unsupported_year")
 def check_unsupported_year(art: Article, cfg: LintConfig) -> Iterable[str]:
-    # if art.id < 67_000 and (
-    #     not has_new_names(art)
-    #     or art.type in (ArticleType.CHAPTER, ArticleType.PART, ArticleType.SUPPLEMENT)
-    # ):
-    #     return
     if not has_unsupported_publication_date(art):
         return
     yield f"precise date {art.year} is not supported by any evidence"
