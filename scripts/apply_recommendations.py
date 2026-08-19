@@ -38,6 +38,7 @@ from taxonomy import getinput
 from taxonomy.applicator import article as article_recommendations
 from taxonomy.applicator import coverage as coverage_recommendations
 from taxonomy.applicator import generic as generic_recommendations
+from taxonomy.applicator import item_file as item_file_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import proposals as virtual_proposals
 from taxonomy.applicator import taxon as taxon_recommendations
@@ -75,6 +76,11 @@ ACTION_HANDLERS = (
         "article",
         frozenset(article_recommendations.ALLOWED_ACTIONS),
         article_recommendations.parse_recommendation,
+    ),
+    RegisteredActionHandler(
+        "item_file",
+        frozenset(item_file_recommendations.ALLOWED_ACTIONS),
+        item_file_recommendations.parse_recommendation,
     ),
     RegisteredActionHandler(
         "generic",
@@ -185,16 +191,21 @@ def _declared_affected_objects(
 ) -> Iterable[BaseModel]:
     if isinstance(plans, UnifiedRecommendationPlan):
         article_plan = plans.article
+        item_file_plan = plans.item_file
         taxon_plan = plans.taxon
         generic_plan = plans.generic
         location_plan = plans.location
         type_plan = plans.type_locality
     else:
         article_plan, generic_plan, location_plan, type_plan = plans
+        item_file_plan = item_file_recommendations.RecommendationPlan((), Counter())
         taxon_plan = None
     for article_action in article_plan.actions:
         if article_action.article is not None:
             yield article_action.article
+    for item_file_action in item_file_plan.actions:
+        if item_file_action.item_file is not None:
+            yield item_file_action.item_file
     if taxon_plan is not None:
         for taxon_action in taxon_plan.actions:
             yield generic_recommendations._replace_created_models(
@@ -297,6 +308,7 @@ class Recommendations:
     type_locality_rows: tuple[type_recommendations.Recommendation, ...]
     taxon_rows: tuple[taxon_recommendations.Recommendation, ...] = ()
     coverage_rows: tuple[coverage_recommendations.Recommendation, ...] = ()
+    item_file_rows: tuple[item_file_recommendations.Recommendation, ...] = ()
 
     @property
     def count(self) -> int:
@@ -307,6 +319,7 @@ class Recommendations:
             + len(self.type_locality_rows)
             + len(self.taxon_rows)
             + len(self.coverage_rows)
+            + len(self.item_file_rows)
         )
 
 
@@ -320,6 +333,7 @@ class ManualReviewObject:
 
 Recommendation = (
     article_recommendations.Recommendation
+    | item_file_recommendations.Recommendation
     | generic_recommendations.Recommendation
     | location_recommendations.Recommendation
     | type_recommendations.Recommendation
@@ -337,6 +351,7 @@ RecommendationPlans = tuple[
 @dataclass(frozen=True, slots=True)
 class UnifiedRecommendationPlan:
     article: article_recommendations.RecommendationPlan
+    item_file: item_file_recommendations.RecommendationPlan
     taxon: taxon_recommendations.RecommendationPlan
     generic: generic_recommendations.RecommendationPlan
     location: location_recommendations.RecommendationPlan
@@ -354,7 +369,13 @@ class IndividualReviewItem:
     line_number: int
     recommendation: Recommendation
     family: Literal[
-        "article", "generic", "location", "type_locality", "taxon", "coverage"
+        "article",
+        "item_file",
+        "generic",
+        "location",
+        "type_locality",
+        "taxon",
+        "coverage",
     ]
     edit_object: Any | None
 
@@ -477,6 +498,7 @@ def _validate_type_locality_rows(
 
 def read_recommendations(path: Path) -> Recommendations:
     article_rows: list[article_recommendations.Recommendation] = []
+    item_file_rows: list[item_file_recommendations.Recommendation] = []
     generic_rows: list[generic_recommendations.Recommendation] = []
     location_rows: list[location_recommendations.Recommendation] = []
     type_rows: list[type_recommendations.Recommendation] = []
@@ -514,6 +536,7 @@ def read_recommendations(path: Path) -> Recommendations:
             parsed = handler.parse(data, line_number)
             destinations: dict[str, list[Any]] = {
                 "article": article_rows,
+                "item_file": item_file_rows,
                 "generic": generic_rows,
                 "location": location_rows,
                 "type_locality": type_rows,
@@ -528,6 +551,7 @@ def read_recommendations(path: Path) -> Recommendations:
             type_recommendations.RecommendationError,
             taxon_recommendations.RecommendationError,
             coverage_recommendations.RecommendationError,
+            item_file_recommendations.RecommendationError,
         ) as exc:
             raise RecommendationError(str(exc)) from exc
     if not any(
@@ -538,6 +562,7 @@ def read_recommendations(path: Path) -> Recommendations:
             type_rows,
             taxon_rows,
             coverage_rows,
+            item_file_rows,
         )
     ):
         raise RecommendationError("recommendation file contains no rows")
@@ -550,6 +575,7 @@ def read_recommendations(path: Path) -> Recommendations:
         tuple(type_rows),
         tuple(taxon_rows),
         tuple(coverage_rows),
+        tuple(item_file_rows),
     )
 
 
@@ -559,6 +585,11 @@ def print_review(
     article_rows = tuple(
         row
         for row in recommendations.article_rows
+        if actions is None or row.action in actions
+    )
+    item_file_rows = tuple(
+        row
+        for row in recommendations.item_file_rows
         if actions is None or row.action in actions
     )
     generic_rows = tuple(
@@ -589,34 +620,47 @@ def print_review(
     if article_rows:
         print("ARTICLE RECOMMENDATIONS")
         article_recommendations.print_review_table(article_rows)
-    if generic_rows:
+    if item_file_rows:
         if article_rows:
+            print()
+        print("ITEM FILE RECOMMENDATIONS")
+        item_file_recommendations.print_review_table(item_file_rows)
+    if generic_rows:
+        if article_rows or item_file_rows:
             print()
         print("GENERIC RECOMMENDATIONS")
         generic_recommendations.print_review_table(generic_rows)
     if location_rows:
-        if article_rows or generic_rows:
+        if article_rows or item_file_rows or generic_rows:
             print()
         print("LOCATION RECOMMENDATIONS")
         location_recommendations.print_review_table(location_rows)
     if type_rows:
-        if article_rows or generic_rows or location_rows:
+        if article_rows or item_file_rows or generic_rows or location_rows:
             print()
         print("TYPE-LOCALITY RECOMMENDATIONS")
         type_recommendations.print_review_table(type_rows)
     if taxon_rows:
-        if article_rows or generic_rows or location_rows or type_rows:
+        if article_rows or item_file_rows or generic_rows or location_rows or type_rows:
             print()
         print("TAXON RECOMMENDATIONS")
         taxon_recommendations.print_review_table(taxon_rows)
     if coverage_rows:
-        if article_rows or generic_rows or location_rows or type_rows or taxon_rows:
+        if (
+            article_rows
+            or item_file_rows
+            or generic_rows
+            or location_rows
+            or type_rows
+            or taxon_rows
+        ):
             print()
         print("COVERAGE ASSERTIONS")
         coverage_recommendations.print_review_table(coverage_rows)
     if not any(
         (
             article_rows,
+            item_file_rows,
             generic_rows,
             location_rows,
             type_rows,
@@ -861,7 +905,15 @@ def _all_recommendation_rows(
     recommendations: Recommendations,
 ) -> tuple[
     tuple[
-        Literal["article", "generic", "location", "type_locality", "taxon", "coverage"],
+        Literal[
+            "article",
+            "item_file",
+            "generic",
+            "location",
+            "type_locality",
+            "taxon",
+            "coverage",
+        ],
         Recommendation,
     ],
     ...,
@@ -869,12 +921,19 @@ def _all_recommendation_rows(
     rows: list[
         tuple[
             Literal[
-                "article", "generic", "location", "type_locality", "taxon", "coverage"
+                "article",
+                "item_file",
+                "generic",
+                "location",
+                "type_locality",
+                "taxon",
+                "coverage",
             ],
             Recommendation,
         ]
     ] = [
         *(("article", row) for row in recommendations.article_rows),
+        *(("item_file", row) for row in recommendations.item_file_rows),
         *(("generic", row) for row in recommendations.generic_rows),
         *(("location", row) for row in recommendations.location_rows),
         *(("type_locality", row) for row in recommendations.type_locality_rows),
@@ -965,6 +1024,9 @@ def _print_individual_recommendation(
     if item.family == "article":
         assert isinstance(row, article_recommendations.Recommendation)
         article_recommendations.print_review_table((row,))
+    elif item.family == "item_file":
+        assert isinstance(row, item_file_recommendations.Recommendation)
+        item_file_recommendations.print_review_table((row,))
     elif item.family == "generic":
         assert isinstance(row, generic_recommendations.Recommendation)
         generic_recommendations.print_review_table((row,))
@@ -1002,6 +1064,10 @@ def _print_individual_recommendation(
         for evidence_index, article_evidence in enumerate(row.evidence, start=1):
             print(f"{evidence_index}. {getinput.italicize(article_evidence.kind)}")
             print(article_evidence.text)
+    elif isinstance(row, item_file_recommendations.Recommendation):
+        for evidence_index, item_evidence in enumerate(row.evidence, start=1):
+            print(f"{evidence_index}. {getinput.italicize(item_evidence.kind)}")
+            print(item_evidence.text)
     else:
         for evidence_index, remaining_evidence in enumerate(row.evidence, start=1):
             simple_evidence = cast(Any, remaining_evidence)
@@ -1148,6 +1214,11 @@ def _filter_recommendations(
             for row in recommendations.coverage_rows
             if row.line_number in selected_lines
         ),
+        tuple(
+            row
+            for row in recommendations.item_file_rows
+            if row.line_number in selected_lines
+        ),
     )
 
 
@@ -1211,7 +1282,8 @@ def _print_type_locality_manual_review_for_edit(
 
 def _uses_unified_plan(recommendations: Recommendations) -> bool:
     return bool(
-        recommendations.taxon_rows
+        recommendations.item_file_rows
+        or recommendations.taxon_rows
         or recommendations.coverage_rows
         or any(row.ref is not None for row in recommendations.article_rows)
         or any(row.schema_version == 2 for row in recommendations.generic_rows)
@@ -1222,6 +1294,9 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
     # Validate every family before any executor is allowed to write.
     try:
         article_plan = article_recommendations.build_plan(recommendations.article_rows)
+        item_file_plan = item_file_recommendations.build_plan(
+            recommendations.item_file_rows
+        )
         if _uses_unified_plan(recommendations):
             builder = virtual_proposals.ProposalBuilder()
             references: dict[str, BaseModel] = dict(
@@ -1270,6 +1345,7 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             type_recommendations.add_virtual_models(type_plan, builder)
             location_recommendations.add_virtual_models(location_plan, builder)
             generic_recommendations.add_virtual_models(generic_plan, builder)
+            item_file_recommendations.add_virtual_models(item_file_plan, builder)
             coverage_plan = coverage_recommendations.build_plan(
                 recommendations.coverage_rows, references=references
             )
@@ -1277,6 +1353,7 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             _validate_proposed_location_name_uniqueness(proposals)
             return UnifiedRecommendationPlan(
                 article_plan,
+                item_file_plan,
                 taxon_plan,
                 generic_plan,
                 location_plan,
@@ -1292,6 +1369,7 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
         type_recommendations.RecommendationError,
         taxon_recommendations.RecommendationError,
         coverage_recommendations.RecommendationError,
+        item_file_recommendations.RecommendationError,
     ) as exc:
         raise RecommendationError(str(exc)) from exc
     builder = virtual_proposals.ProposalBuilder()
@@ -1366,8 +1444,13 @@ def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionRes
                     proposed = plans.references.get(ref)
                     if proposed is not None:
                         replacements[id(proposed)] = actual
-            if plans.taxon.action_counts:
+            if plans.item_file.action_counts:
                 if plans.article.action_counts:
+                    print()
+                print("ITEM FILE PLAN")
+                item_file_recommendations.execute_plan(plans.item_file, apply=apply)
+            if plans.taxon.action_counts:
+                if plans.article.action_counts or plans.item_file.action_counts:
                     print()
                 print("TAXON PLAN")
                 replacements.update(

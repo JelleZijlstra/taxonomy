@@ -560,6 +560,16 @@ def has_unsupported_publication_date(art: Article) -> bool:
         return False
     if infer_publication_date_from_issue_date(art) is not None:
         return False
+    if (
+        (
+            art.type in (ArticleType.CHAPTER, ArticleType.SUPPLEMENT)
+            or art.kind is ArticleKind.alternative_version
+        )
+        and art.parent is not None
+        and art.parent.year == art.year
+        and not has_unsupported_publication_date(art.parent)
+    ):
+        return False
     return True
 
 
@@ -1839,15 +1849,29 @@ def infer_lsid_from_names(art: Article, cfg: LintConfig) -> Iterable[LintResult]
     tags = list(art.get_tags(art.tags, ArticleTag.LSIDArticle))
     if any(tag.present_in_article is PresenceStatus.present for tag in tags):
         return
-    pages = art.get_all_pdf_pages()
+    pdf_article = art
+    if getattr(art, "is_virtual", False):
+        if not isinstance(art.virtual_origin, Article):
+            return
+        # A virtual update still refers to the persisted Article's unchanged PDF.
+        # Reuse its cached text identity instead of attempting to cache text under
+        # a temporary VirtualId.
+        pdf_article = art.virtual_origin
+    pages = pdf_article.get_all_pdf_pages()
     if match := extract_safe_publication_lsid(pages, art.title):
         new_tag = ArticleTag.LSIDArticle(match.lsid, PresenceStatus.present)
-        replaceable_tags = [
-            tag
-            for tag in tags
-            if tag.text == match.lsid
-            or tag.present_in_article is PresenceStatus.inferred
-        ]
+        conflicting_tags = [tag for tag in tags if tag.text != match.lsid]
+        if conflicting_tags:
+            existing = ", ".join(
+                f"{tag.text} ({tag.present_in_article.name})"
+                for tag in conflicting_tags
+            )
+            yield (
+                f"PDF-identified LSID {match.lsid} conflicts with existing "
+                f"LSID(s): {existing}"
+            )
+            return
+        replaceable_tags = [tag for tag in tags if tag.text == match.lsid]
         if replaceable_tags:
             new_tags = tuple(
                 new_tag if tag == replaceable_tags[0] else tag
@@ -2430,14 +2454,19 @@ def replace_duplicate_url(art: Article, cfg: LintConfig) -> Iterable[LintResult]
 
 @LINT.add("data_from_doi", requires_network=True)
 def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
-    if (
-        art.doi is None
-        or art.kind is ArticleKind.alternative_version
-        or art.has_tag(ArticleTag.GeneralDOI)
-    ):
+    if art.doi is None or art.has_tag(ArticleTag.GeneralDOI):
         return
     data = models.article.api_data.expand_doi_json(art.doi)
     if not data:
+        return
+    new_tags = [tag for tag in data["tags"] if tag not in art.tags]
+    if art.kind is ArticleKind.alternative_version:
+        # Alternative versions should not acquire the final Article's title,
+        # pagination, authors, or other bibliographic metadata. DOI publication
+        # dates still provide direct evidence for their independently stored dates.
+        for tag in new_tags:
+            if isinstance(tag, ArticleTag.PublicationDate):
+                yield add_tag_issue(f"adding tag {tag} from DOI", art, tag)
         return
     yield from _check_doi_title(art, data)
     yield from _check_doi_volume(art, data)
@@ -2446,7 +2475,6 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     yield from _check_doi_end_page(art, data)
     yield from _check_doi_article_number(art, data, cfg)
     yield from _check_doi_isbn(art, data, cfg)
-    new_tags = [tag for tag in data["tags"] if tag not in art.tags]
     if data.get("isbn") and art.get_identifier(ArticleTag.ISBN) is None:
         isbn_tag = ArticleTag.ISBN(data["isbn"])
         if isbn_tag not in new_tags:

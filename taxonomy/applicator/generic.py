@@ -800,7 +800,7 @@ def _decode_create_values(
                 field, serialized, context=field_context, references=references
             )
     label_field = model.label_field
-    if require_label and label_field not in values:
+    if require_label and label_field != "id" and label_field not in values:
         raise RecommendationError(
             f"{context}: create_object values must include label field {label_field!r}"
         )
@@ -1049,11 +1049,17 @@ def build_plan(
                     _validate_create_invariants(
                         model, values, context=f"line {row.line_number}"
                     )
-                label = str(values[model.label_field])
-                if label != row.object.label:
+                if model.label_field in values:
+                    label = str(values[model.label_field])
+                    if label != row.object.label:
+                        raise RecommendationError(
+                            f"create_object label {row.object.label!r} does not match "
+                            f"values.{model.label_field} {label!r}"
+                        )
+                elif row.match is None:
                     raise RecommendationError(
-                        f"create_object label {row.object.label!r} does not match "
-                        f"values.{model.label_field} {label!r}"
+                        "create_object for a model with an auto-generated ID requires "
+                        "a match guard"
                     )
                 if row.match is None:
                     matches = find_objects_by_label(model, row.object.label)
@@ -1526,10 +1532,19 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
         )
         obj = f"{row.object.model} {identity} {row.object.label}"
         model = registry.get(row.object.model)
+        visible_changes = row.changes
         if row.action == CREATE_OBJECT:
             change = f"create with fields {', '.join(row.values or ())}"
         elif row.action == UPDATE_OBJECT:
-            change = f"{len(row.changes)} guarded change(s)"
+            visible_changes = tuple(
+                guarded_change
+                for guarded_change in row.changes
+                if not (
+                    guarded_change["operation"] == "set"
+                    and guarded_change["old_value"] == guarded_change["new_value"]
+                )
+            )
+            change = f"{len(visible_changes)} guarded change(s)"
         elif row.action == MERGE_COLLECTION:
             assert row.target is not None
             change = (
@@ -1566,7 +1581,7 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
                     f"{field_name}={_format_create_value(model, field_name, value)}",
                 )
         elif row.action == UPDATE_OBJECT:
-            for guarded_change in row.changes:
+            for guarded_change in visible_changes:
                 _print_review_detail(
                     "change", _format_update_change(row, guarded_change, registry)
                 )

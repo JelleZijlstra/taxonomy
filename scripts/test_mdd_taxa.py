@@ -160,6 +160,7 @@ def test_regional_extirpation_keeps_globally_extinct_taxon() -> None:
     ("regions", "expected"),
     [
         (("Galápagos Islands", "Ecuador", "South America"), "Galápagos Islands"),
+        (("Galápagos Province", "Ecuador", "South America"), "Galápagos Islands"),
         (("Christmas Island", "Australia", "Oceania"), "Christmas Island"),
         (("Bolívar", "Venezuela", "South America"), "Venezuela"),
     ],
@@ -174,7 +175,9 @@ def test_country_for_location_uses_most_specific_mdd_unit(
     ("regions", "mdd_country", "expected"),
     [
         (("Galápagos Islands", "Ecuador"), "Galápagos Islands", []),
+        (("Galápagos Province", "Ecuador"), "Galápagos Islands", []),
         (("Ecuador",), "Galápagos Islands", ["Ecuador"]),
+        (("Galápagos Province", "Ecuador"), "Ecuador", ["Galápagos Islands"]),
         (("Galápagos Islands", "Ecuador"), "Ecuador", ["Galápagos Islands"]),
         (("Christmas Island", "Australia"), "Christmas Island", []),
         (("Australia",), "Christmas Island", ["Australia"]),

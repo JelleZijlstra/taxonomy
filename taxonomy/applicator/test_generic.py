@@ -5,7 +5,15 @@ import pytest
 from taxonomy.applicator import generic as recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db.constants import AltitudeUnit
-from taxonomy.db.models import BaseModel, Collection, Location, Name, OccurrenceRecord
+from taxonomy.db.models import (
+    BaseModel,
+    CitationGroup,
+    Collection,
+    IssueDate,
+    Location,
+    Name,
+    OccurrenceRecord,
+)
 from taxonomy.db.models.name import NameTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.tags import LocationTag
@@ -127,6 +135,64 @@ def test_schema_v2_create_object_allows_forward_references() -> None:
 
     assert [obj.name for obj in created] == ["Parent", "Child"]
     assert created[1].parent is created[0]
+
+
+def test_create_object_allows_auto_generated_id_label() -> None:
+    citation_group = CitationGroup.virtual(name="Journal of Test Evidence")
+    values: dict[str, object] = {
+        "citation_group": {
+            "model": "CitationGroup",
+            "ref": "journal",
+            "label": "Journal of Test Evidence",
+        },
+        "series": None,
+        "volume": "12",
+        "issue": "2",
+        "start_page": "71",
+        "end_page": "129",
+        "date": "1878-02",
+        "tags": [],
+    }
+    row = recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": recommendations.CREATE_OBJECT,
+            "confidence": "high",
+            "reason": "The evidence supports one shared issue date.",
+            "evidence": [{"kind": "source", "text": "Exact source evidence."}],
+            "object": {
+                "model": "IssueDate",
+                "ref": "issue_date",
+                "label": "Journal of Test Evidence 12(2):71-129 (1878-02)",
+            },
+            "match": values,
+            "values": values,
+        },
+        1,
+    )
+    matches: list[Mapping[str, object]] = []
+
+    def find_objects_by_match(
+        _model: type[BaseModel], match: Mapping[str, object]
+    ) -> list[BaseModel]:
+        matches.append(match)
+        return []
+
+    plan = recommendations.build_plan(
+        [row],
+        model_registry={"IssueDate": IssueDate},
+        find_objects_by_match=find_objects_by_match,
+        initial_references={"journal": citation_group},
+    )
+
+    issue_date = plan.actions[0].object
+    assert isinstance(issue_date, IssueDate)
+    assert issue_date.citation_group is citation_group
+    assert issue_date.date == "1878-02"
+    assert len(matches) == 1
+    assert matches[0]["citation_group"] is citation_group
+    assert matches[0]["date"] == "1878-02"
+    assert matches[0]["tags"] == ()
 
 
 def test_review_expands_create_object_fields_and_match_guards(
@@ -534,6 +600,44 @@ def test_review_expands_schema_v2_guarded_changes(
         "FormerRepository(repository=Collection(id=44, label='AM'))" in output
     )
     assert "    - change: remove_raw type_tags: [22, 148618, '']" in output
+
+
+def test_review_omits_noop_guarded_set_changes(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    row = recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": recommendations.UPDATE_OBJECT,
+            "confidence": "high",
+            "reason": "The publication date is supported by direct evidence.",
+            "evidence": [{"kind": "source", "text": "Exact source evidence."}],
+            "object": {"model": "Article", "id": 123, "label": "Example.pdf"},
+            "changes": [
+                {
+                    "operation": "set",
+                    "field": "year",
+                    "old_value": "1994-12",
+                    "new_value": "1994-12",
+                },
+                {
+                    "operation": "set",
+                    "field": "title",
+                    "old_value": None,
+                    "new_value": "Example",
+                },
+            ],
+        },
+        1,
+    )
+
+    recommendations.print_review_table([row])
+
+    output = capsys.readouterr().out
+    assert "1 guarded change(s)" in output
+    assert "set title: None -> 'Example'" in output
+    assert "set year" not in output
+    assert "1994-12" not in output
 
 
 def test_update_object_can_remove_one_malformed_raw_tag(

@@ -670,6 +670,10 @@ def lint_roman_volume(itf: ItemFile, cfg: LintConfig) -> Iterable[LintResult]:
 @LINT.add("detect_url", requires_network=True)
 def lint_detect_url(itf: ItemFile, cfg: LintConfig) -> Iterable[LintResult]:
     # Propose and optionally set a URL based on file content/name.
+    # A newly proposed ItemFile points at its future catalog path; its staged PDF is
+    # deliberately not installed during virtual lint.
+    if itf.is_virtual and itf.virtual_origin is None:
+        return
     if itf.url is not None:
         return
     suggestion = itf.detect_url_suggestion()

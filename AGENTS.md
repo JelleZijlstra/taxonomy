@@ -20,7 +20,14 @@
 - Install deps: `uv sync`.
 - Run CLI shell: `python -m taxonomy.shell`.
 - Run web app: `python -m hsweb`.
-- Lint: `ruff check .` Format: `black .` Type-check: `mypy .`.
+- Lint: `ruff check .` Format: `black .`. For type-checking, first create a unique cache
+  directory outside the repository, then run
+  `MYPY_CACHE_DIR=/tmp/taxonomy-mypy-<unique-run-id> mypy .` (replacing the placeholder
+  with a value unique to that invocation).
+- Codex agents must not share a mypy cache between invocations. This applies in
+  particular to parallel tool calls, subagents, and other concurrent work: every mypy
+  process must receive its own unique `MYPY_CACHE_DIR` outside this Dropbox checkout,
+  rather than using the repository's `.mypy_cache`.
 - Tests: `pytest -q` (single file: `pytest taxonomy/db/test_helpers.py`).
 
 ## Coding Style & Naming

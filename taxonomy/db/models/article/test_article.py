@@ -230,14 +230,14 @@ def test_infer_lsid_from_pdf_self_identification() -> None:
     assert issue.fix is not None
 
 
-def test_pdf_lsid_replaces_different_inferred_lsid() -> None:
+def test_pdf_lsid_conflict_with_existing_lsid_is_not_autofixed() -> None:
     printed_lsid = "AABBCCDD-1234-4ABC-9DEF-0123456789AB"
-    inferred_lsid = "11223344-5678-4ABC-9DEF-0123456789AB"
+    existing_lsid = "11223344-5678-4ABC-9DEF-0123456789AB"
     article = cast(
         Article,
         SimpleNamespace(
             title="A revision of the exceptionally distinctive genus Example",
-            tags=(ArticleTag.LSIDArticle(inferred_lsid, PresenceStatus.inferred),),
+            tags=(ArticleTag.LSIDArticle(existing_lsid, PresenceStatus.absent),),
             numeric_year=Mock(return_value=2021),
             get_tags=_get_tags,
             get_all_pdf_pages=Mock(
@@ -257,14 +257,49 @@ def test_pdf_lsid_replaces_different_inferred_lsid() -> None:
         )
     )
 
+    assert issues == [
+        (
+            f"PDF-identified LSID {printed_lsid} conflicts with existing LSID(s): "
+            f"{existing_lsid} (absent)"
+        )
+    ]
+    assert article.tags == (
+        ArticleTag.LSIDArticle(existing_lsid, PresenceStatus.absent),
+    )
+
+
+def test_pdf_lsid_marks_same_inferred_lsid_as_present() -> None:
+    lsid = "AABBCCDD-1234-4ABC-9DEF-0123456789AB"
+    article = cast(
+        Article,
+        SimpleNamespace(
+            title="A revision of the exceptionally distinctive genus Example",
+            tags=(ArticleTag.LSIDArticle(lsid, PresenceStatus.inferred),),
+            numeric_year=Mock(return_value=2021),
+            get_tags=_get_tags,
+            get_all_pdf_pages=Mock(
+                return_value=[
+                    (
+                        "The LSID for this publication is: "
+                        f"urn:lsid:zoobank.org:pub:{lsid}"
+                    )
+                ]
+            ),
+        ),
+    )
+
+    issues = list(
+        article_lint.infer_lsid_from_names.linter(
+            article, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
     assert len(issues) == 1
     issue = issues[0]
     assert isinstance(issue, LintIssue)
     assert issue.fix is not None
     issue.fix.apply()
-    assert article.tags == (
-        ArticleTag.LSIDArticle(printed_lsid, PresenceStatus.present),
-    )
+    assert article.tags == (ArticleTag.LSIDArticle(lsid, PresenceStatus.present),)
 
 
 def test_infer_lsid_does_not_read_pdf_when_present() -> None:

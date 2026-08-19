@@ -547,6 +547,7 @@ class Article(BaseModel):
             "edit_item_file": self.edit_item_file,
             "open_item_file": self.open_item_file,
             "auto_download_item_file": self.auto_download_item_file,
+            "burst": self.burst,
         }
 
     def ce_edit(self) -> None:
@@ -1028,6 +1029,20 @@ class Article(BaseModel):
         for part in path[1:]:
             out = out / part
         return out
+
+    def burst(self) -> None:
+        """Invoke the article burst workflow for this file's name in the burst folder."""
+        options = config.get_options()
+        full_path = self.get_path()
+        if not full_path.exists():
+            print(f"File does not exist: {full_path}")
+            return
+
+        from .check import LsFile, burst
+
+        ls = LsFile(options.library_path / self.relative_path(), self.name)
+        # For ItemFiles, do not archive/move the original file after bursting.
+        burst(ls, archive_original=False)
 
     def openf(self, place: str = "catalog") -> None:
         if self.kind not in (ArticleKind.electronic, ArticleKind.alternative_version):

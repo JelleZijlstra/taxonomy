@@ -192,6 +192,20 @@ validates the database, CitationGroup, existing library folder, staged PDF, and 
 destination. Explicit Article metadata overrides CrossRef. The user must authorize
 `--apply`; generators and skills must not apply the row themselves.
 
+### ItemFile actions, schema version 1
+
+- `create_item_file`: create one ItemFile for an existing CitationGroup and install a
+  staged PDF in the configured ItemFile directory without imposing Article filename
+  conventions.
+
+The action owns a checksum- and size-guarded file move, so do not combine generic
+`create_object` with an unguarded filesystem operation. Its `item_file` object contains
+`filename`, an existing `citation_group` ID/name snapshot, optional scalar `fields`, and
+serialized `tags`. Its `file` object contains a normalized `source_path` relative to
+`new_path`, `sha256`, and `size`. Planning validates both source and destination and is
+restart-safe if the file installation or database creation completed first. The user
+must authorize `--apply`; generators and skills must not apply the row themselves.
+
 ### Location actions, schema version 1
 
 - `edit_location`: atomically change multiple Location fields and/or tags.

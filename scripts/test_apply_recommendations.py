@@ -12,6 +12,7 @@ from scripts import apply_recommendations
 from taxonomy import getinput
 from taxonomy.applicator import article as article_recommendations
 from taxonomy.applicator import generic as generic_recommendations
+from taxonomy.applicator import item_file as item_file_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
 from taxonomy.applicator.proposals import ProposedModel
@@ -95,6 +96,27 @@ def _article_row() -> dict[str, object]:
     }
 
 
+def _item_file_row() -> dict[str, object]:
+    return {
+        "schema_version": 1,
+        "action": "create_item_file",
+        "confidence": "high",
+        "reason": "The title page identifies the complete source item.",
+        "evidence": [{"kind": "title_page", "text": "Volume 12."}],
+        "item_file": {
+            "filename": "raw volume.pdf",
+            "citation_group": {"id": 12, "name": "Journal of Mollusks"},
+            "fields": {"volume": "12"},
+            "tags": [],
+        },
+        "file": {
+            "source_path": "Burst/Old/raw volume.pdf",
+            "sha256": "0" * 64,
+            "size": 123,
+        },
+    }
+
+
 def _write(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
@@ -130,6 +152,23 @@ def test_article_static_review_does_not_plan_or_access_files(
     output = capsys.readouterr().out
     assert "ARTICLE RECOMMENDATIONS" in output
     assert "Endodontidae.pdf" in output
+
+
+def test_item_file_static_review_does_not_plan_or_access_files(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_item_file_row()])
+
+    recommendations = apply_recommendations.read_recommendations(path)
+    apply_recommendations.print_review(recommendations)
+
+    assert isinstance(
+        recommendations.item_file_rows[0], item_file_recommendations.Recommendation
+    )
+    output = capsys.readouterr().out
+    assert "ITEM FILE RECOMMENDATIONS" in output
+    assert "raw volume.pdf" in output
 
 
 def test_dispatcher_allows_rename_of_location_merge_target() -> None:

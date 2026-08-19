@@ -206,6 +206,7 @@ class CountryInfo:
     realms: set[str]
     code: str | None = None
     containing_code: str | None = None
+    local_region_names: set[str] = field(default_factory=set)
 
     def __post_init__(self) -> None:
         if (
@@ -430,6 +431,7 @@ COUNTRY_LIST = [
         realms={"Neotropic"},
         code=None,
         containing_code="EC",
+        local_region_names={"Galápagos Province"},
     ),
     CountryInfo("Gambia", continents={"Africa"}, realms={"Afrotropic"}, code="GM"),
     CountryInfo("Georgia", continents={"Asia"}, realms={"Palearctic"}, code="GE"),
@@ -791,6 +793,12 @@ COUNTRY_LIST = [
     CountryInfo("NA", continents={"NA"}, realms={"NA"}, code=None),
 ]
 COUNTRIES = {c.name: c for c in COUNTRY_LIST}
+MDD_COUNTRY_BY_REGION_NAME = {country.name: country.name for country in COUNTRY_LIST}
+for country in COUNTRY_LIST:
+    for local_region_name in country.local_region_names:
+        if local_region_name in MDD_COUNTRY_BY_REGION_NAME:
+            raise ValueError(f"duplicate MDD Region name {local_region_name!r}")
+        MDD_COUNTRY_BY_REGION_NAME[local_region_name] = country.name
 
 if PERMISSIVE_RANGES:
     COUNTRIES["Bhutan"].realms.add("Palearctic")
@@ -1126,8 +1134,8 @@ DISTRIBUTION_PROBLEM_COLUMNS = [
 
 def _country_for_location(location: Any) -> str | None:
     for region in itertools.chain([location.region], location.region.all_parents()):
-        if region.name in COUNTRIES:
-            return region.name
+        if country := MDD_COUNTRY_BY_REGION_NAME.get(region.name):
+            return country
     return None
 
 

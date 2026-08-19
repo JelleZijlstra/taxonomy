@@ -13,6 +13,7 @@ Possible ones to add:
 """
 
 import collections
+import csv
 import datetime
 import functools
 import gc
@@ -158,6 +159,56 @@ def generator_command(fn: Callable[..., Iterable[T]]) -> Callable[..., list[T]]:
 
 
 # Utilities
+
+
+_MISSING_ORIGINAL_CITATION_COLUMNS = (
+    "original_name",
+    "authority",
+    "year",
+    "page_described",
+    "verbatim_citation",
+    "citation_group",
+    "authority_page_links",
+)
+
+
+def _missing_original_citation_row(name: Name) -> dict[str, str]:
+    authority_page_links = " | ".join(
+        tag.url for tag in name.get_tags(name.type_tags, TypeTag.AuthorityPageLink)
+    )
+    return {
+        "original_name": name.original_name or "",
+        "authority": name.taxonomic_authority(),
+        "year": name.year or "",
+        "page_described": name.page_described or "",
+        "verbatim_citation": name.verbatim_citation or "",
+        "citation_group": name.citation_group.name if name.citation_group else "",
+        "authority_page_links": authority_page_links,
+    }
+
+
+@command
+def export_missing_original_citations(taxon: Taxon, filename: str) -> None:
+    """Export names in ``taxon`` that still require an original citation.
+
+    Informal and spurious names are omitted because an original citation is not a
+    required field for them. Authority-page links are included as leads to the
+    original publication; ``url`` links to the Name record in Hesperomys.
+    """
+    names = models.name.name.get_ordered_names(
+        name
+        for name in taxon.all_names()
+        if name.original_citation is None
+        and "original_citation" in name.get_required_fields()
+    )
+    with Path(filename).open("w", encoding="utf-8", newline="") as file:
+        writer = csv.DictWriter(
+            file, fieldnames=_MISSING_ORIGINAL_CITATION_COLUMNS, lineterminator="\n"
+        )
+        writer.writeheader()
+        for name in names:
+            writer.writerow(_missing_original_citation_row(name))
+    print(f"Exported {len(names)} names to {filename}")
 
 
 @command
