@@ -1356,13 +1356,18 @@ class Article(BaseModel):
         else:
             return None
 
-    def concise_citation(self) -> str:
+    def concise_author_year(self) -> tuple[str, str]:
         authors_list = self.get_authors()
         if len(authors_list) > 2:
             authors = f"{authors_list[0].taxonomic_authority()} et al."
         else:
             authors, _ = self.taxonomic_authority()
-        return f"{authors} ({self.valid_numeric_year() or self.year})"
+        year = str(self.valid_numeric_year() or self.year or "")
+        return authors, year
+
+    def concise_citation(self) -> str:
+        authors, year = self.concise_author_year()
+        return f"{authors} ({year})"
 
     def concise_markdown_link(self) -> str:
         return f"[{self.concise_citation()}](/a/{self.id})"
@@ -1875,6 +1880,10 @@ class ArticleComment(BaseModel):
         SearchField(SearchFieldType.literal, "kind"),
         SearchField(SearchFieldType.text, "text", highlight_enabled=True),
     ]
+
+    def get_page_title(self) -> str:
+        """Return a public title without exposing the Article's internal filename."""
+        return f"Comment on {self.article.get_page_title()}"
 
     def get_search_dicts(self) -> list[dict[str, Any]]:
         return [{"kind": self.kind.name, "text": self.text}]

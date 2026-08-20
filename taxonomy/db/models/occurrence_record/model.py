@@ -81,6 +81,15 @@ class OccurrenceRecord(BaseModel):
     def __str__(self) -> str:
         return self.__repr__()
 
+    def get_page_title(self) -> str:
+        """Return a public title without exposing the source Article's filename."""
+        taxon = self.taxon or self.classification_entry.name
+        location = self.location or self.locality_text
+        authors, year = self.classification_entry.article.concise_author_year()
+        citation = ", ".join(piece for piece in (authors, year) if piece)
+        suffix = f" ({citation})" if citation else ""
+        return f"{taxon} at {location}{suffix}"
+
     def get_page(self) -> str | None:
         return self.page or self.classification_entry.page
 

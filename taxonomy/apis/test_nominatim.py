@@ -131,6 +131,35 @@ def test_geocodejson_search_returns_normalized_administrative_hierarchy(
     }
 
 
+def test_geocodejson_structured_search_uses_separate_fields(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    get_data = Mock(return_value=json.dumps({"features": []}))
+    monkeypatch.setattr(nominatim, "get_nominatim_data", get_data)
+
+    assert (
+        nominatim.search_geocodejson_structured(
+            state="Amazonas", country="Brazil", limit=10
+        )
+        == []
+    )
+
+    url = get_data.call_args.args[0]
+    assert parse_qs(urlparse(url).query) == {
+        "state": ["Amazonas"],
+        "country": ["Brazil"],
+        "format": ["geocodejson"],
+        "addressdetails": ["1"],
+        "limit": ["10"],
+        "accept-language": ["en"],
+    }
+
+
+def test_geocodejson_structured_search_requires_a_field() -> None:
+    with pytest.raises(ValueError, match="at least one"):
+        nominatim.search_geocodejson_structured()
+
+
 def test_lookup_uses_stable_osm_object_identifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -160,6 +189,62 @@ def test_lookup_uses_stable_osm_object_identifier(
     url = get_data.call_args.args[0]
     assert urlparse(url).path == "/lookup"
     assert parse_qs(urlparse(url).query)["osm_ids"] == ["R1234"]
+
+
+def test_lookup_many_batches_and_returns_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[str] = []
+
+    def get_data(url: str) -> str:
+        calls.append(url)
+        references = parse_qs(urlparse(url).query)["osm_ids"][0].split(",")
+        return json.dumps(
+            [
+                {
+                    "lat": "0",
+                    "lon": "0",
+                    "name": f"Region {reference[1:]}",
+                    "display_name": f"Region {reference[1:]}, Example",
+                    "category": "boundary",
+                    "type": "administrative",
+                    "osm_type": "relation",
+                    "osm_id": int(reference[1:]),
+                    "address": {"country": "Example"},
+                    "namedetails": {
+                        "name": f"Region {reference[1:]}",
+                        "name:en": f"English {reference[1:]}",
+                    },
+                    "extratags": {"wikidata": f"Q{reference[1:]}"},
+                }
+                for reference in references
+            ]
+        )
+
+    monkeypatch.setattr(nominatim, "get_nominatim_data", get_data)
+    references = [("relation", osm_id) for osm_id in range(1, 52)]
+
+    results = nominatim.lookup_many(references)
+
+    assert len(calls) == 2
+    assert len(parse_qs(urlparse(calls[0]).query)["osm_ids"][0].split(",")) == 50
+    assert parse_qs(urlparse(calls[0]).query) == {
+        "osm_ids": [",".join(f"R{osm_id}" for osm_id in range(1, 51))],
+        "format": ["jsonv2"],
+        "addressdetails": ["1"],
+        "extratags": ["1"],
+        "namedetails": ["1"],
+        "accept-language": ["en"],
+    }
+    assert results[("relation", 51)].names["name:en"] == "English 51"
+    assert results[("relation", 51)].extra["wikidata"] == "Q51"
+
+
+def test_lookup_many_rejects_invalid_reference() -> None:
+    with pytest.raises(ValueError, match="unsupported OSM object types"):
+        nominatim.lookup_many([("area", 1)])
+    with pytest.raises(ValueError, match="must be positive"):
+        nominatim.lookup_many([("relation", 0)])
 
 
 def test_reverse_requests_administrative_address(
@@ -270,7 +355,9 @@ def test_uncached_requests_are_rate_limited(monkeypatch: pytest.MonkeyPatch) -> 
 
     sleep.assert_called_once_with(0.75)
     get.assert_called_once_with(
-        "https://nominatim.example/search", headers={"User-Agent": nominatim.UA}
+        "https://nominatim.example/search",
+        headers={"User-Agent": nominatim.UA},
+        timeout=nominatim.REQUEST_TIMEOUT,
     )
     response.raise_for_status.assert_called_once_with()
     assert nominatim._last_request_started == 11.0

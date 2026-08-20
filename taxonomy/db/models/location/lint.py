@@ -548,6 +548,19 @@ def add_ignore(location: Location, label: str, comment: str) -> None:
 LINT = Lint(Location, get_ignores, add_ignore)
 
 
+@LINT.add("empty_detail")
+def check_empty_detail(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
+    for field in ("location_detail", "age_detail"):
+        value = getattr(location, field)
+        if value is not None and value.strip().casefold() in ("", "none"):
+            yield field_issue(
+                f"field {field} contains an empty placeholder {value!r}; clear it",
+                location,
+                field,
+                None,
+            )
+
+
 @dataclass(frozen=True, slots=True)
 class _LinkedPLSSEvidence:
     description: plss.PLSSDescription

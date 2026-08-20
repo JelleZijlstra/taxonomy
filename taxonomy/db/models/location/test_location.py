@@ -554,6 +554,30 @@ def _mergeable_location(**kwargs: object) -> Location:
     return cast(Location, SimpleNamespace(**defaults))
 
 
+def test_location_detail_fields_are_nullable() -> None:
+    assert Location.location_detail.allow_none
+    assert Location.age_detail.allow_none
+    assert Location.location_detail.deserialize(None) is None
+    assert Location.age_detail.deserialize(None) is None
+
+
+def test_empty_detail_lint_clears_placeholders() -> None:
+    loc = _location_without_coordinates()
+    loc.location_detail = "None"  # type: ignore[assignment]
+    loc.age_detail = "  "  # type: ignore[assignment]
+
+    messages = list(location_lint.check_empty_detail(loc, LintConfig(autofix=False)))
+
+    assert len(messages) == 2
+    assert all("empty placeholder" in str(message) for message in messages)
+    assert loc.location_detail == "None"
+    assert loc.age_detail == "  "
+
+    assert list(location_lint.check_empty_detail(loc, LintConfig(autofix=True))) == []
+    assert loc.location_detail is None
+    assert loc.age_detail is None
+
+
 def test_merge_preserves_compatible_metadata() -> None:
     article = cast(Article, object())
     min_period = cast(Period, object())

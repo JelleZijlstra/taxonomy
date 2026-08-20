@@ -7,7 +7,13 @@ import pytest
 
 from taxonomy.apis import zoobank
 from taxonomy.db.constants import ArticleKind, ArticleType
-from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus, api_data
+from taxonomy.db.models.article import (
+    Article,
+    ArticleComment,
+    ArticleTag,
+    PresenceStatus,
+    api_data,
+)
 from taxonomy.db.models.article import lint as article_lint
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.citation_group import CitationGroup
@@ -25,6 +31,26 @@ def test_clear_zoobank_caches_is_adt_callback() -> None:
     callbacks = article.get_adt_callbacks()
 
     assert callbacks["clear_zoobank_caches"] == article.clear_zoobank_caches
+
+
+def test_article_comment_page_title_does_not_expose_filename() -> None:
+    comment = SimpleNamespace(
+        article=SimpleNamespace(get_page_title=lambda: "Allen (1914)")
+    )
+
+    assert ArticleComment.get_page_title(comment) == "Comment on Allen (1914)"  # type: ignore[arg-type]
+
+
+def test_concise_author_year_abbreviates_long_author_lists() -> None:
+    authors = [
+        SimpleNamespace(taxonomic_authority=lambda name=name: name)
+        for name in ("Sánchez-Vendizú", "Parada", "Teta")
+    ]
+    article = SimpleNamespace(
+        get_authors=lambda: authors, valid_numeric_year=lambda: 2026, year="2026"
+    )
+
+    assert Article.concise_author_year(article) == ("Sánchez-Vendizú et al.", "2026")  # type: ignore[arg-type]
 
 
 def test_title_lint_merges_adjacent_italics() -> None:

@@ -25,6 +25,47 @@ def test_call_sign_getter_uses_configured_field() -> None:
     assert Location.get_call_sign_getter() is Location.getter(Location.label_field)
 
 
+def test_public_page_titles_do_not_expose_article_filename() -> None:
+    class ArticleStub:
+        def __str__(self) -> str:
+            return "{Myotis moratellii Peru.pdf}"
+
+        def get_page_title(self) -> str:
+            return "Allen (1914)"
+
+        def concise_author_year(self) -> tuple[str, str]:
+            return "Allen", "1914"
+
+    article = ArticleStub()
+    entry = SimpleNamespace(
+        name="Myotis keaysi",
+        rank=SimpleNamespace(name="species"),
+        authority=None,
+        year=None,
+        article=article,
+        page="11",
+        id=317357,
+    )
+    entry._format_title = ClassificationEntry._format_title.__get__(entry)
+    entry.get_page_title = ClassificationEntry.get_page_title.__get__(entry)
+    record = SimpleNamespace(
+        taxon="Myotis keaysi",
+        location="Inca Mine",
+        locality_text="Inca Mine",
+        basis=SimpleNamespace(name="voucher"),
+        classification_entry=entry,
+    )
+
+    entry_title = ClassificationEntry.get_page_title(entry)  # type: ignore[arg-type]
+    record_title = OccurrenceRecord.get_page_title(record)  # type: ignore[arg-type]
+
+    assert "Myotis moratellii Peru.pdf" in ClassificationEntry.__str__(entry)  # type: ignore[arg-type]
+    assert entry_title == "Myotis keaysi (species) (Allen (1914): 11) (#317357)"
+    assert record_title == "Myotis keaysi at Inca Mine (Allen, 1914)"
+    assert ".pdf" not in entry_title
+    assert ".pdf" not in record_title
+
+
 @pytest.mark.parametrize(
     "status",
     [

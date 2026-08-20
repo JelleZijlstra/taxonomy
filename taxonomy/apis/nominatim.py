@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -15,6 +16,7 @@ BASE_URL = os.environ.get(
     "TAXONOMY_NOMINATIM_URL", "https://nominatim.openstreetmap.org"
 ).rstrip("/")
 MIN_REQUEST_INTERVAL = 1.0
+REQUEST_TIMEOUT = 30.0
 
 _request_lock = threading.Lock()
 _last_request_started: float | None = None
@@ -32,6 +34,8 @@ class SearchResult:
     osm_type: str | None = None
     bounding_box: tuple[str, str, str, str] | None = None
     osm_id: int | None = None
+    names: dict[str, str] = field(default_factory=dict)
+    extra: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -93,11 +97,35 @@ def search(query: str, *, limit: int = 5) -> list[SearchResult]:
 
 def search_geocodejson(query: str, *, limit: int = 5) -> list[GeocodeResult]:
     """Search for places using Nominatim's normalized GeocodeJSON schema."""
+    return _search_geocodejson({"q": query}, limit=limit)
+
+
+def search_geocodejson_structured(
+    *,
+    country: str | None = None,
+    state: str | None = None,
+    county: str | None = None,
+    limit: int = 5,
+) -> list[GeocodeResult]:
+    """Search administrative fields using Nominatim's structured search."""
+    fields = {
+        key: value
+        for key, value in {"country": country, "state": state, "county": county}.items()
+        if value is not None
+    }
+    if not fields:
+        raise ValueError("at least one structured search field is required")
+    return _search_geocodejson(fields, limit=limit)
+
+
+def _search_geocodejson(
+    search_params: dict[str, str], *, limit: int
+) -> list[GeocodeResult]:
     url = str(
         httpx.URL(f"{BASE_URL}/search").copy_with(
             params=httpx.QueryParams(
                 {
-                    "q": query,
+                    **search_params,
                     "format": "geocodejson",
                     "addressdetails": "1",
                     "limit": str(limit),
@@ -144,6 +172,58 @@ def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
         ),
         None,
     )
+
+
+def lookup_many(
+    osm_references: Iterable[tuple[str, int]],
+) -> dict[tuple[str, int], SearchResult]:
+    """Look up OSM objects in batches supported by Nominatim's lookup API."""
+    references = tuple(dict.fromkeys(osm_references))
+    invalid_types = sorted(
+        {
+            osm_type
+            for osm_type, _ in references
+            if osm_type not in {"node", "way", "relation"}
+        }
+    )
+    if invalid_types:
+        raise ValueError(f"unsupported OSM object types: {invalid_types}")
+    if any(osm_id <= 0 for _, osm_id in references):
+        raise ValueError("OSM object identifiers must be positive")
+
+    type_codes = {"node": "N", "way": "W", "relation": "R"}
+    output: dict[tuple[str, int], SearchResult] = {}
+    for start in range(0, len(references), 50):
+        chunk = references[start : start + 50]
+        url = str(
+            httpx.URL(f"{BASE_URL}/lookup").copy_with(
+                params=httpx.QueryParams(
+                    {
+                        "osm_ids": ",".join(
+                            f"{type_codes[osm_type]}{osm_id}"
+                            for osm_type, osm_id in chunk
+                        ),
+                        "format": "jsonv2",
+                        "addressdetails": "1",
+                        "extratags": "1",
+                        "namedetails": "1",
+                        "accept-language": "en",
+                    }
+                )
+            )
+        )
+        data = json.loads(get_nominatim_data(url))
+        if not isinstance(data, list):
+            raise TypeError(data)
+        for row in data:
+            result = _parse_search_result(row)
+            if result.osm_type is None or result.osm_id is None:
+                continue
+            key = (result.osm_type, result.osm_id)
+            if key in output:
+                raise ValueError(f"Nominatim returned duplicate OSM object {key}")
+            output[key] = result
+    return output
 
 
 def reverse(point: coordinates.Point, *, zoom: int = 5) -> ReverseResult | None:
@@ -287,6 +367,8 @@ def _parse_search_result(row: Any) -> SearchResult:
             osm_id = int(raw_osm_id)
         else:
             raise TypeError
+        names = _parse_string_mapping(row.get("namedetails", {}))
+        extra = _parse_string_mapping(row.get("extratags", {}))
         return SearchResult(
             latitude=str(row["lat"]),
             longitude=str(row["lon"]),
@@ -298,9 +380,17 @@ def _parse_search_result(row: Any) -> SearchResult:
             osm_type=raw_osm_type,
             bounding_box=bounding_box,
             osm_id=osm_id,
+            names=names,
+            extra=extra,
         )
     except (KeyError, TypeError) as exc:
         raise ValueError(row) from exc
+
+
+def _parse_string_mapping(value: Any) -> dict[str, str]:
+    if not isinstance(value, dict):
+        raise TypeError
+    return {str(key): item for key, item in value.items() if isinstance(item, str)}
 
 
 def get_openstreetmap_country(point: coordinates.Point) -> str | None:
@@ -321,7 +411,7 @@ def get_nominatim_data(url: str) -> str:
                 time.sleep(delay)
                 now = time.monotonic()
         _last_request_started = now
-        response = httpx.get(url, headers={"User-Agent": UA})
+        response = httpx.get(url, headers={"User-Agent": UA}, timeout=REQUEST_TIMEOUT)
         response.raise_for_status()
         return response.text
 
@@ -336,4 +426,20 @@ HESP_COUNTRY_TO_OSM_COUNTRY = {
     "New Caledonia": "France",
     "French Guiana": "France",
     "Czech Republic": "Czechia",
+}
+
+# Names used to find the Region's own OSM object. This is deliberately narrower
+# than HESP_COUNTRY_TO_OSM_COUNTRY, which describes the sovereign country that
+# Nominatim returns in an address. In particular, French overseas territories
+# must be searched by their own names rather than by "France".
+HESP_REGION_TO_OSM_NAME = {
+    "Bouvet": "Bouvet Island",
+    "Cote d'Ivoire": "Ivory Coast",
+    "Curaçao": "Curacao",
+    "Czech Republic": "Czechia",
+    "Faroe": "Faroe Islands",
+    "Gambia": "The Gambia",
+    "Micronesia": "Federated States of Micronesia",
+    "Northern Marianas": "Northern Mariana Islands",
+    "Republic of the Congo": "Congo-Brazzaville",
 }

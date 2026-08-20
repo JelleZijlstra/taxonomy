@@ -28,8 +28,8 @@ from graphene.utils.str_converters import to_snake_case
 
 from taxonomy.adt import ADT, unwrap_type
 from taxonomy.config import get_options
-from taxonomy.db import models
-from taxonomy.db.constants import CommentKind
+from taxonomy.db import coordinate_lint, models
+from taxonomy.db.constants import CommentKind, RegionKind
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models import (
     Article,
@@ -39,6 +39,7 @@ from taxonomy.db.models import (
     NameComment,
     Period,
     Person,
+    Region,
     Taxon,
 )
 from taxonomy.db.models.base import ADTField, BaseModel, TextField, TextOrNullField
@@ -109,6 +110,21 @@ def get_adt_member_graphql_name(model_cls: type[BaseModel], adt: object) -> str:
     return graphql_name
 
 
+def get_openstreetmap_url(latitude: str | None, longitude: str | None) -> str | None:
+    if latitude is None or longitude is None:
+        return None
+    extent = coordinate_lint.make_extent(latitude, longitude)
+    if extent is None:
+        return None
+    return extent.openstreetmap_url
+
+
+def coordinate_url_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
+    return get_openstreetmap_url(
+        getattr(parent, "latitude", None), getattr(parent, "longitude", None)
+    )
+
+
 @cache
 def build_adt_member(
     model_cls: type[BaseModel], adt_cls: type[ADT], adt: type[ADT] | ADT
@@ -120,6 +136,10 @@ def build_adt_member(
         )
         if graphene_field is not None:
             namespace[name] = graphene_field
+    if {"latitude", "longitude"} <= adt._attributes.keys():
+        namespace["openstreetmap_url"] = Field(
+            String, required=False, resolver=coordinate_url_resolver
+        )
 
     class Meta:
         interfaces = (build_adt_interface(adt_cls),)
@@ -489,7 +509,48 @@ def make_connection(model_cls: type[BaseModel]) -> Callable[[], type[Connection]
     return lambda: build_connection(build_object_type_from_model(model_cls))
 
 
+def get_region_path(region: Region) -> list[Region]:
+    """Return the enclosing geographic regions, ending at the country."""
+    path = []
+    current: Region | None = region
+    while current is not None and current.kind is not RegionKind.planet:
+        path.append(current)
+        if current.kind is RegionKind.country:
+            break
+        current = current.parent
+    return path
+
+
+def location_region_path_resolver(
+    parent: ObjectType, info: ResolveInfo
+) -> list[ObjectType]:
+    location = get_model(Location, parent, info)
+    object_type = build_object_type_from_model(Region)
+    cache = info.context["request"]
+    regions = get_region_path(location.region)
+    for region in regions:
+        cache[(Region.call_sign, region.id)] = region
+    return [object_type(id=region.id, oid=region.id) for region in regions]
+
+
+def location_coordinate_url_resolver(
+    parent: ObjectType, info: ResolveInfo
+) -> str | None:
+    location = get_model(Location, parent, info)
+    return get_openstreetmap_url(location.latitude, location.longitude)
+
+
 CUSTOM_FIELDS = {
+    Location: {
+        "region_path": List(
+            NonNull(lambda: build_object_type_from_model(Region)),
+            required=True,
+            resolver=location_region_path_resolver,
+        ),
+        "openstreetmap_url": Field(
+            String, required=False, resolver=location_coordinate_url_resolver
+        ),
+    },
     Period: {
         "locations": ConnectionField(
             make_connection(Location), resolver=locations_resolver

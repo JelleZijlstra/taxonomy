@@ -15,7 +15,7 @@ from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import coordinate_lint, helpers, models
 from taxonomy.db.models.article import Article
-from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextField
+from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.period import Period, period_sort_key
 from taxonomy.db.models.region import Region
@@ -59,7 +59,7 @@ class _CoordinateChoice:
 
 
 def _is_empty_text(value: str | None) -> bool:
-    return value is None or not value.strip() or value == "None"
+    return value is None or value.strip().casefold() in ("", "none")
 
 
 def _merge_text_field(source: Location, target: Location, field: str) -> None:
@@ -182,8 +182,8 @@ class Location(BaseModel):
     comment = Field[str | None]()
     latitude = Field[str | None]()
     longitude = Field[str | None]()
-    location_detail = TextField()
-    age_detail = TextField()
+    location_detail = TextOrNullField()
+    age_detail = TextOrNullField()
     source = Field[Article | None]("source_id", related_name="locations")
     deleted = Field[LocationStatus]()
     tags = ADTField["models.tags.LocationTag"](is_ordered=False)

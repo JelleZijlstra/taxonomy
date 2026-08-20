@@ -327,19 +327,29 @@ class ClassificationEntry(BaseModel):
                     return None
         return cls.create(**values)
 
+    def _format_title(self, article_title: str) -> str:
+        parts = [f"{self.name} ({self.rank.name})"]
+        if self.authority is not None:
+            parts.append(f" {self.authority}")
+            if self.year is not None:
+                parts.append(f", {self.year}")
+        parts.append(f" ({article_title}")
+        if self.page is not None:
+            parts.append(f": {self.page}")
+        parts.append(")")
+        parts.append(f" (#{self.id})")
+        return "".join(parts)
+
+    def get_page_title(self) -> str:
+        """Return a public title without exposing the Article's internal filename."""
+        try:
+            return self._format_title(self.article.get_page_title())
+        except DoesNotExist:
+            return f"<invalid CE #{self.id}>"
+
     def __str__(self) -> str:
         try:
-            parts = [f"{self.name} ({self.rank.name})"]
-            if self.authority is not None:
-                parts.append(f" {self.authority}")
-                if self.year is not None:
-                    parts.append(f", {self.year}")
-            parts.append(f" ({self.article}")
-            if self.page is not None:
-                parts.append(f": {self.page}")
-            parts.append(")")
-            parts.append(f" (#{self.id})")
-            return "".join(parts)
+            return self._format_title(str(self.article))
         except DoesNotExist:
             return f"<invalid CE #{self.id}>"
 
