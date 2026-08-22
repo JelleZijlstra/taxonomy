@@ -21,6 +21,7 @@ def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> No
                     "display_name": "Nicasio, Marin County, California, United States",
                     "category": "place",
                     "type": "hamlet",
+                    "addresstype": "village",
                     "osm_type": "relation",
                     "osm_id": 1234,
                     "boundingbox": [
@@ -51,6 +52,7 @@ def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> No
             display_name="Nicasio, Marin County, California, United States",
             category="place",
             feature_type="hamlet",
+            address_type="village",
             osm_type="relation",
             osm_id=1234,
             bounding_box=("38.0415885", "38.0815885", "-122.7185975", "-122.6785975"),
@@ -215,7 +217,11 @@ def test_lookup_many_batches_and_returns_metadata(
                         "name": f"Region {reference[1:]}",
                         "name:en": f"English {reference[1:]}",
                     },
-                    "extratags": {"wikidata": f"Q{reference[1:]}"},
+                    "extratags": (
+                        None
+                        if reference == "R51"
+                        else {"wikidata": f"Q{reference[1:]}"}
+                    ),
                 }
                 for reference in references
             ]
@@ -237,7 +243,8 @@ def test_lookup_many_batches_and_returns_metadata(
         "accept-language": ["en"],
     }
     assert results[("relation", 51)].names["name:en"] == "English 51"
-    assert results[("relation", 51)].extra["wikidata"] == "Q51"
+    assert results[("relation", 50)].extra["wikidata"] == "Q50"
+    assert results[("relation", 51)].extra == {}
 
 
 def test_lookup_many_rejects_invalid_reference() -> None:
@@ -245,6 +252,65 @@ def test_lookup_many_rejects_invalid_reference() -> None:
         nominatim.lookup_many([("area", 1)])
     with pytest.raises(ValueError, match="must be positive"):
         nominatim.lookup_many([("relation", 0)])
+
+
+def test_lookup_boundary_uses_cached_hole_aware_geometry_offline(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cached = Mock(
+        return_value=json.dumps(
+            [
+                {
+                    "name": "Example",
+                    "display_name": "Example, Country",
+                    "category": "boundary",
+                    "type": "administrative",
+                    "osm_type": "relation",
+                    "osm_id": 123,
+                    "namedetails": {"name": "Example", "name:en": "Example"},
+                    "geojson": {
+                        "type": "Polygon",
+                        "coordinates": [
+                            [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]],
+                            [[4, 4], [6, 4], [6, 6], [4, 6], [4, 4]],
+                        ],
+                    },
+                }
+            ]
+        )
+    )
+    fetch = Mock()
+    monkeypatch.setattr(nominatim, "get_cached_value", cached)
+    monkeypatch.setattr(nominatim, "get_nominatim_data", fetch)
+
+    result = nominatim.lookup_boundary("relation", 123, allow_network=False)
+
+    assert result is not None
+    assert result.geometry is not None
+    assert coordinates.is_in_geometry(coordinates.Point(2, 2), result.geometry)
+    assert not coordinates.is_in_geometry(coordinates.Point(5, 5), result.geometry)
+    fetch.assert_not_called()
+    url = cached.call_args.args[1]
+    assert parse_qs(urlparse(url).query) == {
+        "osm_ids": ["R123"],
+        "format": ["jsonv2"],
+        "addressdetails": ["0"],
+        "namedetails": ["1"],
+        "polygon_geojson": ["1"],
+        "polygon_threshold": ["0.001"],
+        "accept-language": ["en"],
+    }
+
+
+def test_lookup_boundary_does_not_fetch_on_offline_cache_miss(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fetch = Mock()
+    monkeypatch.setattr(nominatim, "get_cached_value", Mock(return_value=None))
+    monkeypatch.setattr(nominatim, "get_nominatim_data", fetch)
+
+    assert nominatim.lookup_boundary("relation", 123, allow_network=False) is None
+    fetch.assert_not_called()
 
 
 def test_reverse_requests_administrative_address(
@@ -259,6 +325,8 @@ def test_reverse_requests_administrative_address(
                         "type": "Feature",
                         "properties": {
                             "geocoding": {
+                                "osm_type": "relation",
+                                "osm_id": "1234",
                                 "label": "Carson City, Nevada, United States",
                                 "name": "Carson City",
                                 "type": "city",
@@ -287,6 +355,8 @@ def test_reverse_requests_administrative_address(
             "country_code": "us",
         },
         administrative={"level6": "Carson City", "level4": "Nevada"},
+        osm_type="relation",
+        osm_id=1234,
     )
     url = get_data.call_args.args[0]
     assert urlparse(url).path == "/reverse"
@@ -342,22 +412,44 @@ def test_get_openstreetmap_country_uses_geocodejson_reverse(
 
 
 def test_uncached_requests_are_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:
-    response = Mock(text="response")
+    response = Mock(text="response", status_code=200)
     get = Mock(return_value=response)
     sleep = Mock()
     monkeypatch.setattr(nominatim, "_last_request_started", 10.0)
-    monkeypatch.setattr(time, "monotonic", Mock(side_effect=[10.25, 11.0]))
+    monkeypatch.setattr(time, "monotonic", Mock(side_effect=[10.25, 12.0]))
     monkeypatch.setattr(time, "sleep", sleep)
     monkeypatch.setattr(httpx, "get", get)
 
     raw_get = nominatim.get_nominatim_data.__wrapped__  # type: ignore[attr-defined]
     assert raw_get("https://nominatim.example/search") == "response"
 
-    sleep.assert_called_once_with(0.75)
+    sleep.assert_called_once_with(1.75)
     get.assert_called_once_with(
         "https://nominatim.example/search",
         headers={"User-Agent": nominatim.UA},
         timeout=nominatim.REQUEST_TIMEOUT,
     )
     response.raise_for_status.assert_called_once_with()
-    assert nominatim._last_request_started == 11.0
+    assert nominatim._last_request_started == 12.0
+
+
+def test_uncached_request_retries_429_after_server_delay(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    limited = Mock(status_code=429, headers={"Retry-After": "12"})
+    response = Mock(text="response", status_code=200)
+    get = Mock(side_effect=[limited, response])
+    sleep = Mock()
+    monkeypatch.setattr(nominatim, "_last_request_started", None)
+    monkeypatch.setattr(time, "monotonic", Mock(side_effect=[10.0, 22.0]))
+    monkeypatch.setattr(time, "sleep", sleep)
+    monkeypatch.setattr(httpx, "get", get)
+
+    raw_get = nominatim.get_nominatim_data.__wrapped__  # type: ignore[attr-defined]
+    assert raw_get("https://nominatim.example/lookup") == "response"
+
+    sleep.assert_called_once_with(12.0)
+    assert get.call_count == 2
+    limited.raise_for_status.assert_not_called()
+    response.raise_for_status.assert_called_once_with()
+    assert nominatim._last_request_started == 22.0

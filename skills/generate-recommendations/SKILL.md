@@ -136,6 +136,20 @@ lint enforces that they match the canonical label, and `Collection.merge()` does
 rewrite identifiers. If the target itself needs renaming or other metadata changes, put
 a guarded `update_object` immediately before the merge.
 
+Schema-version 2 `merge_region` moves ordinary database references from one existing
+Region to another and converts the source into a redirect whose `parent` is the target.
+The planner rejects deleted sources, invalid targets, redirects to a different target,
+and descendant cycles. A guarded `update_object` may rename or retag the target earlier
+in the same manifest; use the target's proposed label in `merge_region`. Region tags on
+the source are cleared because they describe the obsolete geographic identity.
+
+Schema-version 2 `delete_region` marks one unreferenced existing Region as deleted and
+clears its tags while retaining its database identity. Planning rejects redirects and
+any Region that has a valid ordinary reference; execution repeats the same check through
+`Region.remove()`. Its nonempty `guard` mapping snapshots identifying fields such as
+kind, parent, comment, and tags before deletion. Use `merge_region` instead when the
+obsolete name denotes the same geographic entity as a valid canonical Region.
+
 Existing-object mutation actions use:
 
 ```json

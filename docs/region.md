@@ -28,3 +28,6 @@ The `MustHavePreciseTypeLocality` Region tag marks a Region as a migration scope
 which Names should not use a same-name, Region-wide Location as their type locality.
 This requirement is inherited by child Regions. Names whose locality evidence cannot
 support a more precise placement may be exempted with `TypeTag.ImpreciseLocality`.
+
+The `OpenStreetMap` Region tag links the Region to a stable OSM node, way, or relation
+identifier and records its category.

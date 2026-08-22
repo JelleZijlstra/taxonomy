@@ -210,27 +210,6 @@ _REGION_KIND_DESIGNATORS = {
 }
 _ADMINISTRATIVE_DESIGNATORS = frozenset(_REGION_KIND_DESIGNATORS.values())
 _OSM_QUERY_OMITTED_DESIGNATORS = {"Department"}
-# Context-specific equivalents observed in current English-language Nominatim
-# results. The key is (taxonomy Region name, country), and the first value is
-# the preferred spelling for forward queries. Keep only names for the same
-# administrative entity here; geographic mismatches must remain lint issues.
-_OSM_REGION_NAME_TRANSLATIONS = {
-    ("Alpes-Maritimes", "France"): ("Maritime Alps",),
-    ("Basque Country", "Spain"): ("Autonomous Community of the Basque Country",),
-    ("Bougainville Region", "Papua New Guinea"): ("Autonomous Region of Bougainville",),
-    ("Castilla-La Mancha", "Spain"): ("Castile-La Mancha",),
-    ("Distrito Federal (Brazil)", "Brazil"): ("Federal District",),
-    ("Distrito Federal (Mexico)", "Mexico"): ("Mexico City",),
-    ("Graubünden", "Switzerland"): ("Grisons",),
-    ("Haute-Corse", "France"): ("Upper Corsica",),
-    ("Haute-Savoie", "France"): ("Upper Savoy",),
-    ("La Guaira", "Venezuela"): ("Vargas State",),
-    ("Madrid", "Spain"): ("Community of Madrid", "Autonomous Community of Madrid"),
-    ("North Aegean", "Greece"): ("Northern Aegean",),
-    ("North Ossetia", "Russia"): ("Republic of North Ossetia – Alania",),
-    ("Orissa", "India"): ("Odisha",),
-    ("Tibet", "China"): ("Xizang",),
-}
 _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS = (
     "state",
     "province",
@@ -1110,6 +1089,48 @@ def check_fully_divided_region(location: Location, cfg: LintConfig) -> Iterable[
     )
 
 
+@LINT.add("coordinate_child_region", required_resources={LintResource.SLOW})
+def check_coordinate_child_region(location: Location, cfg: LintConfig) -> Iterable[str]:
+    if (
+        location.latitude is None
+        or location.longitude is None
+        or location.is_general()
+        or location.has_tag(LocationTag.Unplaced)
+    ):
+        return
+    region = location.region
+    if not region.has_children() or region.has_tag(RegionTag.IncompletelyDivided):
+        return
+    extent = coordinate_lint.make_extent(location.latitude, location.longitude)
+    if extent is None:
+        return
+    match = _get_unique_containing_child_region(extent, region)
+    if match is not None:
+        yield (
+            f"coordinates fall uniquely within child Region {match.name!r} "
+            f"of fully divided Region {region.name!r}"
+        )
+
+
+def _get_unique_containing_child_region(
+    extent: coordinate_lint.CoordinateExtent, region: Region
+) -> Region | None:
+    matches = []
+    for child in region.sorted_children():
+        boundary = coordinate_lint.get_direct_region_boundary(
+            child, allow_network=False
+        )
+        if boundary is None:
+            # A unique match among only some children is not sufficient evidence.
+            return None
+        assert boundary.result.geometry is not None
+        if coordinate_lint.extent_is_in_geometry(
+            extent, boundary.result.geometry, require_full_containment=True
+        ):
+            matches.append(child)
+    return matches[0] if len(matches) == 1 else None
+
+
 def _locality_similarity_key(name: str) -> tuple[str, str | None]:
     name = re.sub(r"\s*\([^()]*\)", "", name)
     words = _normalized_locality_words(name)
@@ -1887,12 +1908,6 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[LintResul
         return
     if not cfg.is_resource_available(LintResource.SLOW):
         return
-    yield from coordinate_lint.check_extent_in_region(
-        extent,
-        location.region,
-        require_full_containment=not is_general and not is_reviewed_unplaced,
-        allow_network=cfg.is_resource_available(LintResource.NETWORK),
-    )
     if (
         extent.point is not None
         or is_general
@@ -2251,24 +2266,21 @@ def _get_geonames_region_issues(
         # The GeoNames country code was already matched before this point.
         return ()
     if not expected_region_codes:
-        country = next(
-            (
-                region
-                for region in (location.region, *location.region.all_parents())
-                if region.kind is RegionKind.country
-            ),
-            None,
+        boundary = coordinate_lint.get_region_boundary(
+            location.region, allow_network=True
         )
-        detailed_region_and_path = (
-            None
-            if country is None
-            else coordinate_lint._get_detailed_region_path(location.region, country)
-        )
-        if detailed_region_and_path is None or detailed_region_and_path[0] == country:
+        if boundary is None or expected_region not in (
+            boundary.region,
+            *boundary.region.all_parents(),
+        ):
             return (
-                f"cannot validate assigned Region {expected_region.name!r}: no matching GeoNames administrative unit or detailed region polygon",
+                f"cannot validate assigned Region {expected_region.name!r}: no matching GeoNames administrative unit or linked OSM boundary at that level or below",
             )
-        return tuple(coordinate_lint.check_extent_in_region(extent, location.region))
+        return tuple(
+            coordinate_lint.check_extent_in_region(
+                extent, location.region, allow_network=True
+            )
+        )
 
     record_codes = _get_record_admin_code_prefixes(record)
     if not record_codes.isdisjoint(expected_region_codes):
@@ -2451,7 +2463,9 @@ def check_geonames_coordinates(
             return
         result, (latitude, longitude, extent) = nominatim_candidates[0]
         region_issues = list(
-            coordinate_lint.check_extent_in_region(extent, location.region)
+            coordinate_lint.check_extent_in_region(
+                extent, location.region, allow_network=True
+            )
         )
         if region_issues:
             yield (
@@ -2577,7 +2591,9 @@ def check_nominatim_coordinates(
         return
 
     region_issues = list(
-        coordinate_lint.check_extent_in_region(extent, location.region)
+        coordinate_lint.check_extent_in_region(
+            extent, location.region, allow_network=True
+        )
     )
     if region_issues:
         yield (
@@ -2680,7 +2696,9 @@ def check_nominatim_general_coordinates(
             preferred_over_boundaries = True
 
     region_issues = list(
-        coordinate_lint.check_extent_in_region(extent, location.region)
+        coordinate_lint.check_extent_in_region(
+            extent, location.region, allow_network=True
+        )
     )
     if region_issues:
         yield (
@@ -2783,12 +2801,28 @@ def _get_possible_general_nominatim_candidates(
         if location.latitude is not None and location.longitude is not None
         else None
     )
+    point_provenance_categories = {
+        tag.category
+        for tag in location.get_tags(
+            location.tags, LocationTag.CoordinatesFromNominatim
+        )
+        if not tag.use_bounding_box
+    }
     has_settlement_match: bool | None = None
     candidates = []
     seen = set()
     if bounding_box_candidates is None:
         bounding_box_candidates = _get_nominatim_bounding_box_candidates(location)
     for result, (latitude, longitude, extent) in bounding_box_candidates:
+        # A reviewed point provenance identifies which same-named kind of feature
+        # the Location represents.  Do not reinterpret a mapped settlement as a
+        # broad river, mountain range, or other cross-category homonym merely
+        # because that feature's bounds happen to contain the point.
+        if (
+            point_provenance_categories
+            and result.category not in point_provenance_categories
+        ):
+            continue
         radius_km = _get_nominatim_bounding_box_radius_km(result)
         if radius_km is None:
             continue
@@ -2989,6 +3023,16 @@ def _normalize_nominatim_region_name(value: str) -> str:
 def _reverse_result_matches_region(
     result: nominatim.ReverseResult, region: Region
 ) -> bool:
+    linked_reference = next(
+        (
+            (tag.osm_type, tag.osm_id)
+            for tag in getattr(region, "tags", ())
+            if isinstance(tag, RegionTag.OpenStreetMap)
+        ),
+        None,
+    )
+    if linked_reference == (result.osm_type, result.osm_id):
+        return True
     address_names = {
         _normalize_nominatim_region_name(name)
         for value in (
@@ -3046,19 +3090,63 @@ def _reverse_result_matches_country(
     }
 
 
-@LINT.add("nominatim_region_consistency", requires_network=True)
+@LINT.add(
+    "nominatim_region_consistency",
+    uses_optional_network=True,
+    required_resources={LintResource.SLOW},
+)
 def check_nominatim_region_consistency(
     location: Location, cfg: LintConfig
 ) -> Iterable[str]:
     if (
         location.latitude is None
         or location.longitude is None
-        or location.is_general()
         or not is_recent_location(location)
     ):
         return
     extent = coordinate_lint.make_extent(location.latitude, location.longitude)
-    if extent is None or extent.point is None:
+    if extent is None:
+        return
+    allow_network = cfg.is_resource_available(LintResource.NETWORK)
+    boundary = coordinate_lint.get_region_boundary(
+        location.region, allow_network=allow_network
+    )
+    if boundary is not None:
+        boundary_issues = tuple(
+            coordinate_lint.check_extent_in_region(
+                extent,
+                location.region,
+                require_full_containment=(
+                    not location.is_general()
+                    and not location.has_tag(LocationTag.Unplaced)
+                ),
+                allow_network=allow_network,
+            )
+        )
+        if boundary_issues:
+            suggested_region = None
+            if (
+                not location.is_general()
+                and not location.has_tag(LocationTag.Unplaced)
+                and location.region.parent is not None
+            ):
+                suggested_region = _get_unique_containing_child_region(
+                    extent, location.region.parent
+                )
+                if suggested_region == location.region:
+                    suggested_region = None
+            for issue in boundary_issues:
+                if suggested_region is None:
+                    yield issue
+                else:
+                    yield (
+                        f"{issue}; coordinates fall uniquely within sibling Region "
+                        f"{suggested_region.name!r}"
+                    )
+            return
+        if boundary.region == location.region:
+            return
+    if extent.point is None or not allow_network:
         return
     expected = _get_reverse_region(location)
     if expected is None:
@@ -3459,10 +3547,16 @@ def _get_region_country_name(region: Region) -> str | None:
 
 
 def _get_osm_region_name_translations(region: Region) -> tuple[str, ...]:
-    country_name = _get_region_country_name(region)
-    if country_name is None:
-        return ()
-    return _OSM_REGION_NAME_TRANSLATIONS.get((region.name, country_name), ())
+    # Region inference and Location validation must use one same-entity alias
+    # registry. Import lazily to avoid coupling model import order to lint order.
+    from taxonomy.db.models import region_lint
+
+    return tuple(
+        sorted(
+            region_lint.get_openstreetmap_name_aliases(region),
+            key=lambda name: (len(name), name),
+        )
+    )
 
 
 def _get_undesignated_region_name(region: Region, name: str) -> str | None:
@@ -3503,9 +3597,11 @@ def _get_nominatim_region_query_name(region: Region) -> str:
 
 
 def _get_region_name_aliases(region: Region) -> set[str]:
+    from taxonomy.db.models import region_lint
+
     names = _get_qualified_name_variants(region.name)
     names.add(_get_unqualified_region_name(region))
-    names.update(_get_osm_region_name_translations(region))
+    names.update(region_lint.get_region_name_aliases(region))
     shortest_name = min(names, key=lambda name: (len(name), name))
     matching_designators = (
         _ADMINISTRATIVE_DESIGNATORS

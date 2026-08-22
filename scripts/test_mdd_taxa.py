@@ -551,7 +551,30 @@ def test_new_since_msw3_requires_taxonomy_notes(taxonomy_notes: str) -> None:
     assert len(issues) == 1
     assert issues[0].mdd_column == "taxonomyNotes"
     assert issues[0].suggested_change is None
-    assert "marked as new since MSW3" in issues[0].description
+    assert "not recognized at species rank in MSW3" in issues[0].description
+
+
+def test_unmatched_msw3_species_requires_taxonomy_notes() -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Example_species",
+                "taxonomyNotes": "NA",
+                "MSW3_matchtype": "unmatched",
+                "MSW3_sciName": "NA",
+                "diffSinceMSW3": "0",
+            },
+        ),
+    )
+
+    issues = list(species.lint_msw3_taxonomy_notes())
+
+    assert len(issues) == 1
+    assert issues[0].mdd_column == "taxonomyNotes"
+    assert "not recognized at species rank in MSW3" in issues[0].description
 
 
 def test_changed_name_since_msw3_requires_taxonomy_notes() -> None:
@@ -649,6 +672,137 @@ def test_msw3_source_check_establishes_new_exact_match() -> None:
 
     assert issues["MSW3_sciName"].suggested_change == "Exact_species"
     assert issues["MSW3_matchtype"].suggested_change == "sciname match"
+
+
+def test_unmatched_msw3_species_is_marked_new_since_msw3() -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Current_species",
+                "MSW3_sciName": "NA",
+                "MSW3_matchtype": "unmatched",
+                "diffSinceMSW3": "0",
+            },
+        ),
+    )
+
+    issues = {
+        issue.mdd_column: issue
+        for issue in mdd_taxa.lint_msw3_classification([species], {"Other_species"})
+    }
+
+    assert issues["diffSinceMSW3"].suggested_change == "1"
+    assert "no species-level MSW3 counterpart" in issues["diffSinceMSW3"].description
+
+
+def _msw3_entry(
+    name: str, root_name: str, *, mdd_id: str, mapped_name_is_base_name: bool = False
+) -> object:
+    mapped_name = SimpleNamespace(root_name=root_name)
+    base_name = mapped_name if mapped_name_is_base_name else object()
+    species_taxon = SimpleNamespace(base_name=base_name, tags=(TaxonTag.MDD(mdd_id),))
+    mapped_name.taxon = SimpleNamespace(parent_of_rank=lambda rank: species_taxon)
+    return SimpleNamespace(name=name, mapped_name=mapped_name)
+
+
+def test_included_msw3_species_must_be_named_in_taxonomy_notes() -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Current_species",
+                "taxonomyNotes": "discusses a different change",
+                "MSW3_sciName": "Current_species",
+            },
+        ),
+    )
+    entry = _msw3_entry("Former included", "included", mdd_id="1234")
+
+    issues = list(
+        mdd_taxa.lint_msw3_included_species_comments([species], cast(Any, [entry]))
+    )
+
+    assert len(issues) == 1
+    assert issues[0].mdd_column == "taxonomyNotes"
+    assert "Former_included" in issues[0].description
+    assert "'included'" in issues[0].description
+
+
+def test_included_msw3_species_comment_accepts_mapped_root_name() -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Current_species",
+                "taxonomyNotes": "includes included as a synonym",
+                "MSW3_sciName": "Current_species",
+            },
+        ),
+    )
+    entry = _msw3_entry("Former included", "included", mdd_id="1234")
+
+    assert (
+        list(
+            mdd_taxa.lint_msw3_included_species_comments([species], cast(Any, [entry]))
+        )
+        == []
+    )
+
+
+def test_current_base_name_does_not_require_inclusion_note() -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Current_species",
+                "taxonomyNotes": "moved from Former to Current",
+                "MSW3_sciName": "Other_species",
+            },
+        ),
+    )
+    entry = _msw3_entry(
+        "Former species", "species", mdd_id="1234", mapped_name_is_base_name=True
+    )
+
+    assert (
+        list(
+            mdd_taxa.lint_msw3_included_species_comments([species], cast(Any, [entry]))
+        )
+        == []
+    )
+
+
+def test_current_epithet_does_not_require_inclusion_note() -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Current_species",
+                "specificEpithet": "species",
+                "taxonomyNotes": "moved from Former to Current",
+                "MSW3_sciName": "Other_species",
+            },
+        ),
+    )
+    entry = _msw3_entry("Former species", "species", mdd_id="1234")
+
+    assert (
+        list(
+            mdd_taxa.lint_msw3_included_species_comments([species], cast(Any, [entry]))
+        )
+        == []
+    )
 
 
 def test_msw3_source_check_accepts_valid_manual_mapping() -> None:

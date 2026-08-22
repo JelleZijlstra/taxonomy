@@ -16,7 +16,7 @@ from typing import Any, cast
 
 from taxonomy import adt
 from taxonomy.applicator.proposals import ProposalBuilder
-from taxonomy.db import models
+from taxonomy.db import constants, models
 from taxonomy.db.models import BaseModel
 from taxonomy.db.models.base import ADTField
 
@@ -29,6 +29,8 @@ ADD_TAG = "add_tag"
 REMOVE_TAG = "remove_tag"
 MANUAL_REVIEW = "manual_review"
 MERGE_COLLECTION = "merge_collection"
+MERGE_REGION = "merge_region"
+DELETE_REGION = "delete_region"
 ALLOWED_ACTIONS = {
     CREATE_OBJECT,
     UPDATE_OBJECT,
@@ -37,6 +39,8 @@ ALLOWED_ACTIONS = {
     REMOVE_TAG,
     MANUAL_REVIEW,
     MERGE_COLLECTION,
+    MERGE_REGION,
+    DELETE_REGION,
 }
 ALLOWED_CONFIDENCES = {"high", "medium", "low"}
 
@@ -255,25 +259,51 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
     reason = _required_str(data, "reason", line_number)
     evidence = _parse_evidence(data.get("evidence"), line_number)
     object_spec = _parse_object(data.get("object"), line_number)
-    if action == MERGE_COLLECTION:
+    if action == DELETE_REGION:
         if version != SCHEMA_VERSION_2:
             raise RecommendationError(
-                f"line {line_number}: merge_collection requires schema_version 2"
+                f"line {line_number}: delete_region requires schema_version 2"
             )
-        if object_spec.model != "Collection" or object_spec.object_id is None:
+        if object_spec.model != "Region" or object_spec.object_id is None:
             raise RecommendationError(
-                f"line {line_number}: merge_collection object must be an existing "
-                "Collection"
+                f"line {line_number}: delete_region object must be an existing Region"
+            )
+        guard = data.get("guard")
+        if not isinstance(guard, dict) or not guard:
+            raise RecommendationError(
+                f"line {line_number}: delete_region requires a nonempty guard"
+            )
+        return Recommendation(
+            line_number,
+            action,
+            confidence,
+            reason,
+            evidence,
+            object_spec,
+            None,
+            match=guard,
+            schema_version=version,
+        )
+    if action in {MERGE_COLLECTION, MERGE_REGION}:
+        if version != SCHEMA_VERSION_2:
+            raise RecommendationError(
+                f"line {line_number}: {action} requires schema_version 2"
+            )
+        expected_model = "Collection" if action == MERGE_COLLECTION else "Region"
+        if object_spec.model != expected_model or object_spec.object_id is None:
+            raise RecommendationError(
+                f"line {line_number}: {action} object must be an existing "
+                f"{expected_model}"
             )
         target = _parse_object(data.get("target"), line_number)
-        if target.model != "Collection" or target.object_id is None:
+        if target.model != expected_model or target.object_id is None:
             raise RecommendationError(
-                f"line {line_number}: merge_collection target must be an existing "
-                "Collection"
+                f"line {line_number}: {action} target must be an existing "
+                f"{expected_model}"
             )
         if target.object_id == object_spec.object_id:
             raise RecommendationError(
-                f"line {line_number}: merge_collection source and target must differ"
+                f"line {line_number}: {action} source and target must differ"
             )
         return Recommendation(
             line_number,
@@ -284,8 +314,10 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             object_spec,
             None,
             target=target,
-            object_updates=_parse_merge_object_updates(
-                data.get("object_updates"), line_number
+            object_updates=(
+                _parse_merge_object_updates(data.get("object_updates"), line_number)
+                if action == MERGE_COLLECTION
+                else ()
             ),
             schema_version=version,
         )
@@ -1125,15 +1157,18 @@ def build_plan(
                     )
                 )
                 continue
-            mutation = (
-                MANUAL_REVIEW
-                if row.action == MANUAL_REVIEW
-                else (
-                    UPDATE_OBJECT
-                    if row.action == UPDATE_OBJECT
-                    else "field" if row.action == SET_FIELD else repr(row.tag)
-                )
-            )
+            if row.action in {
+                MANUAL_REVIEW,
+                UPDATE_OBJECT,
+                MERGE_COLLECTION,
+                MERGE_REGION,
+                DELETE_REGION,
+            }:
+                mutation = row.action
+            elif row.action == SET_FIELD:
+                mutation = "field"
+            else:
+                mutation = repr(row.tag)
             key = (row.object.model, identity, row.field, mutation)
             if key in seen:
                 raise RecommendationError(
@@ -1303,8 +1338,13 @@ def build_plan(
 
                 source_parent_key = ("Collection", identity, "parent")
                 source_removed_key = ("Collection", identity, "removed")
-                actual_parent = planned_values.get(source_parent_key, obj.parent)
-                actual_removed = planned_values.get(source_removed_key, obj.removed)
+                source_collection = cast(models.Collection, obj)
+                actual_parent = planned_values.get(
+                    source_parent_key, source_collection.parent
+                )
+                actual_removed = planned_values.get(
+                    source_removed_key, source_collection.removed
+                )
                 if actual_parent is not None and not _values_equal(
                     actual_parent, target
                 ):
@@ -1325,6 +1365,129 @@ def build_plan(
                         {"parent": actual_parent, "removed": actual_removed},
                         {"target": target, "updates": tuple(planned_updates)},
                         already_applied=source_applied and updates_applied,
+                    )
+                )
+                continue
+            if row.action == MERGE_REGION:
+                assert isinstance(obj, models.Region)
+                assert row.target is not None
+                assert row.target.object_id is not None
+                target = get_object(model, row.target.object_id)
+                assert isinstance(target, models.Region)
+                target_identity = f"id:{row.target.object_id}"
+                target_label = planned_values.get(
+                    ("Region", target_identity, model.label_field),
+                    _object_label(model, target),
+                )
+                if target_label != row.target.label:
+                    raise RecommendationError(
+                        f"Region {target.id} changed from {row.target.label!r} "
+                        f"to {target_label!r}"
+                    )
+                target_kind = planned_values.get(
+                    ("Region", target_identity, "kind"), target.kind
+                )
+                if target_kind in {
+                    constants.RegionKind.redirect,
+                    constants.RegionKind.deleted,
+                }:
+                    raise RecommendationError("merge target is invalid")
+
+                source_parent_key = ("Region", identity, "parent")
+                source_kind_key = ("Region", identity, "kind")
+                source_tags_key = ("Region", identity, "tags")
+                actual_parent = planned_values.get(source_parent_key, obj.parent)
+                actual_kind = planned_values.get(source_kind_key, obj.kind)
+                actual_tags = planned_values.get(source_tags_key, obj.tags)
+                if actual_kind is constants.RegionKind.deleted:
+                    raise RecommendationError("merge source is deleted")
+                if actual_kind is constants.RegionKind.redirect:
+                    if not _values_equal(actual_parent, target):
+                        raise RecommendationError(
+                            "merge source already redirects to a different Region"
+                        )
+                    already_applied = not actual_tags
+                else:
+                    if target.has_parent(obj):
+                        raise RecommendationError(
+                            "cannot merge a Region into one of its descendants"
+                        )
+                    already_applied = False
+                planned_values[source_parent_key] = target
+                planned_values[source_kind_key] = constants.RegionKind.redirect
+                planned_values[source_tags_key] = ()
+                actions.append(
+                    PlannedAction(
+                        row,
+                        obj,
+                        {
+                            "parent": actual_parent,
+                            "kind": actual_kind,
+                            "tags": actual_tags,
+                        },
+                        {"target": target},
+                        already_applied=already_applied,
+                    )
+                )
+                continue
+            if row.action == DELETE_REGION:
+                if not isinstance(obj, models.Region):
+                    raise RecommendationError("delete_region object is not a Region")
+                if obj.kind is constants.RegionKind.redirect:
+                    raise RecommendationError("delete_region source is a redirect")
+                if obj.kind is constants.RegionKind.deleted:
+                    if obj.tags:
+                        raise RecommendationError(
+                            "deleted Region unexpectedly retains tags"
+                        )
+                    actions.append(
+                        PlannedAction(
+                            row,
+                            obj,
+                            {"kind": obj.kind, "tags": obj.tags},
+                            None,
+                            already_applied=True,
+                        )
+                    )
+                    continue
+                assert row.match is not None
+                for field_name, serialized_expected in row.match.items():
+                    field = model.clirm_fields.get(field_name)
+                    if field is None or field_name == "id":
+                        raise RecommendationError(
+                            f"delete_region guard names unknown field {field_name!r}"
+                        )
+                    expected = _decode_complete_field_value(
+                        field,
+                        serialized_expected,
+                        context=f"Region.{field_name} guard",
+                        references=references,
+                    )
+                    actual = getattr(obj, field_name)
+                    if not _values_equal(actual, expected):
+                        raise RecommendationError(
+                            f"delete_region guard for {field_name!r} does not match "
+                            "the current Region"
+                        )
+                direct_references = list(obj.get_direct_backrefs())
+                if direct_references:
+                    descriptions = ", ".join(
+                        f"{type(referencing_obj).__name__} {referencing_obj.id}."
+                        f"{field.attribute_name}"
+                        for field, referencing_obj in direct_references[:10]
+                    )
+                    suffix = " ..." if len(direct_references) > 10 else ""
+                    raise RecommendationError(
+                        "cannot delete a Region with valid references: "
+                        f"{descriptions}{suffix}"
+                    )
+                actions.append(
+                    PlannedAction(
+                        row,
+                        obj,
+                        {"kind": obj.kind, "tags": obj.tags},
+                        None,
+                        already_applied=False,
                     )
                 )
                 continue
@@ -1576,6 +1739,14 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
                 f"merge into Collection {row.target.object_id} {row.target.label}; "
                 f"update {len(row.object_updates)} referenced object(s)"
             )
+        elif row.action == MERGE_REGION:
+            assert row.target is not None
+            change = (
+                f"merge into Region {row.target.object_id} {row.target.label}; "
+                "redirect ordinary references"
+            )
+        elif row.action == DELETE_REGION:
+            change = "mark deleted after verifying no valid references"
         elif row.action == MANUAL_REVIEW:
             change = "requires manual review"
         elif row.action == SET_FIELD:
@@ -1609,6 +1780,12 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
             for guarded_change in visible_changes:
                 _print_review_detail(
                     "change", _format_update_change(row, guarded_change, registry)
+                )
+        elif row.action == DELETE_REGION:
+            for field_name, value in (row.match or {}).items():
+                _print_review_detail(
+                    "guard",
+                    f"{field_name}={_format_create_value(model, field_name, value)}",
                 )
         elif row.action == MERGE_COLLECTION:
             for update in row.object_updates:
@@ -1683,7 +1860,7 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
         if row.action == MERGE_COLLECTION:
             assert row.target is not None
             merge_data = cast(Mapping[str, Any], planned.new_value)
-            target = cast(BaseModel, merge_data["target"])
+            collection_target = cast(models.Collection, merge_data["target"])
             for update_obj, changes in cast(
                 Sequence[tuple[BaseModel, Sequence[tuple[str, Any, Any]]]],
                 merge_data["updates"],
@@ -1705,13 +1882,52 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                             },
                         ),
                     )
+            collection_source_proposal = builder.replacement(planned.object)
+            if collection_source_proposal is planned.object:
+                collection_source_proposal = builder.copy(
+                    planned.object, context=f"generic manifest line {row.line_number}"
+                )
+            collection_source_proposal = cast(
+                models.Collection, collection_source_proposal
+            )
+            collection_source_proposal.parent = builder.replacement(collection_target)
+            collection_source_proposal.removed = True
+            continue
+        if row.action == MERGE_REGION:
+            merge_data = cast(Mapping[str, Any], planned.new_value)
+            region_target = cast(models.Region, merge_data["target"])
+            proposed_region_target = builder.replacement(region_target)
+            for field, referencing_obj in planned.object.get_direct_backrefs(
+                include_invalid=True
+            ):
+                reference_proposal = builder.replacement(referencing_obj)
+                if reference_proposal is referencing_obj:
+                    reference_proposal = builder.copy(
+                        referencing_obj,
+                        context=f"generic manifest line {row.line_number}",
+                    )
+                setattr(
+                    reference_proposal, field.attribute_name, proposed_region_target
+                )
+            region_source_proposal = builder.replacement(planned.object)
+            if region_source_proposal is planned.object:
+                region_source_proposal = builder.copy(
+                    planned.object, context=f"generic manifest line {row.line_number}"
+                )
+            region_source_proposal = cast(models.Region, region_source_proposal)
+            region_source_proposal.parent = proposed_region_target
+            region_source_proposal.kind = constants.RegionKind.redirect
+            region_source_proposal.tags = ()  # type: ignore[assignment]
+            continue
+        if row.action == DELETE_REGION:
             source_proposal = builder.replacement(planned.object)
             if source_proposal is planned.object:
                 source_proposal = builder.copy(
                     planned.object, context=f"generic manifest line {row.line_number}"
                 )
-            source_proposal.parent = builder.replacement(target)
-            source_proposal.removed = True
+            source_proposal = cast(models.Region, source_proposal)
+            source_proposal.kind = constants.RegionKind.deleted
+            source_proposal.tags = ()  # type: ignore[assignment]
             continue
         if row.action == UPDATE_OBJECT:
             proposal = builder.replacement(planned.object)
@@ -1876,6 +2092,39 @@ def execute_plan(
                 source = _replace_created_models(planned.object, replacements)
                 source.parent = _replace_created_models(target, replacements)
                 source.removed = True
+            applied += 1
+            continue
+        if row.action == MERGE_REGION:
+            merge_data = cast(Mapping[str, Any], planned.new_value)
+            target = cast(models.Region, merge_data["target"])
+            verb = "MERGE_REGION" if apply else "WOULD_MERGE_REGION"
+            assert row.target is not None
+            print(
+                f"{verb} source=Region:{row.object.object_id} "
+                f"label={row.object.label!r} target=Region:{target.id} "
+                f"label={row.target.label!r}"
+            )
+            if apply:
+                source = cast(
+                    models.Region, _replace_created_models(planned.object, replacements)
+                )
+                resolved_target = cast(
+                    models.Region, _replace_created_models(target, replacements)
+                )
+                source.merge(resolved_target)
+            applied += 1
+            continue
+        if row.action == DELETE_REGION:
+            verb = "DELETE_REGION" if apply else "WOULD_DELETE_REGION"
+            print(
+                f"{verb} source=Region:{row.object.object_id} "
+                f"label={row.object.label!r}"
+            )
+            if apply:
+                source = cast(
+                    models.Region, _replace_created_models(planned.object, replacements)
+                )
+                source.remove()
             applied += 1
             continue
         verb = row.action.upper() if apply else f"WOULD_{row.action.upper()}"

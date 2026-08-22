@@ -1,3 +1,4 @@
+import functools
 import json
 import os
 import threading
@@ -9,14 +10,16 @@ from typing import Any
 import httpx
 
 from taxonomy import coordinates
-from taxonomy.db.url_cache import CacheDomain, cached
+from taxonomy.db.url_cache import CacheDomain, cached, get_cached_value
 
 UA = "taxonomy (https://github.com/JelleZijlstra/taxonomy)"
 BASE_URL = os.environ.get(
     "TAXONOMY_NOMINATIM_URL", "https://nominatim.openstreetmap.org"
 ).rstrip("/")
-MIN_REQUEST_INTERVAL = 1.0
+MIN_REQUEST_INTERVAL = 2.0
 REQUEST_TIMEOUT = 30.0
+MAX_RATE_LIMIT_RETRIES = 2
+DEFAULT_RATE_LIMIT_RETRY_SECONDS = 10.0
 
 _request_lock = threading.Lock()
 _last_request_started: float | None = None
@@ -31,6 +34,7 @@ class SearchResult:
     category: str
     feature_type: str
     address: dict[str, str]
+    address_type: str | None = None
     osm_type: str | None = None
     bounding_box: tuple[str, str, str, str] | None = None
     osm_id: int | None = None
@@ -43,6 +47,22 @@ class ReverseResult:
     display_name: str
     address: dict[str, str]
     administrative: dict[str, str] = field(default_factory=dict)
+    osm_type: str | None = None
+    osm_id: int | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class BoundaryResult:
+    """A stable OSM object lookup, optionally with polygonal geometry."""
+
+    name: str
+    display_name: str
+    category: str
+    feature_type: str
+    osm_type: str
+    osm_id: int
+    names: dict[str, str]
+    geometry: coordinates.GeoGeometry | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,6 +246,88 @@ def lookup_many(
     return output
 
 
+def lookup_boundary(
+    osm_type: str,
+    osm_id: int,
+    *,
+    allow_network: bool = True,
+    polygon_threshold: float = 0.001,
+) -> BoundaryResult | None:
+    """Look up and locally cache an OSM object's simplified boundary geometry.
+
+    Cached responses remain usable when network access is disabled. Nominatim's
+    ``polygon_threshold`` is in output degrees.
+    """
+    type_code = {"node": "N", "way": "W", "relation": "R"}.get(osm_type)
+    if type_code is None or osm_id <= 0:
+        return None
+    url = str(
+        httpx.URL(f"{BASE_URL}/lookup").copy_with(
+            params=httpx.QueryParams(
+                {
+                    "osm_ids": f"{type_code}{osm_id}",
+                    "format": "jsonv2",
+                    "addressdetails": "0",
+                    "namedetails": "1",
+                    "polygon_geojson": "1",
+                    "polygon_threshold": str(polygon_threshold),
+                    "accept-language": "en",
+                }
+            )
+        )
+    )
+    content = get_cached_value(CacheDomain.nominatim, url)
+    if content is None:
+        if not allow_network:
+            return None
+        content = get_nominatim_data(url)
+    return _parse_boundary_response(osm_type, osm_id, content)
+
+
+@functools.lru_cache(maxsize=64)
+def _parse_boundary_response(
+    osm_type: str, osm_id: int, content: str
+) -> BoundaryResult | None:
+    """Parse frequently reused Region geometry once per process."""
+    data = json.loads(content)
+    if not isinstance(data, list):
+        raise TypeError(data)
+    matching_rows = []
+    for row in data:
+        if not isinstance(row, dict):
+            raise TypeError(row)
+        row_osm_type, row_osm_id = _parse_osm_reference(row)
+        if row_osm_type == osm_type and row_osm_id == osm_id:
+            matching_rows.append(row)
+    if not matching_rows:
+        return None
+    if len(matching_rows) != 1:
+        raise ValueError(
+            f"Nominatim returned duplicate OSM object {(osm_type, osm_id)}"
+        )
+    row = matching_rows[0]
+    raw_geometry = row.get("geojson")
+    geometry = None
+    if isinstance(raw_geometry, dict) and raw_geometry.get("type") in {
+        "Polygon",
+        "MultiPolygon",
+    }:
+        geometry = coordinates.parse_geojson_geometry(raw_geometry)
+    try:
+        return BoundaryResult(
+            name=str(row["name"]),
+            display_name=str(row["display_name"]),
+            category=str(row["category"]),
+            feature_type=str(row["type"]),
+            osm_type=osm_type,
+            osm_id=osm_id,
+            names=_parse_string_mapping(row.get("namedetails", {})),
+            geometry=geometry,
+        )
+    except KeyError as exc:
+        raise ValueError(row) from exc
+
+
 def reverse(point: coordinates.Point, *, zoom: int = 5) -> ReverseResult | None:
     """Return the nearest Nominatim address for a coordinate."""
     url = str(
@@ -256,10 +358,13 @@ def reverse(point: coordinates.Point, *, zoom: int = 5) -> ReverseResult | None:
             return None
         geocoding = _get_geocodejson_properties(features[0])
         address, administrative = _parse_geocodejson_address(geocoding)
+        osm_type, osm_id = _parse_osm_reference(geocoding)
         return ReverseResult(
             display_name=str(geocoding["label"]),
             address=address,
             administrative=administrative,
+            osm_type=osm_type,
+            osm_id=osm_id,
         )
     except (KeyError, TypeError) as exc:
         raise ValueError(data) from exc
@@ -300,18 +405,7 @@ def _parse_geocodejson_search_result(feature: Any) -> GeocodeResult:
     try:
         geocoding = _get_geocodejson_properties(feature)
         address, administrative = _parse_geocodejson_address(geocoding)
-        raw_osm_type = geocoding.get("osm_type")
-        if raw_osm_type is not None and not isinstance(raw_osm_type, str):
-            raise TypeError
-        raw_osm_id = geocoding.get("osm_id")
-        if raw_osm_id is None:
-            osm_id = None
-        elif isinstance(raw_osm_id, int) and not isinstance(raw_osm_id, bool):
-            osm_id = raw_osm_id
-        elif isinstance(raw_osm_id, str) and raw_osm_id.isdigit():
-            osm_id = int(raw_osm_id)
-        else:
-            raise TypeError
+        raw_osm_type, osm_id = _parse_osm_reference(geocoding)
         return GeocodeResult(
             name=str(geocoding["name"]),
             display_name=str(geocoding["label"]),
@@ -325,6 +419,22 @@ def _parse_geocodejson_search_result(feature: Any) -> GeocodeResult:
         )
     except (KeyError, TypeError) as exc:
         raise ValueError(feature) from exc
+
+
+def _parse_osm_reference(data: dict[str, Any]) -> tuple[str | None, int | None]:
+    raw_osm_type = data.get("osm_type")
+    if raw_osm_type is not None and not isinstance(raw_osm_type, str):
+        raise TypeError
+    raw_osm_id = data.get("osm_id")
+    if raw_osm_id is None:
+        osm_id = None
+    elif isinstance(raw_osm_id, int) and not isinstance(raw_osm_id, bool):
+        osm_id = raw_osm_id
+    elif isinstance(raw_osm_id, str) and raw_osm_id.isdigit():
+        osm_id = int(raw_osm_id)
+    else:
+        raise TypeError
+    return raw_osm_type, osm_id
 
 
 def _parse_search_result(row: Any) -> SearchResult:
@@ -355,17 +465,9 @@ def _parse_search_result(row: Any) -> SearchResult:
             )
         else:
             raise TypeError
-        raw_osm_type = row.get("osm_type")
-        if raw_osm_type is not None and not isinstance(raw_osm_type, str):
-            raise TypeError
-        raw_osm_id = row.get("osm_id")
-        if raw_osm_id is None:
-            osm_id = None
-        elif isinstance(raw_osm_id, int) and not isinstance(raw_osm_id, bool):
-            osm_id = raw_osm_id
-        elif isinstance(raw_osm_id, str) and raw_osm_id.isdigit():
-            osm_id = int(raw_osm_id)
-        else:
+        raw_osm_type, osm_id = _parse_osm_reference(row)
+        raw_address_type = row.get("addresstype")
+        if raw_address_type is not None and not isinstance(raw_address_type, str):
             raise TypeError
         names = _parse_string_mapping(row.get("namedetails", {}))
         extra = _parse_string_mapping(row.get("extratags", {}))
@@ -377,6 +479,7 @@ def _parse_search_result(row: Any) -> SearchResult:
             category=str(row["category"]),
             feature_type=str(row["type"]),
             address=address,
+            address_type=raw_address_type,
             osm_type=raw_osm_type,
             bounding_box=bounding_box,
             osm_id=osm_id,
@@ -388,6 +491,8 @@ def _parse_search_result(row: Any) -> SearchResult:
 
 
 def _parse_string_mapping(value: Any) -> dict[str, str]:
+    if value is None:
+        return {}
     if not isinstance(value, dict):
         raise TypeError
     return {str(key): item for key, item in value.items() if isinstance(item, str)}
@@ -401,19 +506,34 @@ def get_openstreetmap_country(point: coordinates.Point) -> str | None:
 @cached(CacheDomain.nominatim)
 def get_nominatim_data(url: str) -> str:
     # This function is only entered on a cache miss. The public Nominatim service
-    # requires clients to stay at or below one request per second.
+    # sets one request per second as an absolute maximum. Stay comfortably below
+    # it because request timing and other traffic from the same IP can otherwise
+    # still trigger a rate limit.
     global _last_request_started
     with _request_lock:
-        now = time.monotonic()
-        if _last_request_started is not None:
-            delay = MIN_REQUEST_INTERVAL - (now - _last_request_started)
-            if delay > 0:
-                time.sleep(delay)
-                now = time.monotonic()
-        _last_request_started = now
-        response = httpx.get(url, headers={"User-Agent": UA}, timeout=REQUEST_TIMEOUT)
-        response.raise_for_status()
-        return response.text
+        for attempt in range(MAX_RATE_LIMIT_RETRIES + 1):
+            now = time.monotonic()
+            if _last_request_started is not None:
+                delay = MIN_REQUEST_INTERVAL - (now - _last_request_started)
+                if delay > 0:
+                    time.sleep(delay)
+                    now = time.monotonic()
+            _last_request_started = now
+            response = httpx.get(
+                url, headers={"User-Agent": UA}, timeout=REQUEST_TIMEOUT
+            )
+            if response.status_code != 429:
+                response.raise_for_status()
+                return response.text
+            if attempt == MAX_RATE_LIMIT_RETRIES:
+                response.raise_for_status()
+            retry_after = response.headers.get("Retry-After")
+            try:
+                retry_delay = float(retry_after) if retry_after is not None else 0
+            except ValueError:
+                retry_delay = 0
+            time.sleep(max(DEFAULT_RATE_LIMIT_RETRY_SECONDS, retry_delay))
+    raise AssertionError("unreachable")
 
 
 HESP_COUNTRY_TO_OSM_COUNTRY = {

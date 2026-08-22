@@ -4,7 +4,7 @@ import pytest
 
 from taxonomy.applicator import generic as recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
-from taxonomy.db.constants import AltitudeUnit
+from taxonomy.db.constants import AltitudeUnit, RegionKind
 from taxonomy.db.models import (
     BaseModel,
     CitationGroup,
@@ -13,9 +13,11 @@ from taxonomy.db.models import (
     Location,
     Name,
     OccurrenceRecord,
+    Region,
 )
 from taxonomy.db.models.name import NameTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
+from taxonomy.db.models.region import RegionTag
 from taxonomy.db.models.tags import LocationTag
 
 
@@ -543,6 +545,184 @@ def test_merge_collection_composes_with_target_label_change(
         find_collection_references=lambda _source: [],
     )
     assert all(action.already_applied for action in rebuilt.actions)
+
+
+def _merge_region_row(*, target_label: str = "Canonical Region") -> dict[str, object]:
+    return {
+        "schema_version": 2,
+        "action": recommendations.MERGE_REGION,
+        "confidence": "high",
+        "reason": "The source is an obsolete administrative Region.",
+        "evidence": [{"kind": "official boundary", "text": "The Regions merged."}],
+        "object": {"model": "Region", "id": 1, "label": "Obsolete Region"},
+        "target": {"model": "Region", "id": 2, "label": target_label},
+    }
+
+
+def _delete_region_row() -> dict[str, object]:
+    return {
+        "schema_version": 2,
+        "action": recommendations.DELETE_REGION,
+        "confidence": "high",
+        "reason": "The obsolete Region is empty after redistribution.",
+        "evidence": [
+            {"kind": "reference audit", "text": "No valid references remain."}
+        ],
+        "object": {"model": "Region", "id": 1, "label": "Obsolete Region"},
+        "guard": {"kind": {"enum": "RegionKind", "name": "county"}, "comment": None},
+    }
+
+
+def test_delete_region_is_guarded_restart_safe_and_virtual(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = Region.virtual(
+        name="Obsolete Region",
+        kind=RegionKind.county,
+        tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
+    )
+    monkeypatch.setattr(
+        Region, "get_direct_backrefs", lambda self, *, include_invalid=False: iter(())
+    )
+    row = recommendations.parse_recommendation(_delete_region_row(), 1)
+    plan = recommendations.build_plan(
+        [row], model_registry={"Region": Region}, get_object=lambda _model, _id: source
+    )
+
+    builder = ProposalBuilder()
+    recommendations.add_virtual_models(plan, builder)
+    proposed = builder.build()[0].model
+    assert isinstance(proposed, Region)
+    assert proposed.kind is RegionKind.deleted
+    assert proposed.tags == ()
+
+    recommendations.execute_plan(plan, apply=False)
+    assert "WOULD_DELETE_REGION source=Region:1" in capsys.readouterr().out
+    assert source.kind is RegionKind.county
+
+    recommendations.execute_plan(plan, apply=True)
+    assert source.kind is RegionKind.deleted  # type: ignore[comparison-overlap]
+    assert source.tags == ()
+
+    rebuilt = recommendations.build_plan(
+        [row], model_registry={"Region": Region}, get_object=lambda _model, _id: source
+    )
+    assert rebuilt.actions[0].already_applied
+
+
+def test_delete_region_rejects_valid_reference(monkeypatch: pytest.MonkeyPatch) -> None:
+    source = Region.virtual(name="Obsolete Region", kind=RegionKind.county, tags=())
+    location = Location.virtual(name="Referenced site", region=source, tags=())
+    monkeypatch.setattr(
+        Region,
+        "get_direct_backrefs",
+        lambda self, *, include_invalid=False: iter(((Location.region, location),)),
+    )
+    row = recommendations.parse_recommendation(_delete_region_row(), 1)
+
+    with pytest.raises(
+        recommendations.RecommendationError,
+        match="cannot delete a Region with valid references",
+    ):
+        recommendations.build_plan(
+            [row],
+            model_registry={"Region": Region},
+            get_object=lambda _model, _id: source,
+        )
+
+
+def test_merge_region_composes_with_target_rename_and_is_restart_safe(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = Region.virtual(name="Obsolete Region", kind=RegionKind.territory, tags=())
+    target = Region.virtual(name="Canonical Region", kind=RegionKind.territory, tags=())
+    location = Location.virtual(name="Referenced site", region=source, tags=())
+
+    def get_object(model: type[BaseModel], object_id: int) -> BaseModel:
+        return {(Region, 1): source, (Region, 2): target}[(model, object_id)]
+
+    monkeypatch.setattr(
+        Region,
+        "get_direct_backrefs",
+        lambda self, *, include_invalid=False: iter(
+            ((Location.region, location),) if self is source else ()
+        ),
+    )
+    rename = {
+        "schema_version": 2,
+        "action": recommendations.UPDATE_OBJECT,
+        "confidence": "high",
+        "reason": "Use the current administrative name.",
+        "evidence": [{"kind": "official boundary", "text": "The target was renamed."}],
+        "object": {"model": "Region", "id": 2, "label": "Canonical Region"},
+        "changes": [
+            {
+                "operation": "set",
+                "field": "name",
+                "old_value": "Canonical Region",
+                "new_value": "Renamed Region",
+            }
+        ],
+    }
+    rows = [
+        recommendations.parse_recommendation(rename, 1),
+        recommendations.parse_recommendation(
+            _merge_region_row(target_label="Renamed Region"), 2
+        ),
+    ]
+    plan = recommendations.build_plan(
+        rows, model_registry={"Region": Region}, get_object=get_object
+    )
+
+    recommendations.execute_plan(plan, apply=True)
+
+    assert target.name == "Renamed Region"
+    assert location.region is target
+    assert source.parent is target
+    assert source.kind is RegionKind.redirect
+    rebuilt = recommendations.build_plan(
+        rows, model_registry={"Region": Region}, get_object=get_object
+    )
+    assert all(action.already_applied for action in rebuilt.actions)
+
+
+def test_merge_region_participates_in_virtual_proposal_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = Region.virtual(name="Obsolete Region", kind=RegionKind.territory, tags=())
+    target = Region.virtual(name="Canonical Region", kind=RegionKind.territory, tags=())
+    location = Location.virtual(name="Referenced site", region=source, tags=())
+    monkeypatch.setattr(
+        Region,
+        "get_direct_backrefs",
+        lambda self, *, include_invalid=False: iter(
+            ((Location.region, location),) if self is source else ()
+        ),
+    )
+    row = recommendations.parse_recommendation(_merge_region_row(), 1)
+    plan = recommendations.build_plan(
+        [row],
+        model_registry={"Region": Region},
+        get_object=lambda _model, object_id: {1: source, 2: target}[object_id],
+    )
+    builder = ProposalBuilder()
+
+    recommendations.add_virtual_models(plan, builder)
+
+    proposed_models = [proposal.model for proposal in builder.build()]
+    proposed_source = next(
+        model
+        for model in proposed_models
+        if isinstance(model, Region) and model.name == "Obsolete Region"
+    )
+    proposed_location = next(
+        model for model in proposed_models if isinstance(model, Location)
+    )
+    assert proposed_source.kind is RegionKind.redirect
+    assert proposed_source.parent is target
+    assert proposed_location.region is target
+    assert source.kind is RegionKind.territory
+    assert location.region is source
 
 
 def test_review_expands_schema_v2_guarded_changes(

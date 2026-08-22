@@ -8,13 +8,13 @@ from unittest.mock import Mock, call
 
 import pytest
 
-from taxonomy import config, getinput
+from taxonomy import config, coordinates, getinput
 from taxonomy.apis import geonames, nominatim, plss
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import RegionKind, SpeciesGroupType
 from taxonomy.db.models import lint as model_lint
 from taxonomy.db.models.article import Article
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.location import Location, LocationStatus
 from taxonomy.db.models.location import lint as location_lint
 from taxonomy.db.models.location import model as location_model
@@ -866,6 +866,83 @@ def test_fully_divided_region_lint_allows_undivided_region() -> None:
         == []
     )
     region.has_tag.assert_not_called()
+
+
+def test_coordinate_child_region_reports_unique_containing_child(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _make_region("First Child", RegionKind.county)
+    second = _make_region("Second Child", RegionKind.county)
+    region = cast(
+        Region,
+        SimpleNamespace(
+            name="Parent",
+            has_children=Mock(return_value=True),
+            has_tag=Mock(return_value=False),
+            sorted_children=Mock(return_value=[first, second]),
+        ),
+    )
+    loc = _location_without_coordinates(region=region, general=False)
+    loc.latitude = "1°N"
+    loc.longitude = "1°E"
+    first_geometry = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]}
+    )
+    second_geometry = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[3, 0], [5, 0], [5, 2], [3, 2], [3, 0]]]}
+    )
+
+    def get_boundary(child: Region, **kwargs: object) -> object:
+        return SimpleNamespace(
+            result=SimpleNamespace(
+                geometry=first_geometry if child is first else second_geometry
+            )
+        )
+
+    monkeypatch.setattr(coordinate_lint, "get_direct_region_boundary", get_boundary)
+
+    assert list(
+        location_lint.check_coordinate_child_region.linter(loc, LintConfig())
+    ) == [
+        "coordinates fall uniquely within child Region 'First Child' of fully divided Region 'Parent'"
+    ]
+
+
+def test_coordinate_child_region_requires_all_child_polygons(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    first = _make_region("First Child", RegionKind.county)
+    second = _make_region("Second Child", RegionKind.county)
+    region = cast(
+        Region,
+        SimpleNamespace(
+            name="Parent",
+            has_children=Mock(return_value=True),
+            has_tag=Mock(return_value=False),
+            sorted_children=Mock(return_value=[first, second]),
+        ),
+    )
+    loc = _location_without_coordinates(region=region, general=False)
+    loc.latitude = "1°N"
+    loc.longitude = "1°E"
+    first_geometry = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]]}
+    )
+    monkeypatch.setattr(
+        coordinate_lint,
+        "get_direct_region_boundary",
+        Mock(
+            side_effect=[
+                SimpleNamespace(result=SimpleNamespace(geometry=first_geometry)),
+                None,
+            ]
+        ),
+    )
+
+    assert (
+        list(location_lint.check_coordinate_child_region.linter(loc, LintConfig()))
+        == []
+    )
 
 
 def test_likely_synonymous_location_name_comparison() -> None:
@@ -3268,7 +3345,7 @@ def test_geonames_and_nominatim_compatible_coordinates_are_inferred(
     )
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -3362,7 +3439,7 @@ def test_nonpoint_geonames_feature_does_not_block_nominatim_inference(
     )
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -3413,8 +3490,8 @@ def test_geonames_candidate_is_rejected_without_subnational_validation(
     check_extent = Mock()
     monkeypatch.setattr(
         coordinate_lint,
-        "_get_detailed_region_path",
-        lambda region, found_country: (country, "country.json"),
+        "get_region_boundary",
+        lambda region, **kwargs: SimpleNamespace(region=country),
     )
     monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_extent)
 
@@ -3424,9 +3501,34 @@ def test_geonames_candidate_is_rejected_without_subnational_validation(
 
     assert len(issues) == 1
     assert (
-        "no matching GeoNames administrative unit or detailed region polygon"
+        "no matching GeoNames administrative unit or linked OSM boundary at that level or below"
         in issues[0]
     )
+    check_extent.assert_not_called()
+
+
+def test_geonames_candidate_is_rejected_with_only_broader_osm_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Exampleland", RegionKind.country)
+    state = _make_region("Example State", RegionKind.state, country)
+    county = _make_region("Example County", RegionKind.county, state)
+    loc = _location_without_coordinates(name="Example", region=county)
+    candidate = _geonames_candidate()
+    check_extent = Mock()
+    monkeypatch.setattr(
+        coordinate_lint,
+        "get_region_boundary",
+        lambda region, **kwargs: SimpleNamespace(region=state),
+    )
+    monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_extent)
+
+    issues = location_lint._get_geonames_region_issues(
+        loc, candidate.extent, candidate.match.record, county, frozenset()
+    )
+
+    assert len(issues) == 1
+    assert "cannot validate assigned Region 'Example County'" in issues[0]
     check_extent.assert_not_called()
 
 
@@ -3759,10 +3861,7 @@ def test_unplaced_significant_coordinate_range_is_not_reported(
     monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_region)
 
     assert list(location_lint.check_coordinates(loc, LintConfig())) == []
-    assert check_region.call_args.kwargs == {
-        "require_full_containment": False,
-        "allow_network": True,
-    }
+    check_region.assert_not_called()
 
 
 def test_coordinate_format_checks_run_without_slow_resource(
@@ -3811,7 +3910,7 @@ def test_general_location_allows_coordinate_range(
     monkeypatch.setattr(coordinate_lint, "check_extent_in_region", check_region)
 
     assert list(location_lint.check_coordinates(loc, LintConfig())) == []
-    check_region.assert_called_once()
+    check_region.assert_not_called()
 
 
 def test_general_location_infers_nominatim_bounding_box(
@@ -3843,7 +3942,7 @@ def test_general_location_infers_nominatim_bounding_box(
     monkeypatch.setattr(nominatim, "search", search)
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -3891,7 +3990,7 @@ def test_general_location_infers_nominatim_water_lake_bounding_box(
     monkeypatch.setattr(nominatim, "search", search)
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -4016,7 +4115,7 @@ def test_general_location_proposes_replacing_point_with_nominatim_bounding_box(
     monkeypatch.setattr(nominatim, "search", Mock(return_value=[result]))
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -4136,6 +4235,40 @@ def test_possible_general_location_matches_existing_coordinates(
     messages = list(location_lint.check_possible_general_location(loc, LintConfig()))
 
     assert len(messages) == expected_count
+
+
+def test_possible_general_location_rejects_cross_category_homonym_with_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(name="Ye", min_period=recent, max_period=recent)
+    loc.latitude = "15.2464126°N"
+    loc.longitude = "97.8520389°E"
+    loc.tags = (  # type: ignore[assignment]
+        LocationTag.CoordinatesFromNominatim(
+            "node", 1, "place", use_bounding_box=False
+        ),
+    )
+    river = _nominatim_result(
+        latitude="15.2",
+        longitude="97.8",
+        name="Ye",
+        category="waterway",
+        feature_type="river",
+        display_name="Ye, Myanmar",
+        osm_type="relation",
+        osm_id=2,
+        bounding_box=("15", "16", "97", "98"),
+    )
+    parsed = location_lint.get_nominatim_result_bounding_box(river)
+    assert parsed is not None
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(river, parsed)]),
+    )
+
+    assert list(location_lint.check_possible_general_location(loc, LintConfig())) == []
 
 
 def test_possible_general_location_accepts_named_administrative_area(
@@ -4329,7 +4462,7 @@ def test_location_infers_coordinates_from_nominatim(
     monkeypatch.setattr(nominatim, "search", search)
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -4356,7 +4489,7 @@ def test_nominatim_search_removes_location_disambiguator(
     monkeypatch.setattr(nominatim, "search", search)
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -4859,7 +4992,7 @@ def test_coordinate_modifier_lint_normalizes_parenthetical_coordinates(
     loc.latitude = "17.145759°S"
     loc.longitude = "70.054278°W"
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
     monkeypatch.setattr(location_lint, "_is_location_name_taken", lambda name: False)
 
@@ -4878,7 +5011,7 @@ def test_coordinate_modifier_lint_preserves_geographic_disambiguator(
     loc.latitude = "-17.145759"
     loc.longitude = "-70.054278"
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
     monkeypatch.setattr(location_lint, "_is_location_name_taken", lambda name: False)
 
@@ -4900,7 +5033,7 @@ def test_coordinate_modifier_lint_detects_location_coordinate_mismatch(
     loc.latitude = "17.122149°S"
     loc.longitude = "70.063451°W"
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
@@ -4917,7 +5050,7 @@ def test_coordinate_modifier_lint_allows_equivalent_coordinate_notation(
     loc.latitude = "17.5°S"
     loc.longitude = "-70"
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     assert list(location_lint.check_coordinate_modifier(loc, LintConfig())) == []
@@ -4930,7 +5063,7 @@ def test_coordinate_modifier_lint_requires_location_coordinates(
         name="Vilacota, Tacna, Peru: 17.145759°S 70.054278°W"
     )
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(location_lint.check_coordinate_modifier(loc, LintConfig()))
@@ -5222,7 +5355,7 @@ def test_location_applies_nominatim_locality_offset(
     monkeypatch.setattr(nominatim, "search", search)
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -5319,7 +5452,7 @@ def test_location_does_not_choose_place_over_distant_administrative_boundaries(
     monkeypatch.setattr(nominatim, "search", Mock(return_value=[*boundaries, place]))
     monkeypatch.setattr(model_lint, "is_network_available", lambda: True)
     monkeypatch.setattr(
-        coordinate_lint, "check_extent_in_region", lambda extent, region: ()
+        coordinate_lint, "check_extent_in_region", lambda extent, region, **kwargs: ()
     )
 
     messages = list(
@@ -5522,6 +5655,199 @@ def test_reverse_geocoding_reports_stable_region_mismatch(
     assert "not assigned Region 'California'" in str(messages[0])
     assert reverse.call_count == 5
     assert all(call.kwargs == {"zoom": 8} for call in reverse.call_args_list)
+
+
+def test_region_consistency_prefers_linked_osm_polygon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Exampleland", RegionKind.country)
+    country.sorted_children = list  # type: ignore[method-assign]
+    state = _make_region("Expected State", RegionKind.state, country)
+    state.tags = (RegionTag.OpenStreetMap("relation", 123, "boundary"),)  # type: ignore[assignment]
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=state, min_period=recent, max_period=recent
+    )
+    loc.latitude = "2°N"
+    loc.longitude = "6°E"
+    geometry = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]]}
+    )
+    lookup = Mock(
+        return_value=nominatim.BoundaryResult(
+            name="Expected State",
+            display_name="Expected State, Exampleland",
+            category="boundary",
+            feature_type="administrative",
+            osm_type="relation",
+            osm_id=123,
+            names={},
+            geometry=geometry,
+        )
+    )
+    reverse = Mock()
+    monkeypatch.setattr(nominatim, "lookup_boundary", lookup)
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+
+    messages = list(
+        location_lint.check_nominatim_region_consistency(
+            loc, LintConfig(available_resources=frozenset({LintResource.SLOW}))
+        )
+    )
+
+    assert len(messages) == 1
+    assert "outside Expected State" in str(messages[0])
+    assert all(
+        call.kwargs == {"allow_network": False} for call in lookup.call_args_list
+    )
+    reverse.assert_not_called()
+
+
+def test_region_consistency_reports_unique_containing_sibling(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("United States", RegionKind.country)
+    california = _make_region("California", RegionKind.state, country)
+    nevada = _make_region("Nevada", RegionKind.state, country)
+    california.tags = (RegionTag.OpenStreetMap("relation", 1, "boundary"),)  # type: ignore[assignment]
+    nevada.tags = (RegionTag.OpenStreetMap("relation", 2, "boundary"),)  # type: ignore[assignment]
+    country.sorted_children = lambda: [california, nevada]  # type: ignore[method-assign]
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=california, min_period=recent, max_period=recent
+    )
+    loc.latitude = "1°N"
+    loc.longitude = "4°E"
+    geometries = {
+        1: coordinates.parse_geojson_geometry(
+            {
+                "type": "Polygon",
+                "coordinates": [[[0, 0], [2, 0], [2, 2], [0, 2], [0, 0]]],
+            }
+        ),
+        2: coordinates.parse_geojson_geometry(
+            {
+                "type": "Polygon",
+                "coordinates": [[[3, 0], [5, 0], [5, 2], [3, 2], [3, 0]]],
+            }
+        ),
+    }
+
+    def lookup(
+        osm_type: str, osm_id: int, *, allow_network: bool
+    ) -> nominatim.BoundaryResult:
+        return nominatim.BoundaryResult(
+            "California" if osm_id == 1 else "Nevada",
+            "State, United States",
+            "boundary",
+            "administrative",
+            osm_type,
+            osm_id,
+            {},
+            geometries[osm_id],
+        )
+
+    monkeypatch.setattr(nominatim, "lookup_boundary", lookup)
+
+    messages = list(
+        location_lint.check_nominatim_region_consistency(
+            loc, LintConfig(available_resources=frozenset({LintResource.SLOW}))
+        )
+    )
+
+    assert len(messages) == 1
+    assert "outside California" in str(messages[0])
+    assert "coordinates fall uniquely within sibling Region 'Nevada'" in str(
+        messages[0]
+    )
+
+
+def test_region_consistency_uses_reverse_after_only_ancestor_polygon(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("United States", RegionKind.country)
+    country.tags = (RegionTag.OpenStreetMap("relation", 1, "boundary"),)  # type: ignore[assignment]
+    state = _make_region("California", RegionKind.state, country)
+    state.tags = ()  # type: ignore[assignment]
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=state, min_period=recent, max_period=recent
+    )
+    loc.latitude = "2°N"
+    loc.longitude = "2°E"
+    geometry = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]]}
+    )
+    monkeypatch.setattr(
+        nominatim,
+        "lookup_boundary",
+        Mock(
+            return_value=nominatim.BoundaryResult(
+                "United States",
+                "United States",
+                "boundary",
+                "administrative",
+                "relation",
+                1,
+                {},
+                geometry,
+            )
+        ),
+    )
+    reverse = Mock(return_value=_nominatim_reverse_result("Nevada"))
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+
+    messages = list(
+        location_lint.check_nominatim_region_consistency(
+            loc,
+            LintConfig(
+                available_resources=frozenset({LintResource.NETWORK, LintResource.SLOW})
+            ),
+        )
+    )
+
+    assert len(messages) == 1
+    assert "not assigned Region 'California'" in str(messages[0])
+    assert reverse.call_count == 5
+
+
+def test_reverse_geocoding_accepts_linked_osm_identity(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Exampleland", RegionKind.country)
+    state = _make_region("Current Name", RegionKind.state, country)
+    state.tags = (RegionTag.OpenStreetMap("relation", 123, "boundary"),)  # type: ignore[assignment]
+    recent = SimpleNamespace(name="Recent")
+    loc = _location_without_coordinates(
+        name="Site", region=state, min_period=recent, max_period=recent
+    )
+    loc.latitude = "2°N"
+    loc.longitude = "2°E"
+    monkeypatch.setattr(nominatim, "lookup_boundary", Mock(return_value=None))
+    reverse = Mock(
+        return_value=nominatim.ReverseResult(
+            display_name="Legacy label, Exampleland",
+            address={"state": "Legacy label", "country": "Exampleland"},
+            osm_type="relation",
+            osm_id=123,
+        )
+    )
+    monkeypatch.setattr(nominatim, "reverse", reverse)
+
+    assert (
+        list(
+            location_lint.check_nominatim_region_consistency(
+                loc,
+                LintConfig(
+                    available_resources=frozenset(
+                        {LintResource.NETWORK, LintResource.SLOW}
+                    )
+                ),
+            )
+        )
+        == []
+    )
+    reverse.assert_called_once()
 
 
 def test_reverse_geocoding_suppresses_boundary_ambiguity(
@@ -5848,6 +6174,17 @@ def test_geonames_consistency_lint_is_a_normal_offline_lint() -> None:
 
     assert not wrapper.requires_network
     assert wrapper not in location_lint.LINT.disabled_linters
+
+
+def test_region_consistency_uses_cached_geometry_without_requiring_network() -> None:
+    wrapper = next(
+        wrapper
+        for wrapper in location_lint.LINT.linters
+        if wrapper.label == "nominatim_region_consistency"
+    )
+
+    assert wrapper.required_resources == frozenset({LintResource.SLOW})
+    assert wrapper.optional_resources == frozenset({LintResource.NETWORK})
 
 
 def test_location_rejects_nominatim_result_from_wrong_county(

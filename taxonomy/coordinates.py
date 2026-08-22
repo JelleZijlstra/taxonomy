@@ -1,5 +1,6 @@
 # static analysis: ignore[attribute_is_never_set]
 import functools
+import itertools
 import json
 import math
 from dataclasses import dataclass
@@ -7,6 +8,10 @@ from pathlib import Path
 from typing import Any, Self
 
 import unidecode
+from shapely import make_valid
+from shapely.geometry import MultiPolygon as ShapelyMultiPolygon
+from shapely.geometry import Polygon as ShapelyPolygon
+from shapely.geometry.base import BaseGeometry
 
 from taxonomy.config import get_options
 
@@ -19,6 +24,17 @@ class Point:
     @property
     def openstreetmap_url(self) -> str:
         return f"https://www.openstreetmap.org/?mlat={self.latitude}&mlon={self.longitude}&zoom=12"
+
+
+@dataclass(frozen=True, slots=True)
+class GeoPolygon:
+    """A GeoJSON polygon, preserving interior rings as holes."""
+
+    exterior: tuple[Point, ...]
+    holes: tuple[tuple[Point, ...], ...] = ()
+
+
+type GeoGeometry = tuple[GeoPolygon, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -104,6 +120,57 @@ def get_polygon(path: str) -> list[list[LineSegment]]:
 
 
 @functools.lru_cache(maxsize=256)
+def get_geojson_geometry(path: str) -> GeoGeometry:
+    """Read Polygon/MultiPolygon features without flattening their holes."""
+    full_path = _get_geojson_file(path)
+    with full_path.open() as f:
+        data = json.load(f)
+    return tuple(
+        polygon
+        for feature in data["features"]
+        for polygon in parse_geojson_geometry(feature["geometry"])
+    )
+
+
+def parse_geojson_geometry(geometry: dict[str, Any]) -> GeoGeometry:
+    """Parse a GeoJSON Polygon or MultiPolygon into a hole-aware geometry."""
+    try:
+        geometry_type = geometry["type"]
+        raw_coordinates = geometry["coordinates"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError(f"invalid GeoJSON geometry {geometry!r}") from exc
+    if geometry_type == "Polygon":
+        raw_polygons = [raw_coordinates]
+    elif geometry_type == "MultiPolygon":
+        raw_polygons = raw_coordinates
+    else:
+        raise ValueError(f"unsupported GeoJSON geometry type {geometry_type!r}")
+    try:
+        polygons = []
+        for raw_polygon in raw_polygons:
+            rings = tuple(_parse_geojson_ring(ring) for ring in raw_polygon)
+            if not rings:
+                raise ValueError("polygon has no exterior ring")
+            polygons.append(GeoPolygon(rings[0], rings[1:]))
+        if not polygons:
+            raise ValueError("geometry has no polygons")
+        return tuple(polygons)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid GeoJSON geometry {geometry!r}") from exc
+
+
+def _parse_geojson_ring(raw_ring: Any) -> tuple[Point, ...]:
+    if not isinstance(raw_ring, list) or len(raw_ring) < 4:
+        raise ValueError("ring has fewer than four positions")
+    points = tuple(_make_point(position) for position in raw_ring)
+    if points[0] != points[-1]:
+        points += (points[0],)
+    if len(set(points[:-1])) < 3:
+        raise ValueError("ring has fewer than three distinct positions")
+    return points
+
+
+@functools.lru_cache(maxsize=256)
 def get_polygon_bounding_boxes(
     path: str,
 ) -> tuple[tuple[float, float, float, float], ...]:
@@ -137,20 +204,7 @@ def _make_point(coords: list[float]) -> Point:
 
 
 def is_in_polygon(p: Point, path: str) -> bool:
-    for polygon, bounds in zip(
-        get_polygon(path), get_polygon_bounding_boxes(path), strict=True
-    ):
-        minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude = (
-            bounds
-        )
-        if not (
-            minimum_longitude <= p.longitude <= maximum_longitude
-            and minimum_latitude <= p.latitude <= maximum_latitude
-        ):
-            continue
-        if is_in_polygon_single(p, polygon):
-            return True
-    return False
+    return is_in_geometry(p, get_geojson_geometry(path))
 
 
 def is_in_bounding_box(p: Point, path: str) -> bool:
@@ -175,6 +229,381 @@ def get_distance_to_polygon(p: Point, path: str) -> float:
             return 0
         distances.extend(get_distance_to_line_segment(p, line) for line in polygon)
     return min(distances)
+
+
+def is_in_geometry(point: Point, geometry: GeoGeometry) -> bool:
+    return any(_is_in_geo_polygon(point, polygon) for polygon in geometry)
+
+
+def _is_in_geo_polygon(point: Point, polygon: GeoPolygon) -> bool:
+    exterior = _point_in_ring(point, polygon.exterior)
+    if exterior == 0:
+        return False
+    if exterior == 2:
+        return True
+    for hole in polygon.holes:
+        in_hole = _point_in_ring(point, hole)
+        if in_hole == 2:
+            # Polygon boundaries are included in the represented Region.
+            return True
+        if in_hole == 1:
+            return False
+    return True
+
+
+def _point_in_ring(point: Point, ring: tuple[Point, ...]) -> int:
+    """Return 0 outside, 1 inside, or 2 on the ring boundary."""
+    inside = False
+    longitude = point.longitude
+    latitude = point.latitude
+    adjusted = _ring_near(ring, longitude)
+    for first, second in itertools.pairwise(adjusted):
+        if _point_on_segment(point, first, second):
+            return 2
+        if (first.latitude > latitude) == (second.latitude > latitude):
+            continue
+        crossing_longitude = first.longitude + (
+            (latitude - first.latitude)
+            * (second.longitude - first.longitude)
+            / (second.latitude - first.latitude)
+        )
+        if longitude < crossing_longitude:
+            inside = not inside
+    return 1 if inside else 0
+
+
+def _point_on_segment(point: Point, first: Point, second: Point) -> bool:
+    cross = (point.latitude - first.latitude) * (second.longitude - first.longitude) - (
+        point.longitude - first.longitude
+    ) * (second.latitude - first.latitude)
+    scale = max(
+        1.0,
+        abs(second.longitude - first.longitude),
+        abs(second.latitude - first.latitude),
+    )
+    if abs(cross) > 1e-10 * scale:
+        return False
+    return (
+        min(first.longitude, second.longitude) - 1e-10
+        <= point.longitude
+        <= max(first.longitude, second.longitude) + 1e-10
+        and min(first.latitude, second.latitude) - 1e-10
+        <= point.latitude
+        <= max(first.latitude, second.latitude) + 1e-10
+    )
+
+
+def _longitude_near(longitude: float, reference: float) -> float:
+    while longitude - reference > 180:
+        longitude -= 360
+    while longitude - reference < -180:
+        longitude += 360
+    return longitude
+
+
+def _ring_near(ring: tuple[Point, ...], reference: float) -> tuple[Point, ...]:
+    """Unwrap a ring continuously, then place it nearest a query longitude."""
+    longitudes = [ring[0].longitude]
+    for vertex in ring[1:]:
+        longitudes.append(_longitude_near(vertex.longitude, longitudes[-1]))
+    center = (min(longitudes) + max(longitudes)) / 2
+    shift = 360 * round((reference - center) / 360)
+    return tuple(
+        Point(longitude + shift, vertex.latitude)
+        for longitude, vertex in zip(longitudes, ring, strict=True)
+    )
+
+
+def distance_to_geometry_km(point: Point, geometry: GeoGeometry) -> float:
+    """Return an approximate geodesic distance to a polygon boundary."""
+    if is_in_geometry(point, geometry):
+        return 0.0
+    return min(
+        _distance_to_ring_km(point, ring)
+        for polygon in geometry
+        for ring in (polygon.exterior, *polygon.holes)
+    )
+
+
+def _distance_to_ring_km(point: Point, ring: tuple[Point, ...]) -> float:
+    adjusted = _ring_near(ring, point.longitude)
+    return min(
+        _distance_to_segment_km(point, first, second)
+        for first, second in itertools.pairwise(adjusted)
+    )
+
+
+def _distance_to_segment_km(point: Point, first: Point, second: Point) -> float:
+    # An equirectangular projection centered on the query point is sufficiently
+    # accurate for the sub-kilometre Region-boundary tolerance and handles the
+    # dateline.
+    latitude_radians = math.radians(point.latitude)
+
+    def project(vertex: Point) -> tuple[float, float]:
+        return (
+            math.radians(vertex.longitude - point.longitude)
+            * math.cos(latitude_radians)
+            * 6371.0088,
+            math.radians(vertex.latitude - point.latitude) * 6371.0088,
+        )
+
+    x1, y1 = project(first)
+    x2, y2 = project(second)
+    dx = x2 - x1
+    dy = y2 - y1
+    if dx == 0 and dy == 0:
+        return math.hypot(x1, y1)
+    fraction = -(x1 * dx + y1 * dy) / (dx * dx + dy * dy)
+    fraction = max(0.0, min(1.0, fraction))
+    return math.hypot(x1 + fraction * dx, y1 + fraction * dy)
+
+
+def geometry_is_within_geometry(
+    inner: GeoGeometry, outer: GeoGeometry, *, tolerance_km: float = 0
+) -> bool:
+    """Return whether one geometry is covered by another after a metric buffer.
+
+    Both geometries use the same local projection, preserving topology while the
+    small boundary tolerance is expressed in kilometres.
+    """
+    if tolerance_km < 0:
+        raise ValueError("tolerance_km must be nonnegative")
+    reference = inner[0].exterior[0]
+    inner_shape = _project_geometry_km(inner, reference)
+    outer_shape = _project_geometry_km(outer, reference)
+    if not inner_shape.is_valid:
+        inner_shape = make_valid(inner_shape)
+    if not outer_shape.is_valid:
+        outer_shape = make_valid(outer_shape)
+    if tolerance_km:
+        outer_shape = outer_shape.buffer(tolerance_km)
+    return outer_shape.covers(inner_shape)
+
+
+def _project_geometry_km(geometry: GeoGeometry, reference: Point) -> BaseGeometry:
+    latitude_radians = math.radians(reference.latitude)
+    longitude_scale = math.cos(latitude_radians) * 6371.0088
+
+    def project_ring(ring: tuple[Point, ...]) -> list[tuple[float, float]]:
+        return [
+            (
+                math.radians(point.longitude - reference.longitude) * longitude_scale,
+                math.radians(point.latitude - reference.latitude) * 6371.0088,
+            )
+            for point in _ring_near(ring, reference.longitude)
+        ]
+
+    polygons = [
+        ShapelyPolygon(
+            project_ring(polygon.exterior),
+            [project_ring(hole) for hole in polygon.holes],
+        )
+        for polygon in geometry
+    ]
+    if len(polygons) == 1:
+        return polygons[0]
+    return ShapelyMultiPolygon(polygons)
+
+
+def geometry_intersects_box(
+    geometry: GeoGeometry,
+    *,
+    minimum_longitude: float,
+    minimum_latitude: float,
+    maximum_longitude: float,
+    maximum_latitude: float,
+) -> bool:
+    corners = _box_corners(
+        minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude
+    )
+    if any(is_in_geometry(corner, geometry) for corner in corners):
+        return True
+    for polygon in geometry:
+        if any(
+            _point_in_box(
+                vertex,
+                minimum_longitude,
+                minimum_latitude,
+                maximum_longitude,
+                maximum_latitude,
+            )
+            for vertex in polygon.exterior
+        ):
+            return True
+        if _ring_intersects_box(
+            polygon.exterior,
+            minimum_longitude,
+            minimum_latitude,
+            maximum_longitude,
+            maximum_latitude,
+        ):
+            return True
+    return False
+
+
+def geometry_contains_box(
+    geometry: GeoGeometry,
+    *,
+    minimum_longitude: float,
+    minimum_latitude: float,
+    maximum_longitude: float,
+    maximum_latitude: float,
+) -> bool:
+    corners = _box_corners(
+        minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude
+    )
+    if not all(is_in_geometry(corner, geometry) for corner in corners):
+        return False
+    if any(
+        _ring_properly_intersects_box(
+            polygon.exterior,
+            minimum_longitude,
+            minimum_latitude,
+            maximum_longitude,
+            maximum_latitude,
+        )
+        for polygon in geometry
+    ):
+        return False
+    # Four inside corners are insufficient if the box crosses an enclave/hole.
+    return not any(
+        _ring_intersects_box(
+            hole,
+            minimum_longitude,
+            minimum_latitude,
+            maximum_longitude,
+            maximum_latitude,
+        )
+        or any(
+            _point_in_box(
+                vertex,
+                minimum_longitude,
+                minimum_latitude,
+                maximum_longitude,
+                maximum_latitude,
+            )
+            for vertex in hole
+        )
+        for polygon in geometry
+        for hole in polygon.holes
+    )
+
+
+def _box_corners(
+    minimum_longitude: float,
+    minimum_latitude: float,
+    maximum_longitude: float,
+    maximum_latitude: float,
+) -> tuple[Point, Point, Point, Point]:
+    return (
+        Point(minimum_longitude, minimum_latitude),
+        Point(maximum_longitude, minimum_latitude),
+        Point(maximum_longitude, maximum_latitude),
+        Point(minimum_longitude, maximum_latitude),
+    )
+
+
+def _point_in_box(
+    point: Point,
+    minimum_longitude: float,
+    minimum_latitude: float,
+    maximum_longitude: float,
+    maximum_latitude: float,
+) -> bool:
+    return (
+        minimum_longitude <= point.longitude <= maximum_longitude
+        and minimum_latitude <= point.latitude <= maximum_latitude
+    )
+
+
+def _ring_intersects_box(
+    ring: tuple[Point, ...],
+    minimum_longitude: float,
+    minimum_latitude: float,
+    maximum_longitude: float,
+    maximum_latitude: float,
+) -> bool:
+    box_edges = tuple(
+        zip(
+            _box_corners(
+                minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude
+            ),
+            (
+                Point(maximum_longitude, minimum_latitude),
+                Point(maximum_longitude, maximum_latitude),
+                Point(minimum_longitude, maximum_latitude),
+                Point(minimum_longitude, minimum_latitude),
+            ),
+            strict=True,
+        )
+    )
+    return any(
+        _segments_intersect(first, second, box_first, box_second)
+        for first, second in itertools.pairwise(ring)
+        for box_first, box_second in box_edges
+    )
+
+
+def _ring_properly_intersects_box(
+    ring: tuple[Point, ...],
+    minimum_longitude: float,
+    minimum_latitude: float,
+    maximum_longitude: float,
+    maximum_latitude: float,
+) -> bool:
+    corners = _box_corners(
+        minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude
+    )
+    box_edges = tuple(
+        zip(
+            (corners[0], corners[1], corners[2], corners[3]),
+            corners[1:] + corners[:1],
+            strict=True,
+        )
+    )
+    return any(
+        _segments_properly_intersect(first, second, box_first, box_second)
+        for first, second in itertools.pairwise(ring)
+        for box_first, box_second in box_edges
+    )
+
+
+def _segments_properly_intersect(
+    first: Point, second: Point, third: Point, fourth: Point
+) -> bool:
+    def orientation(a: Point, b: Point, c: Point) -> float:
+        return (b.longitude - a.longitude) * (c.latitude - a.latitude) - (
+            b.latitude - a.latitude
+        ) * (c.longitude - a.longitude)
+
+    return (
+        orientation(first, second, third) * orientation(first, second, fourth) < 0
+        and orientation(third, fourth, first) * orientation(third, fourth, second) < 0
+    )
+
+
+def _segments_intersect(
+    first: Point, second: Point, third: Point, fourth: Point
+) -> bool:
+    def orientation(a: Point, b: Point, c: Point) -> float:
+        return (b.longitude - a.longitude) * (c.latitude - a.latitude) - (
+            b.latitude - a.latitude
+        ) * (c.longitude - a.longitude)
+
+    values = (
+        orientation(first, second, third),
+        orientation(first, second, fourth),
+        orientation(third, fourth, first),
+        orientation(third, fourth, second),
+    )
+    if values[0] * values[1] < 0 and values[2] * values[3] < 0:
+        return True
+    return (
+        (abs(values[0]) <= 1e-10 and _point_on_segment(third, first, second))
+        or (abs(values[1]) <= 1e-10 and _point_on_segment(fourth, first, second))
+        or (abs(values[2]) <= 1e-10 and _point_on_segment(first, third, fourth))
+        or (abs(values[3]) <= 1e-10 and _point_on_segment(second, third, fourth))
+    )
 
 
 def get_distance_to_line_segment(p: Point, line: LineSegment) -> float:

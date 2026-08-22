@@ -52,6 +52,7 @@ class CacheDomain(enum.Enum):
     plss = 20  # BLM CadNSDI PLSS and Census county geometry queries
     zoobank_act_negative = 21
     zoobank_publication_negative = 22
+    openstreetmap = 23  # OpenStreetMap API element metadata
 
 
 KeyT = TypeVar("KeyT")

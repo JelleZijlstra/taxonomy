@@ -10,13 +10,16 @@ from taxonomy import coordinates
 from taxonomy.apis import nominatim
 from taxonomy.db import coordinate_lint
 from taxonomy.db.constants import RegionKind
-from taxonomy.db.models.region import Region
+from taxonomy.db.models.region import Region, RegionTag
 
 
 class FakeRegion:
-    def __init__(self, name: str, parent: Self | None = None) -> None:
+    def __init__(
+        self, name: str, parent: Self | None = None, *, tags: tuple[object, ...] = ()
+    ) -> None:
         self.name = name
         self.parent = parent
+        self.tags = tags
         self.children: list[Self] = []
         if parent is not None:
             parent.children.append(self)
@@ -231,159 +234,272 @@ def test_get_distance_to_line_segment() -> None:
     )
 
 
-def test_check_point_in_region_reports_actual_subnational_region(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_geojson_polygon_holes_and_multipolygons() -> None:
+    geometry = coordinates.parse_geojson_geometry(
+        {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [
+                    [[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]],
+                    [[4, 4], [6, 4], [6, 6], [4, 6], [4, 4]],
+                ],
+                [[[20, 20], [22, 20], [22, 22], [20, 22], [20, 20]]],
+            ],
+        }
+    )
+
+    assert coordinates.is_in_geometry(coordinates.Point(2, 2), geometry)
+    assert not coordinates.is_in_geometry(coordinates.Point(5, 5), geometry)
+    assert coordinates.is_in_geometry(coordinates.Point(21, 21), geometry)
+    assert not coordinates.geometry_contains_box(
+        geometry,
+        minimum_longitude=3,
+        minimum_latitude=3,
+        maximum_longitude=7,
+        maximum_latitude=7,
+    )
+
+
+def test_geojson_polygon_crossing_antimeridian() -> None:
+    geometry = coordinates.parse_geojson_geometry(
+        {
+            "type": "Polygon",
+            "coordinates": [[[179, -1], [-179, -1], [-179, 1], [179, 1], [179, -1]]],
+        }
+    )
+
+    assert coordinates.is_in_geometry(coordinates.Point(179.5, 0), geometry)
+    assert coordinates.is_in_geometry(coordinates.Point(-179.5, 0), geometry)
+    assert not coordinates.is_in_geometry(coordinates.Point(0, 0), geometry)
+
+
+def test_geometry_is_within_geometry_uses_metric_tolerance() -> None:
+    outer = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]]}
+    )
+    inside = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]]}
+    )
+    near_boundary = coordinates.parse_geojson_geometry(
+        {
+            "type": "Polygon",
+            "coordinates": [[[3, 1], [4.004, 1], [4.004, 2], [3, 2], [3, 1]]],
+        }
+    )
+    outside = coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[5, 1], [6, 1], [6, 2], [5, 2], [5, 1]]]}
+    )
+
+    assert coordinates.geometry_is_within_geometry(inside, outer)
+    assert not coordinates.geometry_is_within_geometry(near_boundary, outer)
+    assert coordinates.geometry_is_within_geometry(
+        near_boundary, outer, tolerance_km=0.5
+    )
+    assert not coordinates.geometry_is_within_geometry(outside, outer, tolerance_km=0.5)
+
+
+def test_geometry_is_within_geometry_preserves_holes_and_antimeridian() -> None:
+    outer_with_hole = coordinates.parse_geojson_geometry(
+        {
+            "type": "Polygon",
+            "coordinates": [
+                [[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]],
+                [[1, 1], [3, 1], [3, 3], [1, 3], [1, 1]],
+            ],
+        }
+    )
+    inside_hole = coordinates.parse_geojson_geometry(
+        {
+            "type": "Polygon",
+            "coordinates": [
+                [[1.5, 1.5], [2.5, 1.5], [2.5, 2.5], [1.5, 2.5], [1.5, 1.5]]
+            ],
+        }
+    )
+    across_antimeridian = coordinates.parse_geojson_geometry(
+        {
+            "type": "Polygon",
+            "coordinates": [[[179, -2], [-179, -2], [-179, 2], [179, 2], [179, -2]]],
+        }
+    )
+    inside_across_antimeridian = coordinates.parse_geojson_geometry(
+        {
+            "type": "Polygon",
+            "coordinates": [
+                [[179.5, -1], [-179.5, -1], [-179.5, 1], [179.5, 1], [179.5, -1]]
+            ],
+        }
+    )
+
+    assert not coordinates.geometry_is_within_geometry(inside_hole, outer_with_hole)
+    assert coordinates.geometry_is_within_geometry(
+        inside_across_antimeridian, across_antimeridian
+    )
+
+
+def test_geometry_does_not_contain_box_spanning_disconnected_parts() -> None:
+    geometry = coordinates.parse_geojson_geometry(
+        {
+            "type": "MultiPolygon",
+            "coordinates": [
+                [[[0, 0], [4, 0], [4, 10], [0, 10], [0, 0]]],
+                [[[6, 0], [10, 0], [10, 10], [6, 10], [6, 0]]],
+            ],
+        }
+    )
+
+    assert not coordinates.geometry_contains_box(
+        geometry,
+        minimum_longitude=1,
+        minimum_latitude=1,
+        maximum_longitude=9,
+        maximum_latitude=9,
+    )
+
+
+def _square_geometry() -> coordinates.GeoGeometry:
+    return coordinates.parse_geojson_geometry(
+        {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]]}
+    )
+
+
+def _boundary_result(geometry: coordinates.GeoGeometry) -> nominatim.BoundaryResult:
+    return nominatim.BoundaryResult(
+        name="Expected State",
+        display_name="Expected State, Country",
+        category="boundary",
+        feature_type="administrative",
+        osm_type="relation",
+        osm_id=123,
+        names={},
+        geometry=geometry,
+    )
+
+
+def test_check_point_in_linked_osm_region(monkeypatch: pytest.MonkeyPatch) -> None:
     country = FakeRegion("Country")
-    expected = cast(Region, FakeRegion("Expected State", country))
-    FakeRegion("Actual State", country)
-    point = coordinates.Point(1, 1)
-
-    def get_region_path(region_name: str, country_name: str) -> str | None:
-        assert country_name == "Country"
-        return {"Expected State": "expected", "Actual State": "actual"}.get(region_name)
-
-    def is_in_polygon(point: coordinates.Point, path: str) -> bool:
-        return path in {"country", "actual"}
-
-    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
-    monkeypatch.setattr(coordinates, "get_region_path", get_region_path)
-    monkeypatch.setattr(coordinates, "is_in_polygon", is_in_polygon)
-
-    assert list(coordinate_lint.check_point_in_region(point, expected)) == [
-        "coordinates Point(longitude=1, latitude=1) are in Actual State, "
-        "not Expected State"
-    ]
-
-
-def test_check_point_in_region_allows_french_overseas_country_mapping(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    country = cast(Region, FakeRegion("Guadeloupe"))
-    point = coordinates.Point(-61.0, 16.3)
-    monkeypatch.setattr(coordinates, "get_path", lambda country_name: None)
-    monkeypatch.setattr(nominatim, "get_openstreetmap_country", lambda point: "France")
-
-    assert list(coordinate_lint.check_point_in_region(point, country)) == []
-
-
-def test_check_point_in_region_does_not_reverse_geocode_without_network(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    country = cast(Region, FakeRegion("Country"))
-    point = coordinates.Point(1, 1)
-    reverse_geocode = Mock()
-    monkeypatch.setattr(coordinates, "get_path", lambda country_name: None)
-    monkeypatch.setattr(nominatim, "get_openstreetmap_country", reverse_geocode)
+    expected = cast(
+        Region,
+        FakeRegion(
+            "Expected State",
+            country,
+            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
+        ),
+    )
+    lookup = Mock(return_value=_boundary_result(_square_geometry()))
+    monkeypatch.setattr(nominatim, "lookup_boundary", lookup)
 
     assert (
-        list(coordinate_lint.check_point_in_region(point, country, allow_network=False))
+        list(
+            coordinate_lint.check_point_in_region(
+                coordinates.Point(2, 2), expected, allow_network=True
+            )
+        )
         == []
     )
-    reverse_geocode.assert_not_called()
+    assert list(
+        coordinate_lint.check_point_in_region(
+            coordinates.Point(6, 2), expected, allow_network=True
+        )
+    ) == ["coordinates Point(longitude=6, latitude=2) are outside Expected State"]
+    lookup.assert_called_with("relation", 123, allow_network=True)
 
 
-def test_check_extent_in_region_allows_overlapping_range(
+def test_check_point_in_region_uses_cached_geometry_offline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    country = FakeRegion("Country")
-    expected = cast(Region, FakeRegion("Expected State", country))
-    extent = coordinate_lint.make_extent("1°N-2°N", "1°E-2°E")
-    assert extent is not None
+    expected = cast(
+        Region,
+        FakeRegion(
+            "Expected State",
+            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
+        ),
+    )
+    lookup = Mock(return_value=_boundary_result(_square_geometry()))
+    monkeypatch.setattr(nominatim, "lookup_boundary", lookup)
 
-    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
-    monkeypatch.setattr(
-        coordinates, "get_region_path", lambda region_name, country_name: "expected"
+    assert (
+        list(
+            coordinate_lint.check_point_in_region(
+                coordinates.Point(2, 2), expected, allow_network=False
+            )
+        )
+        == []
+    )
+    lookup.assert_called_once_with("relation", 123, allow_network=False)
+
+
+def test_check_point_in_region_reports_point_just_outside_boundary(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = cast(
+        Region,
+        FakeRegion(
+            "Expected State",
+            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
+        ),
     )
     monkeypatch.setattr(
-        coordinates,
-        "is_in_polygon",
-        lambda point, path: path == "expected" and point == coordinates.Point(2, 2),
+        nominatim,
+        "lookup_boundary",
+        Mock(return_value=_boundary_result(_square_geometry())),
     )
+
+    assert list(
+        coordinate_lint.check_point_in_region(coordinates.Point(4.02, 2), expected)
+    ) == ["coordinates Point(longitude=4.02, latitude=2) are outside Expected State"]
+
+
+def test_check_point_in_region_suppresses_sub_500m_boundary_difference(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = cast(
+        Region,
+        FakeRegion(
+            "Expected State",
+            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
+        ),
+    )
+    monkeypatch.setattr(
+        nominatim,
+        "lookup_boundary",
+        Mock(return_value=_boundary_result(_square_geometry())),
+    )
+
+    assert (
+        list(
+            coordinate_lint.check_point_in_region(coordinates.Point(4.004, 2), expected)
+        )
+        == []
+    )
+
+
+def test_check_extent_in_region_overlap_and_full_containment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = cast(
+        Region,
+        FakeRegion(
+            "Expected State",
+            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
+        ),
+    )
+    monkeypatch.setattr(
+        nominatim,
+        "lookup_boundary",
+        Mock(return_value=_boundary_result(_square_geometry())),
+    )
+    extent = coordinate_lint.make_extent("3°N-5°N", "3°E-5°E")
+    assert extent is not None
 
     assert list(coordinate_lint.check_extent_in_region(extent, expected)) == []
-
-
-def test_check_extent_in_region_can_require_full_containment(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    country = FakeRegion("Country")
-    expected = cast(Region, FakeRegion("Expected State", country))
-    extent = coordinate_lint.make_extent("1°N-2°N", "1°E-2°E")
-    assert extent is not None
-
-    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
-    monkeypatch.setattr(
-        coordinates, "get_region_path", lambda region_name, country_name: "expected"
-    )
-    monkeypatch.setattr(
-        coordinates,
-        "is_in_polygon",
-        lambda point, path: path == "expected" and point == coordinates.Point(2, 2),
-    )
-
     assert list(
         coordinate_lint.check_extent_in_region(
             extent, expected, require_full_containment=True
         )
     ) == [
-        "coordinate extent CoordinateExtent(latitude=1°N-2°N, "
-        "longitude=1°E-2°E) extends outside Expected State"
-    ]
-
-
-def test_check_point_in_region_allows_nearest_expected_region(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    country = FakeRegion("Country")
-    expected = cast(Region, FakeRegion("Expected State", country))
-    FakeRegion("Actual State", country)
-    point = coordinates.Point(1, 1)
-
-    def get_region_path(region_name: str, country_name: str) -> str | None:
-        assert country_name == "Country"
-        return {"Expected State": "expected", "Actual State": "actual"}.get(region_name)
-
-    def is_in_polygon(point: coordinates.Point, path: str) -> bool:
-        return path == "country"
-
-    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
-    monkeypatch.setattr(coordinates, "get_region_path", get_region_path)
-    monkeypatch.setattr(coordinates, "is_in_polygon", is_in_polygon)
-    monkeypatch.setattr(
-        coordinates,
-        "get_distance_to_polygon",
-        lambda point, path: {"expected": 1.0, "actual": 10.0}[path],
-    )
-
-    assert list(coordinate_lint.check_point_in_region(point, expected)) == []
-
-
-def test_check_point_in_region_reports_nearest_subnational_region(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    country = FakeRegion("Country")
-    expected = cast(Region, FakeRegion("Expected State", country))
-    FakeRegion("Actual State", country)
-    point = coordinates.Point(1, 1)
-
-    def get_region_path(region_name: str, country_name: str) -> str | None:
-        assert country_name == "Country"
-        return {"Expected State": "expected", "Actual State": "actual"}.get(region_name)
-
-    def is_in_polygon(point: coordinates.Point, path: str) -> bool:
-        return path == "country"
-
-    monkeypatch.setattr(coordinates, "get_path", lambda country_name: "country")
-    monkeypatch.setattr(coordinates, "get_region_path", get_region_path)
-    monkeypatch.setattr(coordinates, "is_in_polygon", is_in_polygon)
-    monkeypatch.setattr(
-        coordinates,
-        "get_distance_to_polygon",
-        lambda point, path: {"expected": 10.0, "actual": 1.0}[path],
-    )
-
-    assert list(coordinate_lint.check_point_in_region(point, expected)) == [
-        "coordinates Point(longitude=1, latitude=1) are closest to Actual State, "
-        "not Expected State"
+        (
+            "coordinate extent CoordinateExtent(latitude=3°N-5°N, "
+            "longitude=3°E-5°E) extends outside Expected State"
+        )
     ]

@@ -6,8 +6,9 @@ from collections import defaultdict
 from collections.abc import Iterable
 from typing import Any
 
-from taxonomy.apis import nominatim
-from taxonomy.db import helpers
+from taxonomy import coordinates
+from taxonomy.apis import nominatim, openstreetmap
+from taxonomy.db import coordinate_lint, helpers
 from taxonomy.db.constants import RegionKind
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import IgnoreLint, Lint, add_tag_issue
@@ -28,10 +29,6 @@ _ADMINISTRATIVE_REGION_KINDS = frozenset(
         RegionKind.territory,
     }
 )
-
-# Nominatim search currently returns this deleted/stale relation, while its
-# lookup endpoint returns no object. Never turn it into a stored stable link.
-_UNUSABLE_OSM_REFERENCES = frozenset({("relation", 2390843)})
 
 _REGION_KIND_DESIGNATORS = {
     RegionKind.canton: "Canton",
@@ -55,6 +52,7 @@ _OSM_NAME_ALIASES = {
     "Bangka-Belitung": {"Bangka-Belitung Islands"},
     "Basel-Stadt": {"Basel-City"},
     "Basque Country": {"Autonomous Community of the Basque Country"},
+    "Bougainville Region": {"Autonomous Region of Bougainville"},
     "Castellón": {"Castelló / Castellón"},
     "Castilla-La Mancha": {"Castile-La Mancha"},
     "Chimbu Province": {"Simbu"},
@@ -65,6 +63,7 @@ _OSM_NAME_ALIASES = {
     "Corse-du-Sud": {"South Corsica"},
     "Crete": {"Region of Crete"},
     "Distrito Federal (Brazil)": {"Federal District"},
+    "Distrito Federal (Mexico)": {"Mexico City"},
     "De Soto Parish, Louisiana": {"DeSoto Parish"},
     "Friesland": {"Frisia"},
     "Graubünden": {"Grisons"},
@@ -75,14 +74,17 @@ _OSM_NAME_ALIASES = {
     "Kaliningrad Oblast": {"Kaliningrad"},
     "Kalmykia": {"Republic of Kalmykia"},
     "Kemerovo Oblast": {"Kemerovo Oblast–Kuzbass"},
+    "Khyber-Pakhtunkhwa": {"Khyber Pakhtunkhwa"},
     "Khanty–Mansi Autonomous Okrug": {"Khanty-Mansiysk Autonomous Okrug – Ugra"},
     "La Rioja (Spain)": {"Rioja"},
     "La Guaira": {"Vargas State"},
     "Luzern": {"Lucerne"},
     "Mari El": {"Mari El Republic"},
+    "Madrid": {"Community of Madrid", "Autonomous Community of Madrid"},
     "Mordovia": {"Republic of Mordovia"},
     "North Aegean": {"Northern Aegean"},
     "North Ossetia": {"Republic of North Ossetia – Alania"},
+    "Orissa": {"Odisha"},
     "Palestine": {"Palestinian Territories"},
     "Sakha": {"Sakha Republic"},
     "San Andrés y Providencia": {
@@ -94,14 +96,19 @@ _OSM_NAME_ALIASES = {
     "Trentino-Alto Adige": {"Trentino – Alto Adige/Südtirol"},
     "Tuva": {"Tuva Republic"},
     "Valais": {"Valais/Wallis"},
+    "Washington County, Rhode Island": {"South County"},
 }
 
 
 def get_ignores(region: Region) -> Iterable[IgnoreLint]:
-    return ()
+    return region.get_tags(region.tags, RegionTag.IgnoreLint)
 
 
-LINT = Lint(Region, get_ignores)
+def add_ignore(region: Region, label: str, comment: str) -> None:
+    region.add_tag(RegionTag.IgnoreLint(label, comment=comment))
+
+
+LINT = Lint(Region, get_ignores, add_ignore)
 
 
 def _normalize_name(name: str) -> str:
@@ -123,7 +130,44 @@ def _unqualified_name(region: Region) -> str:
     return name
 
 
-def _region_name_aliases(region: Region) -> set[str]:
+def _is_english_county(region: Region) -> bool:
+    return region.kind is RegionKind.county and any(
+        parent.kind is RegionKind.subnational and parent.name == "England"
+        for parent in region.all_parents()
+    )
+
+
+@functools.cache
+def _get_redirect_alias_names_by_target_id() -> dict[int, frozenset[str]]:
+    aliases: defaultdict[int, set[str]] = defaultdict(set)
+    for redirect in Region.select():
+        if redirect.kind is not RegionKind.redirect or redirect.parent is None:
+            continue
+        aliases[redirect.parent.id].add(redirect.name)
+    return {target_id: frozenset(names) for target_id, names in aliases.items()}
+
+
+def _get_redirect_name_aliases(region: Region) -> set[str]:
+    """Return persisted redirect names, including context-free name variants."""
+    region_id = getattr(region, "id", None)
+    if not isinstance(region_id, int):
+        return set()
+    redirect_names = _get_redirect_alias_names_by_target_id().get(region_id, ())
+    aliases = set(redirect_names)
+    qualifiers = {
+        name
+        for parent in region.all_parents()
+        for name in {parent.name, _unqualified_name(parent)}
+    }
+    for redirect_name in redirect_names:
+        for qualifier in qualifiers:
+            aliases.add(redirect_name.removesuffix(f", {qualifier}"))
+            aliases.add(redirect_name.removesuffix(f" ({qualifier})"))
+    return aliases
+
+
+def get_region_name_aliases(region: Region) -> set[str]:
+    """Return exact aliases accepted for a Region across OSM integrations."""
     name = _unqualified_name(region)
     aliases = {region.name, name}
     designator = _REGION_KIND_DESIGNATORS.get(region.kind)
@@ -142,14 +186,32 @@ def _region_name_aliases(region: Region) -> set[str]:
         if name.endswith(" County"):
             bare_name = name.removesuffix(" County")
             aliases.add(f"City and County of {bare_name}")
+        if _is_english_county(region):
+            # OSM normally uses the ordinary county name, but occasionally adds
+            # this qualifier to distinguish a lieutenancy boundary from a
+            # narrower local-government boundary (currently Shropshire).
+            aliases.add(f"{name} (Ceremonial)")
     if region.kind is RegionKind.country:
         aliases.add(nominatim.HESP_REGION_TO_OSM_NAME.get(region.name, region.name))
-    aliases.update(_OSM_NAME_ALIASES.get(region.name, ()))
+    aliases.update(get_openstreetmap_name_aliases(region))
     return aliases
 
 
+def get_openstreetmap_name_aliases(region: Region) -> set[str]:
+    """Return persisted and transitional same-entity OSM spelling aliases."""
+    return {
+        *_get_redirect_name_aliases(region),
+        *_OSM_NAME_ALIASES.get(region.name, ()),
+    }
+
+
+# Backward compatibility for one-off audit scripts; new code should use the
+# public helper above so Region and Location lints share the same registry.
+_region_name_aliases = get_region_name_aliases
+
+
 def _address_name_aliases(region: Region) -> set[str]:
-    aliases = _region_name_aliases(region)
+    aliases = get_region_name_aliases(region)
     if region.kind is RegionKind.country:
         aliases.add(nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(region.name, region.name))
     return aliases
@@ -160,7 +222,7 @@ def _query_name(region: Region, *, canonical: bool = False) -> str:
         return nominatim.HESP_REGION_TO_OSM_NAME.get(region.name, region.name)
     if canonical:
         return _unqualified_name(region)
-    aliases = _region_name_aliases(region)
+    aliases = get_region_name_aliases(region)
     return min(aliases, key=lambda name: (len(name), name))
 
 
@@ -191,7 +253,7 @@ def get_nominatim_query(region: Region) -> str:
 def get_nominatim_queries(region: Region) -> tuple[str, ...]:
     primary = get_nominatim_query(region)
     canonical = _get_nominatim_query(region, canonical=True)
-    aliases = _region_name_aliases(region)
+    aliases = get_region_name_aliases(region)
     if region.name != _unqualified_name(region):
         aliases.discard(region.name)
     alias_queries = (
@@ -215,22 +277,143 @@ def _get_structured_nominatim_query(region: Region) -> dict[str, str] | None:
     if country is None:
         return None
     field = "county" if region.kind is RegionKind.county else "state"
-    return {
+    query = {
         field: _unqualified_name(region),
         "country": nominatim.HESP_REGION_TO_OSM_NAME.get(country.name, country.name),
     }
+    if (
+        region.kind is RegionKind.county
+        and region.parent is not None
+        and region.parent.kind
+        in {RegionKind.state, RegionKind.province, RegionKind.subnational}
+    ):
+        query["state"] = _unqualified_name(region.parent)
+    return query
 
 
 def _expected_address_types(region: Region) -> frozenset[str]:
     if region.kind is RegionKind.country:
         # Overseas territories represented as country-like Regions in this
-        # database may be lower-level administrative objects in OSM.
-        return frozenset({"city", "country", "county", "district", "locality", "state"})
+        # database may be lower-level administrative objects in OSM. Nominatim
+        # also derives address types from linked place features, so island
+        # countries and disputed boundaries need not be exposed as ``country``.
+        return frozenset(
+            {
+                "administrative",
+                "archipelago",
+                "city",
+                "country",
+                "county",
+                "disputed",
+                "district",
+                "locality",
+                "municipality",
+                "region",
+                "state",
+            }
+        )
     if region.kind is RegionKind.county:
-        return frozenset({"city", "county", "district"})
-    if region.kind in {RegionKind.state, RegionKind.prefecture}:
+        address_types = {"city", "county", "district"}
+        if _is_english_county(region):
+            # Most separate lieutenancy boundaries are exposed as
+            # ``ceremonial``. Coterminous boundaries may instead be indexed as
+            # an administrative county or, for Greater Manchester, a state
+            # district.
+            address_types.update({"ceremonial", "state_district"})
+        return frozenset(address_types)
+    if region.kind is RegionKind.prefecture:
+        # Nominatim classifies Hokkaido as a region but the other Japanese
+        # prefecture-level boundaries as provinces or states. All represent
+        # admin_level=4.
+        return frozenset({"province", "region", "state"})
+    if region.kind is RegionKind.state:
         return frozenset({"city", "state"})
+    if region.kind is RegionKind.province:
+        return frozenset(
+            {"city", "county", "district", "province", "state", "state_district"}
+        )
+    if region.kind is RegionKind.department:
+        return frozenset({"city", "county", "district", "state", "state_district"})
+    if region.kind is RegionKind.region:
+        return frozenset(
+            {"archipelago", "city", "county", "district", "region", "state"}
+        )
+    if region.kind is RegionKind.subnational:
+        return frozenset({"city", "county", "district", "region", "state"})
+    if region.kind is RegionKind.territory:
+        return frozenset({"city", "county", "district", "state", "territory"})
     return frozenset({"city", "county", "district", "state"})
+
+
+def _has_acceptable_address_type(
+    region: Region, result: nominatim.SearchResult
+) -> bool:
+    if result.address_type in _preferred_address_types(region):
+        return True
+    if region.kind is not RegionKind.county:
+        return False
+    country = next(
+        (
+            parent
+            for parent in region.all_parents()
+            if parent.kind is RegionKind.country
+        ),
+        None,
+    )
+    if country is None or country.name != "United States":
+        return False
+    # Consolidated city-counties and county-equivalent independent cities are
+    # frequently indexed from their linked place as a city, town, or suburb.
+    # Accept those labels only for an admin_level=6 relation, which continues
+    # to reject an ordinary same-named municipality (normally admin_level=8).
+    return result.address_type in {"city", "county", "suburb", "town"} and (
+        result.extra.get("admin_level") == "6"
+    )
+
+
+_EXPECTED_ADMIN_LEVELS = {
+    RegionKind.canton: frozenset({"4"}),
+    RegionKind.county: frozenset({"5", "6"}),
+    RegionKind.department: frozenset({"4", "5", "6"}),
+    RegionKind.prefecture: frozenset({"3", "4"}),
+    RegionKind.province: frozenset({"4", "6"}),
+    RegionKind.region: frozenset({"4", "5"}),
+    RegionKind.state: frozenset({"4"}),
+    RegionKind.subnational: frozenset({"3", "4", "6", "7"}),
+    RegionKind.territory: frozenset({"4"}),
+}
+
+
+def _has_acceptable_admin_level(region: Region, result: nominatim.SearchResult) -> bool:
+    expected = _EXPECTED_ADMIN_LEVELS.get(region.kind)
+    if expected is None:
+        return True
+    actual = result.extra.get("admin_level")
+    # Nominatim may omit admin_level from an otherwise valid lookup result.
+    # Historic and ceremonial boundaries normally omit it because they are not
+    # part of the current administrative hierarchy.
+    if actual is None:
+        return True
+    return actual in expected
+
+
+def _is_supported_administrative_boundary(
+    region: Region, *, category: str, feature_type: str
+) -> bool:
+    if category != "boundary":
+        return False
+    if feature_type == "administrative":
+        return True
+    if region.kind is RegionKind.country and feature_type == "disputed":
+        return True
+    # Connecticut's abolished counties, and some comparable county-level
+    # divisions, remain useful geographic Regions even though OSM correctly
+    # represents their boundaries as historical rather than current. English
+    # lieutenancy areas are likewise explicit non-administrative boundaries.
+    return region.kind is RegionKind.county and feature_type in {
+        "ceremonial",
+        "historic",
+    }
 
 
 def _get_openstreetmap_tag(region: Region) -> Any | None:
@@ -264,15 +447,10 @@ def _is_matching_result(region: Region, result: nominatim.GeocodeResult) -> bool
     if (
         result.osm_type is None
         or result.osm_id is None
-        or (result.osm_type, result.osm_id) in _UNUSABLE_OSM_REFERENCES
-        or result.category != "boundary"
-        or (
-            result.feature_type != "administrative"
-            and not (
-                region.kind is RegionKind.country and result.feature_type == "disputed"
-            )
+        or not _is_supported_administrative_boundary(
+            region, category=result.category, feature_type=result.feature_type
         )
-        or result.address_type not in _expected_address_types(region)
+        or result.address_type not in _preferred_address_types(region)
     ):
         return False
     admin_level = _result_admin_level(result)
@@ -282,7 +460,7 @@ def _is_matching_result(region: Region, result: nominatim.GeocodeResult) -> bool
         and admin_level > 4
     ):
         return False
-    expected_names = {_normalize_name(name) for name in _region_name_aliases(region)}
+    expected_names = {_normalize_name(name) for name in get_region_name_aliases(region)}
     if _normalize_name(result.name) not in expected_names:
         return False
     address_names = _address_names(result)
@@ -354,7 +532,21 @@ def _preferred_address_types(region: Region) -> frozenset[str]:
     name = _unqualified_name(region)
     if name.endswith((" City", " city")):
         return frozenset({"city"})
-    return frozenset({"county"})
+    country = next(
+        (
+            parent
+            for parent in region.all_parents()
+            if parent.kind is RegionKind.country
+        ),
+        None,
+    )
+    if country is not None and country.name == "United States":
+        # Nominatim's geocodejson search currently exposes OSM
+        # ``boundary=historic`` county relations as ``locality``, while jsonv2
+        # lookup reports ``historic``. Current counties use ``county``. All
+        # three are preferable to a same-named city or town.
+        return frozenset({"county", "historic", "locality"})
+    return _expected_address_types(region)
 
 
 def _is_preferred_inference_result(
@@ -441,9 +633,8 @@ def _validate_openstreetmap_result(
             f"stored OpenStreetMap category {tag.category!r} differs from current "
             f"category {result.category!r} for {tag.osm_type} {tag.osm_id}"
         )
-    is_valid_administrative_feature = result.category == "boundary" and (
-        result.feature_type == "administrative"
-        or (region.kind is RegionKind.country and result.feature_type == "disputed")
+    is_valid_administrative_feature = _is_supported_administrative_boundary(
+        region, category=result.category, feature_type=result.feature_type
     )
     if (
         region.kind in _ADMINISTRATIVE_REGION_KINDS
@@ -453,10 +644,25 @@ def _validate_openstreetmap_result(
             f"OpenStreetMap {tag.osm_type} {tag.osm_id} is "
             f"{result.category}/{result.feature_type}, not an administrative boundary"
         )
-    if not _names_overlap(_region_name_aliases(region), _result_names(result)):
+    if result.address_type is not None and not _has_acceptable_address_type(
+        region, result
+    ):
+        yield (
+            f"OpenStreetMap {tag.osm_type} {tag.osm_id} has address type "
+            f"{result.address_type!r}, expected one of "
+            f"{sorted(_preferred_address_types(region))!r}"
+        )
+    if not _has_acceptable_admin_level(region, result):
+        yield (
+            f"OpenStreetMap {tag.osm_type} {tag.osm_id} has admin_level "
+            f"{result.extra.get('admin_level')!r}, expected one of "
+            f"{sorted(_EXPECTED_ADMIN_LEVELS[region.kind])!r} for "
+            f"RegionKind.{region.kind.name}"
+        )
+    if not _names_overlap(get_region_name_aliases(region), _result_names(result)):
         yield (
             f"OpenStreetMap {tag.osm_type} {tag.osm_id} is named {result.name!r}, "
-            f"which does not match Region aliases {sorted(_region_name_aliases(region))!r}"
+            f"which does not match Region aliases {sorted(get_region_name_aliases(region))!r}"
         )
     address_names = {
         value
@@ -475,8 +681,78 @@ def _validate_openstreetmap_result(
 
 
 def _clear_openstreetmap_validation_caches() -> None:
+    _get_redirect_alias_names_by_target_id.cache_clear()
     _get_openstreetmap_tag_owners.cache_clear()
     _get_openstreetmap_lookup_results.cache_clear()
+
+
+def _stored_reference_is_searchable(region: Region, tag: Any) -> bool:
+    """Fall back to search when Nominatim's lookup index temporarily omits an object."""
+    for query in get_nominatim_queries(region):
+        results = nominatim.search_geocodejson(query, limit=10)
+        if any(
+            result.osm_type == tag.osm_type
+            and result.osm_id == tag.osm_id
+            and result.category == tag.category
+            and _is_matching_result(region, result)
+            for result in results
+        ):
+            return True
+    structured_query = _get_structured_nominatim_query(region)
+    if structured_query is None:
+        return False
+    return any(
+        result.osm_type == tag.osm_type
+        and result.osm_id == tag.osm_id
+        and result.category == tag.category
+        and _is_matching_result(region, result)
+        for result in nominatim.search_geocodejson_structured(
+            **structured_query, limit=10
+        )
+    )
+
+
+def _openstreetmap_element_names(element: openstreetmap.Element) -> set[str]:
+    names: set[str] = set()
+    for key, value in element.tags.items():
+        if key in {
+            "name",
+            "official_name",
+            "alt_name",
+            "short_name",
+            "loc_name",
+        } or key.startswith("name:"):
+            names.update(name.strip() for name in value.split(";") if name.strip())
+    return names
+
+
+def _validate_direct_openstreetmap_element(
+    region: Region, tag: Any, element: openstreetmap.Element
+) -> Iterable[str]:
+    """Validate an extant OSM object that Nominatim has not indexed."""
+    feature_type = element.tags.get(tag.category)
+    if feature_type is None:
+        yield (
+            f"OpenStreetMap {tag.osm_type} {tag.osm_id} does not have stored "
+            f"category tag {tag.category!r}"
+        )
+    elif (
+        region.kind in _ADMINISTRATIVE_REGION_KINDS
+        and not _is_supported_administrative_boundary(
+            region, category=tag.category, feature_type=feature_type
+        )
+    ):
+        yield (
+            f"OpenStreetMap {tag.osm_type} {tag.osm_id} is "
+            f"{tag.category}/{feature_type}, not an administrative boundary"
+        )
+    names = _openstreetmap_element_names(element)
+    if not _names_overlap(get_region_name_aliases(region), names):
+        yield (
+            f"OpenStreetMap {tag.osm_type} {tag.osm_id} has names {sorted(names)!r}, "
+            f"which do not match Region aliases "
+            f"{sorted(get_region_name_aliases(region))!r}"
+        )
 
 
 @LINT.add(
@@ -516,12 +792,53 @@ def validate_openstreetmap(region: Region, cfg: LintConfig) -> Iterable[LintResu
     for tag in valid_tags:
         result = lookup_results.get((tag.osm_type, tag.osm_id))
         if result is None:
-            yield (
-                f"OpenStreetMap {tag.osm_type} {tag.osm_id} is not returned by "
-                "Nominatim lookup"
-            )
+            if _stored_reference_is_searchable(region, tag):
+                continue
+            element = openstreetmap.lookup_element(tag.osm_type, tag.osm_id)
+            if element is None:
+                yield (
+                    f"OpenStreetMap {tag.osm_type} {tag.osm_id} is not returned by "
+                    "Nominatim and does not exist in the OpenStreetMap API"
+                )
+            else:
+                yield from _validate_direct_openstreetmap_element(region, tag, element)
             continue
         yield from _validate_openstreetmap_result(region, tag, result, lookup_results)
+
+
+@LINT.add(
+    "openstreetmap_parent_containment",
+    required_resources={LintResource.SLOW},
+    skip_virtual=True,
+)
+def check_openstreetmap_parent_containment(
+    region: Region, cfg: LintConfig
+) -> Iterable[str]:
+    if region.parent is None:
+        return
+    child_boundary = coordinate_lint.get_direct_region_boundary(
+        region, allow_network=False
+    )
+    if child_boundary is None:
+        return
+    parent_boundary = coordinate_lint.get_region_boundary(
+        region.parent, allow_network=False
+    )
+    if parent_boundary is None:
+        return
+    assert child_boundary.result.geometry is not None
+    assert parent_boundary.result.geometry is not None
+    if coordinates.geometry_is_within_geometry(
+        child_boundary.result.geometry,
+        parent_boundary.result.geometry,
+        tolerance_km=coordinate_lint.REGION_BOUNDARY_TOLERANCE_KM,
+    ):
+        return
+    yield (
+        f"OpenStreetMap polygon extends more than "
+        f"{coordinate_lint.REGION_BOUNDARY_TOLERANCE_KM:g} km outside linked "
+        f"ancestor Region {parent_boundary.region.name!r}"
+    )
 
 
 @LINT.add("infer_openstreetmap", requires_network=True)
@@ -571,7 +888,7 @@ def infer_openstreetmap(region: Region, cfg: LintConfig) -> Iterable[LintResult]
             or _is_preferred_inference_result(region, structured_selection[1])
         ):
             selected = structured_selection
-    if selected is None:
+    if selected is None or not _is_preferred_inference_result(region, selected[1]):
         query, results, candidates = attempted[-1]
         candidate_labels = [
             (

@@ -361,6 +361,20 @@ def test_rejects_cross_family_proposed_location_name_collision() -> None:
         )
 
 
+def test_deduplicate_objects_excludes_unresolved_virtual_proposals() -> None:
+    redirect = Region.virtual(
+        name="Old name",
+        kind=RegionKind.redirect,
+        parent=Region.virtual(
+            name="Current name", kind=RegionKind.country, tags=(), comment=None
+        ),
+        tags=(),
+        comment=None,
+    )
+
+    assert apply_recommendations._deduplicate_objects((redirect,)) == ()
+
+
 def test_rejects_unknown_action(tmp_path: Path) -> None:
     path = tmp_path / "recommendations.jsonl"
     _write(path, [{"schema_version": 1, "action": "unknown"}])

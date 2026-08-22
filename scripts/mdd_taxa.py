@@ -30,7 +30,7 @@ from taxonomy.db.constants import (
     Rank,
     Status,
 )
-from taxonomy.db.models import Name, Taxon
+from taxonomy.db.models import ClassificationEntry, Name, Taxon
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.name import NameTag, TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
@@ -1350,13 +1350,22 @@ def _sort_subregions(item: str) -> str:
 
 
 @functools.cache
-def get_msw3_species_names() -> frozenset[str]:
-    """Return scientific names recognized at species rank in MSW3."""
+def get_msw3_species_entries() -> tuple[ClassificationEntry, ...]:
+    """Return classification entries recognized at species rank in MSW3."""
     article = Article.select_valid().filter(Article.name == MSW3_ARTICLE_NAME).get()
-    return frozenset(
-        classification_entry.name.replace(" ", "_")
+    return tuple(
+        classification_entry
         for classification_entry in article.get_classification_entries_with_children()
         if classification_entry.rank is Rank.species
+    )
+
+
+@functools.cache
+def get_msw3_species_names() -> frozenset[str]:
+    """Return scientific names recognized at species rank in MSW3."""
+    return frozenset(
+        classification_entry.name.replace(" ", "_")
+        for classification_entry in get_msw3_species_entries()
     )
 
 
@@ -1431,11 +1440,14 @@ class MDDSpecies:
         if taxonomy_notes and taxonomy_notes != "NA":
             return
 
-        if self.row.get("diffSinceMSW3") == "1":
+        if (
+            self.row.get("diffSinceMSW3") == "1"
+            or self.row.get("MSW3_matchtype") == "unmatched"
+        ):
             yield self.make_issue(
                 "taxonomyNotes",
-                "species is marked as new since MSW3, but the taxonomic change "
-                "from MSW3 is not documented",
+                "species was not recognized at species rank in MSW3, but the "
+                "taxonomic change from MSW3 is not documented",
             )
             return
 
@@ -1658,7 +1670,7 @@ class SpeciesWithSyns:
     species: MDDSpecies
     base_name: Syn
     syns: list[Syn]
-    _hesp_taxon_cache: Taxon | None | object = field(
+    _hesp_taxon_cache: Taxon | object | None = field(
         default=_TAXON_NOT_CACHED, init=False, repr=False
     )
 
@@ -2086,6 +2098,76 @@ def lint_msw3_classification(
                 "says that the row was matched",
             )
 
+        if (
+            match_type == "unmatched"
+            and msw3_name_is_missing
+            and not current_name_is_in_msw3
+            and sp.row.get("diffSinceMSW3") != "1"
+        ):
+            yield sp.make_issue(
+                "diffSinceMSW3",
+                "species has no species-level MSW3 counterpart but is not marked as "
+                "new since MSW3",
+                "1",
+            )
+
+
+def lint_msw3_included_species_comments(
+    species: Sequence[MDDSpecies],
+    msw3_species: Iterable[ClassificationEntry] | None = None,
+) -> Iterable[Issue]:
+    """Require notes to name MSW3 species included in another current species."""
+    if msw3_species is None:
+        msw3_species = get_msw3_species_entries()
+
+    id_to_species = {sp.row.get("id", ""): sp for sp in species}
+    directly_mapped_names = {
+        sp.row.get("MSW3_sciName", "") for sp in species
+    } - UNMATCHED_MSW3_VALUES
+    seen: set[tuple[str, str]] = set()
+    for entry in msw3_species:
+        msw3_name = entry.name.replace(" ", "_")
+        if msw3_name in directly_mapped_names or entry.mapped_name is None:
+            continue
+        try:
+            species_taxon = entry.mapped_name.taxon.parent_of_rank(Rank.species)
+        except ValueError:
+            continue
+        if entry.mapped_name == species_taxon.base_name:
+            # The MSW3 entry supplies the accepted name of the current species rather
+            # than a second species concept included within it.
+            continue
+        current_mdd_ids = [
+            tag.id
+            for tag in species_taxon.tags
+            if isinstance(tag, TaxonTag.MDD) and tag.id in id_to_species
+        ]
+        if len(current_mdd_ids) != 1:
+            continue
+        target = id_to_species[current_mdd_ids[0]]
+        key = (target.row["id"], msw3_name)
+        if key in seen:
+            continue
+        seen.add(key)
+
+        root_names = {entry.mapped_name.root_name, entry.name.split()[-1]}
+        if target.row.get("specificEpithet") in root_names:
+            # This MSW3 entry supplies the current species epithet through a former
+            # combination or spelling rather than naming another included species.
+            continue
+        taxonomy_notes = (target.row.get("taxonomyNotes") or "").strip()
+        if taxonomy_notes != "NA" and any(
+            re.search(rf"(?i)\b{re.escape(root_name)}\b", taxonomy_notes)
+            for root_name in root_names
+        ):
+            continue
+        expected_names = " or ".join(repr(name) for name in sorted(root_names))
+        yield target.make_issue(
+            "taxonomyNotes",
+            f"MSW3 recognized {msw3_name} as a separate species now included in "
+            f"this species, but taxonomyNotes does not mention {expected_names}",
+        )
+
 
 def check_unique_col_mapping(
     species: list[MDDSpecies],
@@ -2138,6 +2220,7 @@ def lint_species(species: list[MDDSpecies]) -> Iterable[Issue]:
     for sp in species:
         yield from sp.lint_standalone()
     yield from lint_msw3_classification(species)
+    yield from lint_msw3_included_species_comments(species)
     yield from check_id_field(species)
     yield from lint_missing_fields(species)
 

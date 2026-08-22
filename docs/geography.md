@@ -277,13 +277,15 @@ In more detail:
 - The [United Kingdom](/r/United_Kingdom) is divided into regions for each of its four
   constituent countries: [England](/r/England), [Wales](/r/Wales),
   [Northern Ireland](/r/Northern_Ireland), and [Scotland](/r/Scotland). The UK has a
-  large number of fossil localities, especially in England, so England and Wales are
-  divided further into regions for each of the
-  [vice-counties](https://en.wikipedia.org/wiki/Vice-county) that are traditionally used
-  for biological recording in the UK. The
-  [British Bryological Society](https://rbg-web2.rbge.org.uk/bbs/Recording/vcmappage.htm)
-  has a good map of the vice-counties. In the future we may add vice-counties for
-  Scotland and Ireland.
+  large number of fossil localities, especially in England, so England is divided
+  further into its 48 ceremonial counties (the lieutenancy areas defined under the
+  [Lieutenancies Act 1997](https://www.legislation.gov.uk/ukpga/1997/23/contents)).
+  Ceremonial counties are used here instead of Watsonian vice-counties or the changing
+  local-government hierarchy because their ordinary county names are common in locality
+  descriptions and their boundaries exhaustively divide England at a practical scale.
+  Wales is divided into its 22 principal areas, the single-tier counties and county
+  boroughs established under the
+  [Local Government (Wales) Act 1994](https://www.legislation.gov.uk/ukpga/1994/19/contents).
 - The UK's overseas territories are listed as separate countries in other continents
   (or, in the case of [Gibraltar](/r/Gibraltar), in another part of Europe).
 - Type localities that are given as "Ireland" should be listed under a location "Ireland

@@ -571,6 +571,9 @@ class RegionKind(enum.IntEnum):
     territory = 13
     supranational = 14  # Supranational regions from the UN geoscheme
     sea = 15
+    # Invalid Region records. Redirect Regions use ``parent`` as their target.
+    redirect = 16
+    deleted = 17
 
 
 class PeriodSystem(enum.IntEnum):

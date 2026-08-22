@@ -1,13 +1,14 @@
 import collections
 import sys
 from collections.abc import Iterable
-from typing import IO, Any, ClassVar, Self
+from typing import IO, Any, ClassVar, NotRequired, Self, cast
 
 from clirm import Field
 
 from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import constants, models
+from taxonomy.db.constants import Managed, Markdown
 from taxonomy.db.derived_data import DerivedField
 
 from .base import ADTField, BaseModel, LintConfig, get_tag_based_derived_field
@@ -60,15 +61,51 @@ class Region(BaseModel):
         return [{"name": self.name, "kind": self.kind.name}]
 
     def __repr__(self) -> str:
+        if self.kind is constants.RegionKind.redirect:
+            return f"{self.name} (redirect to {self.parent})"
+        if self.kind is constants.RegionKind.deleted:
+            return f"{self.name} (deleted)"
         out = self.name
         if self.parent:
             out += f", {self.parent.name}"
         out += f" ({self.kind.name})"
         return out
 
+    @classmethod
+    def add_validity_check(cls, query: Any) -> Any:
+        return query.filter(
+            cls.kind != constants.RegionKind.redirect,
+            cls.kind != constants.RegionKind.deleted,
+        )
+
+    def get_redirect_target(self) -> Self | None:
+        if self.kind is constants.RegionKind.redirect:
+            return self.parent
+        return None
+
+    def is_invalid(self) -> bool:
+        return self.kind in {
+            constants.RegionKind.redirect,
+            constants.RegionKind.deleted,
+        }
+
+    def should_skip(self) -> bool:
+        return self.kind in {
+            constants.RegionKind.redirect,
+            constants.RegionKind.deleted,
+        }
+
+    def lint_invalid(self, cfg: LintConfig) -> Iterable[LintResult]:
+        if self.kind is constants.RegionKind.redirect and self.parent is None:
+            yield "redirect Region has no target"
+        if self.tags:
+            yield "invalid Region has tags"
+
     def get_adt_callbacks(self) -> getinput.CallbackMap:
         return {
             **super().get_adt_callbacks(),
+            "merge": self.merge,
+            "remove": self.remove,
             "display_collections": self.display_collections,
             "display_citation_groups": self.display_citation_groups,
             "display_periods": self.display_periods,
@@ -194,8 +231,11 @@ class Region(BaseModel):
         tag_id = tag_cls._tag
         return any(tag._tag == tag_id for tag in self.tags)
 
+    def add_tag(self, tag: adt.ADT) -> None:
+        self.tags = (*self.tags, tag)  # type: ignore[assignment]
+
     def sorted_children(self) -> list[Region]:
-        return sorted(self.children, key=lambda c: c.name)
+        return sorted(Region.add_validity_check(self.children), key=lambda c: c.name)
 
     def sorted_locations(self) -> list[models.Location]:
         return sorted(
@@ -227,14 +267,17 @@ class Region(BaseModel):
 
     def all_citation_groups(self) -> Iterable[models.CitationGroup]:
         yield from self.citation_groups
-        for child in self.children:
+        for child in Region.add_validity_check(self.children):
             yield from child.all_citation_groups()
 
     def has_citation_groups(self, type: constants.ArticleType | None = None) -> bool:
         for cg in self.citation_groups:
             if type is None or cg.type is type:
                 return True
-        return any(child.has_citation_groups(type) for child in self.children)
+        return any(
+            child.has_citation_groups(type)
+            for child in Region.add_validity_check(self.children)
+        )
 
     def display_citation_groups(
         self,
@@ -268,12 +311,18 @@ class Region(BaseModel):
     def has_collections(self) -> bool:
         for _ in self.collections:
             return True
-        return any(child.has_collections() for child in self.children)
+        return any(
+            child.has_collections()
+            for child in Region.add_validity_check(self.children)
+        )
 
     def has_stratigraphic_units(self) -> bool:
         for _ in self.stratigraphic_units:
             return True
-        return any(child.has_stratigraphic_units() for child in self.children)
+        return any(
+            child.has_stratigraphic_units()
+            for child in Region.add_validity_check(self.children)
+        )
 
     def display_collections(
         self, *, full: bool = False, only_nonempty: bool = True, depth: int = 0
@@ -302,17 +351,24 @@ class Region(BaseModel):
     def has_locations(self) -> bool:
         for _ in self.locations:
             return True
-        return any(child.has_locations() for child in self.children)
+        return any(
+            child.has_locations() for child in Region.add_validity_check(self.children)
+        )
 
     def has_associated_people(self) -> bool:
         if self.get_raw_derived_field("associated_people"):
             return True
-        return any(child.has_associated_people() for child in self.children)
+        return any(
+            child.has_associated_people()
+            for child in Region.add_validity_check(self.children)
+        )
 
     def has_periods(self) -> bool:
         for _ in self.periods:
             return True
-        return any(child.has_periods() for child in self.children)
+        return any(
+            child.has_periods() for child in Region.add_validity_check(self.children)
+        )
 
     def display_periods(self, *, full: bool = False, depth: int = 0) -> None:
         if not self.has_periods():
@@ -330,8 +386,48 @@ class Region(BaseModel):
         for collection in self.collections.filter(models.Collection.city == None):
             collection.display()
             collection.fill_field("city")
-        for child in self.children:
+        for child in Region.add_validity_check(self.children):
             child.add_cities()
+
+    def merge(self, other: Self | None = None) -> None:
+        """Redirect this Region to ``other`` and move ordinary references to it."""
+        if other is None:
+            selected_other = Region.getter(None).get_one("merge target> ")
+            if selected_other is None:
+                return
+            other = cast(Self, selected_other)
+        if other == self:
+            raise ValueError("cannot merge a Region into itself")
+        if self.is_invalid():
+            raise ValueError("cannot merge an invalid Region")
+        if other.is_invalid():
+            raise ValueError("cannot merge into an invalid Region")
+        if other.has_parent(self):
+            raise ValueError("cannot merge a Region into one of its descendants")
+
+        # Include invalid objects so existing aliases do not become redirect chains.
+        for field, obj in tuple(self.get_direct_backrefs(include_invalid=True)):
+            setattr(obj, field.attribute_name, other)
+        self.parent = other
+        self.kind = constants.RegionKind.redirect
+        self.tags = ()  # type: ignore[assignment]
+
+    def remove(self) -> None:
+        """Mark an unreferenced Region as deleted without removing its DB row."""
+        if self.is_invalid():
+            raise ValueError("cannot remove an invalid Region")
+        references = list(self.get_direct_backrefs())
+        if references:
+            descriptions = ", ".join(
+                f"{type(obj).__name__} {obj.id}.{field.attribute_name}"
+                for field, obj in references[:10]
+            )
+            suffix = " ..." if len(references) > 10 else ""
+            raise ValueError(
+                "cannot remove a Region with valid references: "
+                f"{descriptions}{suffix}"
+            )
+        self.kind = constants.RegionKind.deleted
 
     def has_parent(self, parent: Region) -> bool:
         if self == parent:
@@ -363,4 +459,8 @@ class RegionTag(adt.ADT):
     # installation-specific Nominatim place_id values here.
     OpenStreetMap(  # type: ignore[name-defined]
         osm_type=str, osm_id=int, category=str, tag=3
+    )
+    # Suppress a reviewed Region lint while retaining the reason.
+    IgnoreLint(  # type: ignore[name-defined]
+        label=Managed, comment=NotRequired[Markdown], tag=4
     )

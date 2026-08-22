@@ -177,6 +177,12 @@ def _deduplicate_objects(objects: Iterable[BaseModel]) -> tuple[BaseModel, ...]:
     output: list[BaseModel] = []
     seen: set[tuple[type[BaseModel], object]] = set()
     for obj in objects:
+        # Plans represent created objects with in-memory models whose negative
+        # VirtualIds have no corresponding database row. The execution recorder
+        # supplies the persistent objects created from those proposals; never
+        # send an unresolved proposal to post-apply reload/lint cleanup.
+        if getattr(obj, "is_virtual", False):
+            continue
         if getattr(obj, "id", None) is None:
             continue
         key = _persistent_identity(obj)

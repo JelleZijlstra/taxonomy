@@ -7,14 +7,14 @@ from typing import Self
 from taxonomy import coordinates
 from taxonomy.apis import nominatim
 from taxonomy.db import helpers
-from taxonomy.db.constants import RegionKind
-from taxonomy.db.models.region import Region
+from taxonomy.db.models.region import Region, RegionTag
 
 DEGREES_MINUTES_RE = re.compile(
     r"^(?P<degrees>\d+(?:\.\d+)?)\s+(?P<minutes>\d+(?:\.\d+)?)\s*(?P<direction>[NSWE])$"
 )
 
 COORDINATE_TOLERANCE_KM = 5
+REGION_BOUNDARY_TOLERANCE_KM = 0.5
 EARTH_RADIUS_KM = 6371.0088
 
 
@@ -303,86 +303,111 @@ def check_extent_in_region(
     region: Region,
     *,
     require_full_containment: bool = False,
-    allow_network: bool = True,
+    allow_network: bool = False,
 ) -> Iterable[str]:
+    boundary = get_region_boundary(region, allow_network=allow_network)
+    if boundary is None:
+        return
+    boundary_region = boundary.region
+    result = boundary.result
+    assert result.geometry is not None
+    if extent_is_in_geometry(
+        extent, result.geometry, require_full_containment=require_full_containment
+    ):
+        return
     point = extent.point
     if point is not None:
-        yield from check_point_in_region(point, region, allow_network=allow_network)
+        yield f"coordinates {point} are outside {boundary_region.name}"
         return
 
-    country = region.parent_of_kind(RegionKind.country)
-    if country is None:
+    if not require_full_containment:
+        yield f"coordinate extent {extent} is outside {boundary_region.name}"
         return
-    detailed_region_and_path = _get_detailed_region_path(region, country)
-    if detailed_region_and_path is None:
-        yield from check_point_in_region(
-            extent.center, region, allow_network=allow_network
+    yield f"coordinate extent {extent} extends outside {boundary_region.name}"
+
+
+def extent_is_in_geometry(
+    extent: CoordinateExtent,
+    geometry: coordinates.GeoGeometry,
+    *,
+    require_full_containment: bool = False,
+) -> bool:
+    point = extent.point
+    if point is not None:
+        return _point_is_in_geometry(point, geometry)
+    geometry_kwargs = {
+        "minimum_longitude": extent.longitude.minimum,
+        "minimum_latitude": extent.latitude.minimum,
+        "maximum_longitude": extent.longitude.maximum,
+        "maximum_latitude": extent.latitude.maximum,
+    }
+    if not require_full_containment:
+        return (
+            coordinates.geometry_intersects_box(geometry, **geometry_kwargs)
+            or _extent_distance_to_geometry_km(extent, geometry)
+            <= REGION_BOUNDARY_TOLERANCE_KM
         )
-        return
-    detailed_region, path = detailed_region_and_path
-    if _extent_intersects_path(extent, path):
-        if require_full_containment and not _extent_is_contained_in_path(extent, path):
-            yield f"coordinate extent {extent} extends outside {detailed_region.name}"
-        return
-    if detailed_region != country:
-        country_path = coordinates.get_path(country.name)
-        if country_path is not None and _extent_intersects_path(extent, country_path):
-            yield (
-                f"coordinate extent {extent} overlaps {country.name}, "
-                f"but not {detailed_region.name}"
-            )
-            return
-    yield f"coordinate extent {extent} is outside {detailed_region.name}"
-
-
-def _extent_intersects_path(extent: CoordinateExtent, path: str) -> bool:
-    corners = _get_extent_corners(extent)
-    if any(coordinates.is_in_polygon(point, path) for point in corners):
+    if coordinates.geometry_contains_box(geometry, **geometry_kwargs):
         return True
-    for polygon, bounds in zip(
-        coordinates.get_polygon(path),
-        coordinates.get_polygon_bounding_boxes(path),
-        strict=True,
-    ):
-        minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude = (
-            bounds
-        )
-        if (
-            extent.longitude.maximum < minimum_longitude
-            or extent.longitude.minimum > maximum_longitude
-            or extent.latitude.maximum < minimum_latitude
-            or extent.latitude.minimum > maximum_latitude
+    outside_corners = [
+        point
+        for point in _get_extent_corners(extent)
+        if not coordinates.is_in_geometry(point, geometry)
+    ]
+    return bool(outside_corners) and all(
+        coordinates.distance_to_geometry_km(point, geometry)
+        <= REGION_BOUNDARY_TOLERANCE_KM
+        for point in outside_corners
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class RegionBoundary:
+    region: Region
+    result: nominatim.BoundaryResult
+
+
+def get_region_boundary(
+    region: Region, *, allow_network: bool = False
+) -> RegionBoundary | None:
+    """Return the deepest linked Region with usable cached OSM geometry."""
+    candidate: Region | None = region
+    while candidate is not None:
+        if boundary := get_direct_region_boundary(
+            candidate, allow_network=allow_network
         ):
-            continue
-        if any(_extent_contains_point(extent, line.p1) for line in polygon):
-            return True
-        box_edges = (
-            coordinates.LineSegment.from_points(corners[0], corners[1]),
-            coordinates.LineSegment.from_points(corners[1], corners[2]),
-            coordinates.LineSegment.from_points(corners[2], corners[3]),
-            coordinates.LineSegment.from_points(corners[3], corners[0]),
-        )
-        for polygon_edge in polygon:
-            for box_edge in box_edges:
-                intersection = coordinates.get_intersection(
-                    polygon_edge.line, box_edge.line
-                )
-                if (
-                    intersection is not None
-                    and polygon_edge.segment_contains_point_on_line(intersection)
-                    and box_edge.segment_contains_point_on_line(intersection)
-                ):
-                    return True
-    return False
+            return boundary
+        candidate = candidate.parent
+    return None
 
 
-def _extent_is_contained_in_path(extent: CoordinateExtent, path: str) -> bool:
-    # This is intentionally a conservative bounding-box test. It is used for
-    # non-General Locations, whose range expresses uncertainty around a specific
-    # locality. General islands, rivers, and other areal features legitimately
-    # have bounding-box corners outside their land or river polygon.
-    return all(
-        coordinates.is_in_polygon(point, path) for point in _get_extent_corners(extent)
+def get_direct_region_boundary(
+    region: Region, *, allow_network: bool = False
+) -> RegionBoundary | None:
+    tag = next(
+        (
+            tag
+            for tag in getattr(region, "tags", ())
+            if isinstance(tag, RegionTag.OpenStreetMap)
+        ),
+        None,
+    )
+    if tag is None:
+        return None
+    result = nominatim.lookup_boundary(
+        tag.osm_type, tag.osm_id, allow_network=allow_network
+    )
+    if result is None or result.geometry is None:
+        return None
+    return RegionBoundary(region, result)
+
+
+def _extent_distance_to_geometry_km(
+    extent: CoordinateExtent, geometry: coordinates.GeoGeometry
+) -> float:
+    return min(
+        coordinates.distance_to_geometry_km(point, geometry)
+        for point in (extent.center, *_get_extent_corners(extent))
     )
 
 
@@ -402,113 +427,31 @@ def _get_extent_corners(extent: CoordinateExtent) -> tuple[coordinates.Point, ..
     )
 
 
-def _extent_contains_point(extent: CoordinateExtent, point: coordinates.Point) -> bool:
-    return (
-        extent.latitude.minimum <= point.latitude <= extent.latitude.maximum
-        and extent.longitude.minimum <= point.longitude <= extent.longitude.maximum
+def check_point_in_region(
+    point: coordinates.Point, region: Region, *, allow_network: bool = False
+) -> Iterable[str]:
+    boundary = get_region_boundary(region, allow_network=allow_network)
+    if boundary is None:
+        return
+    assert boundary.result.geometry is not None
+    yield from _check_point_in_boundary(
+        point, boundary.region, boundary.result.geometry
     )
 
 
-def check_point_in_region(
-    point: coordinates.Point, region: Region, *, allow_network: bool = True
+def _check_point_in_boundary(
+    point: coordinates.Point, region: Region, geometry: coordinates.GeoGeometry
 ) -> Iterable[str]:
-    country = region.parent_of_kind(RegionKind.country)
-    if country is None:
+    if _point_is_in_geometry(point, geometry):
         return
-
-    detailed_region_and_path = _get_detailed_region_path(region, country)
-    if detailed_region_and_path is not None:
-        detailed_region, path = detailed_region_and_path
-        if coordinates.is_in_polygon(point, path):
-            return
-        if detailed_region != country:
-            country_path = coordinates.get_path(country.name)
-            if country_path is not None and coordinates.is_in_polygon(
-                point, country_path
-            ):
-                actual_region = _get_containing_child_region(point, country)
-                if actual_region is not None:
-                    yield (
-                        f"coordinates {point} are in {actual_region.name}, "
-                        f"not {detailed_region.name}"
-                    )
-                    return
-                nearest_region = _get_nearest_child_region(point, country)
-                if nearest_region == detailed_region:
-                    return
-                if nearest_region is not None:
-                    yield (
-                        f"coordinates {point} are closest to {nearest_region.name}, "
-                        f"not {detailed_region.name}"
-                    )
-                    return
-                yield (
-                    f"coordinates {point} are outside {detailed_region.name}, "
-                    f"{country.name}"
-                )
-                return
-
-    yield from _check_country(point, country, allow_network=allow_network)
+    yield f"coordinates {point} are outside {region.name}"
 
 
-def _get_detailed_region_path(
-    region: Region, country: Region
-) -> tuple[Region, str] | None:
-    current: Region | None = region
-    while current is not None and current != country:
-        path = coordinates.get_region_path(current.name, country.name)
-        if path is not None:
-            return current, path
-        current = current.parent
-
-    path = coordinates.get_path(country.name)
-    if path is None:
-        return None
-    return country, path
-
-
-def _get_containing_child_region(
-    point: coordinates.Point, country: Region
-) -> Region | None:
-    for child in sorted(country.children, key=lambda region: region.name):
-        path = coordinates.get_region_path(child.name, country.name)
-        if path is None:
-            continue
-        if coordinates.is_in_polygon(point, path):
-            return child
-    return None
-
-
-def _get_nearest_child_region(
-    point: coordinates.Point, country: Region
-) -> Region | None:
-    nearest: tuple[float, Region] | None = None
-    for child in sorted(country.children, key=lambda region: region.name):
-        path = coordinates.get_region_path(child.name, country.name)
-        if path is None:
-            continue
-        distance = coordinates.get_distance_to_polygon(point, path)
-        if nearest is None or distance < nearest[0]:
-            nearest = (distance, child)
-    return nearest[1] if nearest is not None else None
-
-
-def _check_country(
-    point: coordinates.Point, country: Region, *, allow_network: bool
-) -> Iterable[str]:
-    polygon_path = coordinates.get_path(country.name)
-    if polygon_path is not None and coordinates.is_in_polygon(point, polygon_path):
-        return
-    if not allow_network:
-        return
-    osm_country = nominatim.get_openstreetmap_country(point)
-    if osm_country is None:
-        yield f"cannot place coordinates {point} in any country (expected {country.name})"
-        return
-    our_country = country.name
-    if osm_country == our_country:
-        return
-    our_country = nominatim.HESP_COUNTRY_TO_OSM_COUNTRY.get(our_country, our_country)
-    if our_country == osm_country:
-        return
-    yield f"coordinates {point} are in {osm_country}, not {country.name}"
+def _point_is_in_geometry(
+    point: coordinates.Point, geometry: coordinates.GeoGeometry
+) -> bool:
+    return (
+        coordinates.is_in_geometry(point, geometry)
+        or coordinates.distance_to_geometry_km(point, geometry)
+        <= REGION_BOUNDARY_TOLERANCE_KM
+    )

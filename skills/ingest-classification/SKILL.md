@@ -69,6 +69,11 @@ evidence.
   accepted CE must give the nearest existing ancestor as `parent_taxon_id`; descendants
   derive placement from their CE parents. Use explicit `create_taxon` only for an anchor
   or another Taxon graph that cannot be derived from the source classification.
+- When ingesting an older mammal paper, normally propose only new `ClassificationEntry`
+  objects (and `OccurrenceRecord` objects when applicable), not ordinary `Name` objects.
+  Once the CEs exist, classification lint maps existing Names or creates missing
+  combinations and misspellings. Use `Materialize` only on accepted CEs that need taxon
+  materialization; it is not necessary solely for a name combination or misspelling.
 - If a source-root CE belongs beneath a Taxon materialized from a different Article in
   the same manifest, use `MaterializeParent` (or the builder's `materialize_parent`)
   instead of inventing a cross-Article source parent. It is a reconciliation
