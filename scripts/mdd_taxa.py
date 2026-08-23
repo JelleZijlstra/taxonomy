@@ -32,6 +32,7 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models import ClassificationEntry, Name, Taxon
 from taxonomy.db.models.article import Article
+from taxonomy.db.models.classification_entry import ClassificationEntryTag
 from taxonomy.db.models.name import NameTag, TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.tags import TaxonTag, get_effective_regional_tag
@@ -95,6 +96,7 @@ FREE_FORM_TEXT_COLUMNS = (
 MSW3_ARTICLE_NAME = "Mammalia-review (MSW3)"
 UNMATCHED_MSW3_VALUES = {"", "NA"}
 UNMATCHED_MSW3_MATCH_TYPES = {"NA", "unmatched"}
+RECENTLY_EXTINCT_TAXONOMY_NOTE = "recently extinct species"
 
 # Columns that map directly to a column in the synonyms sheet
 SIMPLE_COLUMNS = [
@@ -1235,7 +1237,7 @@ def _distribution_status_note(record: Any, taxon: Taxon) -> str:
 def get_taxon_distribution_evidence(taxon: Taxon) -> list[DistributionEvidence]:
     """Return country evidence from source-backed OccurrenceRecords."""
     evidence = []
-    for record in taxon.occurrence_records:
+    for record in cast(Any, taxon).occurrence_records:
         if record.location is None or not _occurrence_record_is_distribution_evidence(
             record, taxon
         ):
@@ -1356,7 +1358,14 @@ def get_msw3_species_entries() -> tuple[ClassificationEntry, ...]:
     return tuple(
         classification_entry
         for classification_entry in article.get_classification_entries_with_children()
-        if classification_entry.rank is Rank.species
+        if is_counted_msw3_species_entry(classification_entry)
+    )
+
+
+def is_counted_msw3_species_entry(entry: ClassificationEntry) -> bool:
+    """Return whether an MSW3 entry contributes to its accepted species count."""
+    return entry.rank is Rank.species and not entry.has_tag(
+        ClassificationEntryTag.TreatedAsDubious
     )
 
 
@@ -1424,15 +1433,24 @@ class MDDSpecies:
                     )
         yield from self.lint_repeated_spaces()
         yield from self.lint_msw3_taxonomy_notes()
+        yield from self.lint_taxonomy_note_citation()
         yield from self.lint_distribution_standalone()
 
     def lint_repeated_spaces(self) -> Iterable[Issue]:
         for column_name in FREE_FORM_TEXT_COLUMNS:
             value = self.row.get(column_name)
-            if not isinstance(value, str) or "  " not in value:
+            if not isinstance(value, str):
                 continue
+            cleaned = re.sub(r" {2,}", " ", value.strip())
+            if cleaned == value:
+                continue
+            descriptions = []
+            if value != value.strip():
+                descriptions.append("leading or trailing whitespace")
+            if "  " in value:
+                descriptions.append("repeated spaces")
             yield self.make_issue(
-                column_name, "contains repeated spaces", re.sub(r" {2,}", " ", value)
+                column_name, f"contains {' and '.join(descriptions)}", cleaned
             )
 
     def lint_msw3_taxonomy_notes(self) -> Iterable[Issue]:
@@ -1463,6 +1481,20 @@ class MDDSpecies:
                 f"scientific name differs from MSW3 ({msw3_sci_name}), but the "
                 "change is not documented",
             )
+
+    def lint_taxonomy_note_citation(self) -> Iterable[Issue]:
+        taxonomy_notes = (self.row.get("taxonomyNotes") or "").strip()
+        citation = (self.row.get("taxonomyNotesCitation") or "").strip()
+        if (
+            taxonomy_notes in {"", "NA"}
+            or citation not in {"", "NA"}
+            or taxonomy_notes.casefold() == RECENTLY_EXTINCT_TAXONOMY_NOTE
+        ):
+            return
+        yield self.make_issue(
+            "taxonomyNotesCitation",
+            "taxonomyNotes is present but taxonomyNotesCitation is missing",
+        )
 
     def get_countries(self) -> set[str]:
         if not self.row.get("countryDistribution"):
@@ -2267,6 +2299,10 @@ def _find_article_by_doi(doi: str) -> list[Article]:
     )
 
 
+def _deduplicate_citation_parts(parts: Iterable[str]) -> list[str]:
+    return list(dict.fromkeys(parts))
+
+
 def lint_note_citations(species: list[MDDSpecies]) -> Iterable[Issue]:
     # Build indexes once for all matching
     indexes = mdd_refs_match.get_article_indexes()
@@ -2326,11 +2362,17 @@ def lint_note_citations(species: list[MDDSpecies]) -> Iterable[Issue]:
                 new_parts.append(formatted)
                 if formatted != part:
                     changed = True
-            new_value = "|".join(new_parts)
-            if changed:
-                yield sp.make_issue(
-                    col, "reformat citations to canonical style", new_value
-                )
+            deduplicated_parts = _deduplicate_citation_parts(new_parts)
+            removed_duplicates = len(deduplicated_parts) != len(new_parts)
+            new_value = "|".join(deduplicated_parts)
+            if changed or removed_duplicates:
+                if changed and removed_duplicates:
+                    description = "reformat citations and remove duplicates"
+                elif removed_duplicates:
+                    description = "remove duplicate citations"
+                else:
+                    description = "reformat citations to canonical style"
+                yield sp.make_issue(col, description, new_value)
 
     # After scanning all species, update notes/mdd/mdd_refs.txt with any unmatched refs
     if unmatched_refs:

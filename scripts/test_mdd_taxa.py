@@ -14,11 +14,28 @@ from taxonomy.db.constants import (
     DistributionPresence,
     OccurrenceBasis,
     OccurrenceValidity,
+    Rank,
 )
 from taxonomy.db.models.name import Name, NameTag, TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.tags import TaxonTag
 from taxonomy.db.models.taxon import Taxon
+
+
+@pytest.mark.parametrize(
+    ("rank", "is_dubious", "expected"),
+    [
+        (Rank.species, False, True),
+        (Rank.species, True, False),
+        (Rank.subspecies, False, False),
+    ],
+)
+def test_is_counted_msw3_species_entry(
+    rank: Rank, is_dubious: bool, expected: bool  # noqa: FBT001
+) -> None:
+    entry = SimpleNamespace(rank=rank, has_tag=lambda tag: is_dubious)
+
+    assert mdd_taxa.is_counted_msw3_species_entry(cast(Any, entry)) is expected
 
 
 def _location(country: str, name: str = "precise locality") -> SimpleNamespace:
@@ -494,6 +511,9 @@ def test_uncertain_subregions_are_sorted_last() -> None:
         ),
         ("typeLocality", "East of  Lake Example", "East of Lake Example"),
         ("taxonomyNotesCitation", "Example  2026. Title.", "Example 2026. Title."),
+        ("taxonomyNotes", "  split from Example_species", "split from Example_species"),
+        ("distributionNotes", "Known only from here.  ", "Known only from here."),
+        ("taxonomyNotesCitation", "  Example  2026. Title.  ", "Example 2026. Title."),
     ],
 )
 def test_repeated_spaces_in_free_form_text_are_fixable(
@@ -528,6 +548,48 @@ def test_repeated_spaces_outside_free_form_text_are_not_changed() -> None:
     )
 
     assert list(species.lint_repeated_spaces()) == []
+
+
+@pytest.mark.parametrize(
+    ("taxonomy_notes", "citation", "expects_issue"),
+    [
+        ("split from Example_species", "", True),
+        ("split from Example_species", "NA", True),
+        ("split from Example_species", "Example 2026. Revision.", False),
+        ("recently extinct species", "", False),
+        ("Recently Extinct Species", "NA", False),
+        ("", "", False),
+        ("NA", "", False),
+    ],
+)
+def test_taxonomy_notes_require_citations_except_recently_extinct(
+    taxonomy_notes: str, citation: str, expects_issue: bool  # noqa: FBT001
+) -> None:
+    species = mdd_taxa.MDDSpecies(
+        2,
+        cast(
+            mdd_taxa.MDDSpeciesRow,
+            {
+                "id": "1234",
+                "sciName": "Example_species",
+                "taxonomyNotes": taxonomy_notes,
+                "taxonomyNotesCitation": citation,
+            },
+        ),
+    )
+
+    issues = list(species.lint_taxonomy_note_citation())
+
+    assert bool(issues) is expects_issue
+    if issues:
+        assert issues[0].mdd_column == "taxonomyNotesCitation"
+        assert issues[0].suggested_change is None
+
+
+def test_duplicate_citation_parts_are_removed_without_reordering() -> None:
+    assert mdd_taxa._deduplicate_citation_parts(
+        ["First citation", "Second citation", "First citation"]
+    ) == ["First citation", "Second citation"]
 
 
 @pytest.mark.parametrize("taxonomy_notes", ["", "NA"])
