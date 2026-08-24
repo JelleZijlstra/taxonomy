@@ -13,6 +13,43 @@ Core goals are:
   trace the database's decisions back to these sources.
 - Consistency: Similar cases should be treated similarly across the database.
 
+Important technical tools include:
+
+- The lint system, which checks database objects against a series of invariants. Many
+  lint checks infer data from external sources or other tables; such inference lints are
+  often paired with checks that alert if the inferred data differs from that actually in
+  the database.
+- A distinction between source data, which is directly quoted from a source, and derived
+  data, which is interpreted into the database's structured format.
+
+The models aim to directly represent useful, interpretable concepts:
+
+- Name: a name that appears in the scientific literature
+- Taxon: a taxon that can be included in a classification
+- Location: a specific geographical place
+- Region: a defined region in the world, usually political
+- Period: a period in geological time
+- StratigraphicUnit: a unit like a formation or member
+- Person: a person involved with data in the database
+- Article: a citable work
+- CitationGroup: an organizing tool for citations (usually a journal)
+- NameComplex: a group of genus-group names with a shared etymological element
+- SpeciesNameComplex: a group of species-group names with a shared etymological element
+- OccurrenceRecord: a source-supported occurrence of a taxon in a specific place
+- ClassificationEntry: a name appearing in a specific source
+- Occurrence: deprecated model for storing the occurrence of a taxon in a region
+- ItemFile: a file representing a whole volume or issue
+- IssueDate: the date a whole journal issue was published
+
+Two models represent private data that does not usually interact with the rest of the
+database:
+
+- Book: my private library including non-taxonomic books
+- Specimen: my private biological specimens
+
+And a few models serve narrow specialized purposes (SpeciesNameEnding, NameEnding,
+ArticleComment, NameComment, CitationGroupPattern, SpecimenComment, IgnoredDoi).
+
 ## Project Structure & Module Organization
 
 - `taxonomy/`: Core library and CLI (`shell.py`); DB models under `taxonomy/db/`.
