@@ -7271,7 +7271,9 @@ def check_general_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
     location = nam.type_locality
     if location is None or location.name != location.region.name:
         return
-    if nam.has_type_tag(TypeTag.ImpreciseLocality):
+    if nam.has_type_tag(TypeTag.ImpreciseLocality) or nam.has_type_tag(
+        TypeTag.PartialTypeLocality
+    ):
         return
     tagged_region = next(
         (
@@ -7288,6 +7290,59 @@ def check_general_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
         f"{tagged_region.name!r} is tagged MustHavePreciseTypeLocality; use a more "
         "precise Location or add the ImpreciseLocality tag"
     )
+
+
+def _partial_type_locality_container_kind(location: models.Location) -> str | None:
+    if location.name == location.region.name and is_recent_location(location):
+        return "Recent"
+    if location.name == f"{location.region.name} fossil" and is_non_recent_location(
+        location
+    ):
+        return "fossil"
+    return None
+
+
+def _region_is_within(region: models.Region, container: models.Region) -> bool:
+    current: models.Region | None = region
+    while current is not None:
+        if current == container:
+            return True
+        current = current.parent
+    return False
+
+
+@LINT.add("partial_type_locality")
+def check_partial_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    tags = list(nam.get_tags(nam.type_tags, TypeTag.PartialTypeLocality))
+    if not tags:
+        return
+    if nam.species_type_kind not in (None, SpeciesGroupType.syntypes):
+        yield (
+            "has PartialTypeLocality tags, but species_type_kind is "
+            f"{nam.species_type_kind.name}, not syntypes or unset"
+        )
+    unique_location_ids = {tag.location.id for tag in tags}
+    if len(unique_location_ids) < 2:
+        yield (
+            "must have more than one distinct PartialTypeLocality; got "
+            f"{len(unique_location_ids)}"
+        )
+    if nam.type_locality is None:
+        yield "has PartialTypeLocality tags but no type locality"
+        return
+    container_kind = _partial_type_locality_container_kind(nam.type_locality)
+    if container_kind is None:
+        yield (
+            "type locality for PartialTypeLocality tags must be either the Recent "
+            "Location named for its Region or the '<Region> fossil' Location"
+        )
+        return
+    for tag in tags:
+        if not _region_is_within(tag.location.region, nam.type_locality.region):
+            yield (
+                f"PartialTypeLocality {tag.location.name!r} is outside type-locality "
+                f"Region {nam.type_locality.region.name!r}"
+            )
 
 
 @LINT.add("type_locality_validity")

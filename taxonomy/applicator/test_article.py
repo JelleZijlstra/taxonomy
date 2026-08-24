@@ -132,6 +132,30 @@ def _chapter_row(pdf: bytes) -> dict[str, Any]:
     }
 
 
+def _supplement_row(workbook: bytes) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "action": "create_article",
+        "confidence": "high",
+        "reason": "The publisher identifies the staged workbook as a supplement.",
+        "evidence": [
+            {"kind": "acquisition_url", "text": "https://example.org/table-s1.xlsx"}
+        ],
+        "article": {
+            "name": "Endodontidae (supplement).xlsx",
+            "type": "SUPPLEMENT",
+            "fields": {"year": "1976", "title": "Supplementary Table S1"},
+            "parent": {"id": 10, "name": "Endodontidae.pdf"},
+        },
+        "file": {
+            "source_path": "table-s1.xlsx",
+            "destination_folder": "Mollusca",
+            "sha256": hashlib.sha256(workbook).hexdigest(),
+            "size": len(workbook),
+        },
+    }
+
+
 def _build_volume_and_chapter(tmp_path: Path) -> recommendations.RecommendationPlan:
     pdf = _pdf_bytes()
     new_path = tmp_path / "new"
@@ -364,6 +388,83 @@ def test_build_plan_rejects_changed_staged_file(tmp_path: Path) -> None:
             get_citation_group=lambda _id: _citation_group(),
             expand_doi=lambda _doi: {"type": ArticleType.JOURNAL},
         )
+
+
+def test_build_plan_accepts_parented_non_pdf_supplement(tmp_path: Path) -> None:
+    workbook = b"PK\x03\x04minimal workbook fixture"
+    new_path = tmp_path / "new"
+    library_path = tmp_path / "library"
+    new_path.mkdir()
+    (library_path / "Mollusca").mkdir(parents=True)
+    (new_path / "table-s1.xlsx").write_bytes(workbook)
+    parent = cast(
+        Article,
+        SimpleNamespace(
+            id=10,
+            name="Endodontidae.pdf",
+            type=ArticleType.JOURNAL,
+            is_invalid=lambda: False,
+        ),
+    )
+
+    plan = recommendations.build_plan(
+        (recommendations.parse_recommendation(_supplement_row(workbook), 1),),
+        options=SimpleNamespace(new_path=new_path, library_path=library_path),
+        get_article=lambda _name: None,
+        get_article_by_id=lambda _id: parent,
+        articles_with_doi=lambda _doi: (),
+        is_catalog_folder=lambda _path: True,
+        expand_doi=lambda _doi: {},
+    )
+
+    action = plan.actions[0]
+    assert action.article_type is ArticleType.SUPPLEMENT
+    assert action.parent_article is parent
+    assert action.destination_path == (
+        library_path / "Mollusca/Endodontidae (supplement).xlsx"
+    )
+
+
+def test_build_plan_rejects_non_pdf_ordinary_article(tmp_path: Path) -> None:
+    workbook = b"PK\x03\x04minimal workbook fixture"
+    row_data = _supplement_row(workbook)
+    row_data["article"]["type"] = "MISCELLANEOUS"
+    row_data["article"].pop("parent")
+    new_path = tmp_path / "new"
+    library_path = tmp_path / "library"
+    new_path.mkdir()
+    (library_path / "Mollusca").mkdir(parents=True)
+    (new_path / "table-s1.xlsx").write_bytes(workbook)
+
+    with pytest.raises(
+        recommendations.RecommendationError,
+        match="only SUPPLEMENT Articles may use non-PDF files",
+    ):
+        recommendations.build_plan(
+            (recommendations.parse_recommendation(row_data, 1),),
+            options=SimpleNamespace(new_path=new_path, library_path=library_path),
+            get_article=lambda _name: None,
+            articles_with_doi=lambda _doi: (),
+            is_catalog_folder=lambda _path: True,
+            expand_doi=lambda _doi: {},
+        )
+
+
+def test_run_auxiliary_skips_pdf_processing_for_non_pdf_supplement() -> None:
+    calls: list[object] = []
+    article = cast(
+        Article,
+        SimpleNamespace(
+            name="Endodontidae (supplement).xlsx",
+            store_pdf_content=lambda: calls.append("store"),
+            index_pdf_for_search=lambda: calls.append("index"),
+            add_to_history=lambda *args: calls.append(args),
+        ),
+    )
+
+    recommendations._run_auxiliary(article, add_history=True)
+
+    assert calls == [(), ("name",)]
 
 
 def test_execute_installs_pdf_then_runs_auxiliary_and_removes_source(

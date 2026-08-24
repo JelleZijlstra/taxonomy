@@ -95,6 +95,49 @@ def test_open_coordinates_is_adt_callback(monkeypatch: pytest.MonkeyPatch) -> No
     assert callbacks["source_callback"] is source_callback
 
 
+def test_location_is_not_empty_when_partial_type_locality_references_it() -> None:
+    empty_relation = SimpleNamespace(count=Mock(return_value=0))
+    get_raw_derived_field = Mock(return_value=[123])
+    location = cast(
+        Location,
+        SimpleNamespace(
+            taxa=empty_relation,
+            occurrence_records=empty_relation,
+            type_localities=empty_relation,
+            specimen_set=empty_relation,
+            get_raw_derived_field=get_raw_derived_field,
+        ),
+    )
+
+    assert not Location.is_empty(location)
+    get_raw_derived_field.assert_called_once_with("partial_type_localities")
+
+
+def test_partial_type_localities_derived_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    name1 = SimpleNamespace(
+        id=1, get_raw_tags_field=lambda _: [[TypeTag.PartialTypeLocality._tag, 100]]
+    )
+    name2 = SimpleNamespace(
+        id=2,
+        get_raw_tags_field=lambda _: [
+            [TypeTag.PartialTypeLocality._tag, 100],
+            [TypeTag.PartialTypeLocality._tag, 200],
+        ],
+    )
+    query = SimpleNamespace(filter=Mock(return_value=(name1, name2)))
+    monkeypatch.setattr(models.Name, "select_valid", Mock(return_value=query))
+    field = next(
+        field
+        for field in Location.derived_fields
+        if field.name == "partial_type_localities"
+    )
+    assert field.compute_all is not None
+
+    result = field.compute_all()
+
+    assert result == {100: [name1, name2], 200: [name2]}
+
+
 def test_open_coordinates_opens_opposite_range_corner_markers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

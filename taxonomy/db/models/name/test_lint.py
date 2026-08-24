@@ -33,6 +33,7 @@ from .lint import (
     check_general_type_locality,
     check_location_detail_coordinates,
     check_location_detail_plss,
+    check_partial_type_locality,
     check_type_locality_age,
     check_type_locality_distribution_rules,
     check_type_locality_validity,
@@ -758,6 +759,7 @@ def _name_with_general_type_locality(
     region_tagged: bool = False,
     parent_tagged: bool = False,
     imprecise: bool = False,
+    partial: bool = False,
 ) -> Name:
     parent = SimpleNamespace(name="Parent Region", has_tag=lambda tag: parent_tagged)
     region = SimpleNamespace(
@@ -769,7 +771,11 @@ def _name_with_general_type_locality(
         Name,
         SimpleNamespace(
             type_locality=SimpleNamespace(name=location_name, region=region),
-            has_type_tag=lambda tag: imprecise,
+            has_type_tag=lambda tag: (
+                imprecise
+                if tag is TypeTag.ImpreciseLocality
+                else partial and tag is TypeTag.PartialTypeLocality
+            ),
         ),
     )
 
@@ -815,6 +821,115 @@ def test_general_type_locality_lint_allows_imprecise_locality_tag() -> None:
     name = _name_with_general_type_locality(region_tagged=True, imprecise=True)
 
     assert list(check_general_type_locality.linter(name, LintConfig())) == []
+
+
+def test_general_type_locality_lint_allows_partial_type_locality_tag() -> None:
+    name = _name_with_general_type_locality(region_tagged=True, partial=True)
+
+    assert list(check_general_type_locality.linter(name, LintConfig())) == []
+
+
+def _partial_type_locality_name(
+    *,
+    species_type_kind: SpeciesGroupType | None = SpeciesGroupType.syntypes,
+    partial_count: int = 2,
+    has_type_locality: bool = True,
+    container_name: str = "Example Region fossil",
+    container_period: str = "Phanerozoic",
+    outside_region: bool = False,
+) -> Name:
+    parent_region = SimpleNamespace(id=1, name="Example Region", parent=None)
+    other_region = SimpleNamespace(id=2, name="Other Region", parent=None)
+    period = SimpleNamespace(name=container_period)
+    container = SimpleNamespace(
+        id=100,
+        name=container_name,
+        region=parent_region,
+        min_period=period,
+        max_period=period,
+    )
+    partials = []
+    for index in range(partial_count):
+        region = other_region if outside_region and index == 0 else parent_region
+        location = cast(
+            Location,
+            SimpleNamespace(id=200 + index, name=f"Partial {index + 1}", region=region),
+        )
+        partials.append(TypeTag.PartialTypeLocality(location))
+    name = SimpleNamespace(
+        species_type_kind=species_type_kind,
+        type_locality=container if has_type_locality else None,
+        type_tags=tuple(partials),
+    )
+    name.get_tags = lambda values, tag_type: (
+        tag for tag in values if isinstance(tag, tag_type)
+    )
+    return cast(Name, name)
+
+
+@pytest.mark.parametrize("species_type_kind", [None, SpeciesGroupType.syntypes])
+def test_partial_type_locality_lint_accepts_supported_type_kinds(
+    species_type_kind: SpeciesGroupType | None,
+) -> None:
+    name = _partial_type_locality_name(species_type_kind=species_type_kind)
+
+    assert list(check_partial_type_locality.linter(name, LintConfig())) == []
+
+
+def test_partial_type_locality_lint_rejects_holotype() -> None:
+    name = _partial_type_locality_name(species_type_kind=SpeciesGroupType.holotype)
+
+    messages = list(check_partial_type_locality.linter(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert isinstance(messages[0], str)
+    assert "not syntypes or unset" in messages[0]
+
+
+def test_partial_type_locality_lint_requires_multiple_locations() -> None:
+    name = _partial_type_locality_name(partial_count=1)
+
+    messages = list(check_partial_type_locality.linter(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert isinstance(messages[0], str)
+    assert "more than one distinct PartialTypeLocality" in messages[0]
+
+
+def test_partial_type_locality_lint_requires_type_locality() -> None:
+    name = _partial_type_locality_name(has_type_locality=False)
+
+    messages = list(check_partial_type_locality.linter(name, LintConfig()))
+
+    assert messages == ["has PartialTypeLocality tags but no type locality"]
+
+
+def test_partial_type_locality_lint_requires_regionwide_container() -> None:
+    name = _partial_type_locality_name(container_name="Example Region Pleistocene")
+
+    messages = list(check_partial_type_locality.linter(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert isinstance(messages[0], str)
+    assert "must be either the Recent Location" in messages[0]
+
+
+def test_partial_type_locality_lint_accepts_recent_container() -> None:
+    name = _partial_type_locality_name(
+        container_name="Example Region", container_period="Recent"
+    )
+
+    assert list(check_partial_type_locality.linter(name, LintConfig())) == []
+
+
+def test_partial_type_locality_lint_requires_contained_locations() -> None:
+    name = _partial_type_locality_name(outside_region=True)
+
+    messages = list(check_partial_type_locality.linter(name, LintConfig()))
+
+    assert len(messages) == 1
+    assert isinstance(messages[0], str)
+    assert "is outside type-locality Region 'Example Region'" in messages[0]
 
 
 def _tagged_name(tags: tuple[object, ...]) -> Name:

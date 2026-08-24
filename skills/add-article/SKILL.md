@@ -1,21 +1,23 @@
 ---
 name: add-article
 description:
-  Find and verify an Article PDF, choose its catalog filename and library folder,
+  Find and verify an Article file, choose its catalog filename and library folder,
   resolve bibliographic metadata, CitationGroup, and edited-volume parent dependencies,
   and write reviewed create_article recommendations without changing the database. Use
-  when adding a new electronic Article, book, dissertation, or book chapter to the
-  taxonomy library from a PDF.
+  when adding a new electronic Article, book, dissertation, book chapter, or parented
+  supplementary file to the taxonomy library.
 ---
 
 # Add an Article
 
-Prepare source-faithful PDFs and executable `create_article` recommendations. Leave each
-PDF in the configured staging folder and leave application to the user.
+Prepare source-faithful electronic files and executable `create_article`
+recommendations. Leave each file in the configured staging folder and leave application
+to the user.
 
 ## Scope
 
-Use this workflow for new electronic Articles backed by PDFs. It supports:
+Use this workflow for ordinary electronic Articles backed by PDFs and parented
+supplementary Articles in their original electronic format. It supports:
 
 - DOI-driven CrossRef metadata with explicit corrections;
 - fully explicit metadata when no DOI exists;
@@ -23,13 +25,16 @@ Use this workflow for new electronic Articles backed by PDFs. It supports:
 - creation of one ordinary CitationGroup inline; and
 - edited-volume chapters whose parent is an existing Article or a no-copy BOOK created
   by an earlier row in the same manifest; and
+- supplementary PDFs, spreadsheets, documents, and other catalog-supported files whose
+  parent is an existing or planned Article; and
 - unchecked Person creation from the Article's author list.
 
-The only supported Article without a PDF is a BOOK needed as the parent of a staged
-chapter. Stop and explain the unsupported case instead of forcing it into this action
-for an alternative version, redirect, non-PDF file, or other work without an electronic
-copy. The applicator also requires an existing destination folder for every PDF;
-proposing new library-folder taxonomy is a separate task.
+The only supported Article without an electronic file is a BOOK needed as the parent of
+a staged chapter. Non-PDF files must be parented `SUPPLEMENT` Articles. Stop and explain
+the unsupported case instead of forcing an alternative version, redirect, or other work
+without an electronic copy into this action. The applicator also requires an existing
+destination folder for every file; proposing new library-folder taxonomy is a separate
+task.
 
 ## Workflow
 
@@ -47,22 +52,23 @@ Keep general rules in these documents. This skill owns only the operational sequ
 
 ### 2. Establish source identity
 
-Find the publisher or repository landing page and a downloadable PDF. Prefer the
+Find the publisher or repository landing page and a downloadable source file. Prefer the
 publisher, institutional repository, Biodiversity Heritage Library, or another stable
 primary host. Record both the landing-page URL and the actual acquisition URL in
 evidence.
 
 Download into `config.get_options().new_path`, never directly into the catalog library.
 Use a temporary descriptive staging name; it does not have to equal the final Article
-name. If the PDF is already present, inspect that exact file rather than substituting a
-similarly titled paper.
+name. If the file is already present, inspect that exact file rather than substituting a
+similarly titled source.
 
-Open or render the first page and inspect extracted text. Confirm the title, authors,
-publication, year, pagination, and DOI against the landing page. For a chapter, also
-verify the editors, parent title, publisher, publication city, parent extent, chapter
-page range, and whether separately numbered plates follow the text. A mismatch between
-the requested work, landing page, and PDF is a hard stop. Do not silently switch
-sources.
+For PDFs, open or render the first page and inspect extracted text. For supplements,
+inspect the native file and its internal title or table caption. Confirm the title,
+authors, publication, year, pagination, and DOI against the landing page. For a chapter,
+also verify the editors, parent title, publisher, publication city, parent extent,
+chapter page range, and whether separately numbered plates follow the text. A mismatch
+between the requested work, landing page, and staged file is a hard stop. Do not
+silently switch sources.
 
 ### 3. Check current database state
 
@@ -86,8 +92,9 @@ volume of a journal, instead create an ItemFile object.
 
 To name the Article, choose a concise content description under
 `docs/article-naming.md`. The source title is not the filename. Electronic Article names
-must be printable ASCII and end in lowercase `.pdf`; a no-copy parent BOOK must be
-printable ASCII and have no extension.
+must be printable ASCII and have an extension. Ordinary electronic Articles must end in
+lowercase `.pdf`; a `SUPPLEMENT` keeps the source format extension. A no-copy parent
+BOOK must be printable ASCII and have no extension.
 
 Validate it with the catalog parser:
 
@@ -103,11 +110,12 @@ PY
 
 ### 5. Choose the destination folder
 
-For each PDF, select an existing folder relative to `config.get_options().library_path`.
-Follow nearby Articles rather than inventing a parallel hierarchy. Taxonomic placement
-is normally primary; use geography where that is how comparable regional works are
-organized. For broad works, identify the narrowest existing folder that accurately
-represents the main coverage without hiding important scope.
+For each staged file, select an existing folder relative to
+`config.get_options().library_path`. Follow nearby Articles rather than inventing a
+parallel hierarchy. Taxonomic placement is normally primary; use geography where that is
+how comparable regional works are organized. For broad works, identify the narrowest
+existing folder that accurately represents the main coverage without hiding important
+scope.
 
 The manifest records only the relative folder, never an absolute path. Verify that the
 resolved folder exists. A no-copy parent has no `file` object and no destination. Do not
@@ -147,7 +155,7 @@ new bundle workflows should use typed refs.
 
 ### 7. Hash the staged file and write the row
 
-Compute the exact byte size and SHA-256 after all PDF verification. Write a new JSONL
+Compute the exact byte size and SHA-256 after all file verification. Write a new JSONL
 manifest under `recs/manifests/`; do not revise an already-applied manifest.
 
 Existing CitationGroup example:
@@ -231,11 +239,12 @@ CLIRM_READONLY=1 /Users/jelle/py/venvs/taxonomy314/bin/python \
 
 `--review` is database- and network-independent. Planning verifies the current database,
 expands the DOI, resolves parents in manifest order, requires an existing destination
-folder for every PDF, checks PDF magic bytes, size, and SHA-256, and blocks name, DOI,
-CitationGroup, parent, or destination conflicts. Virtual lint is advisory; inspect every
-reported Article, CitationGroup, and Person issue.
+folder for every file, checks PDF magic bytes where applicable plus size and SHA-256 for
+all formats, and blocks name, DOI, CitationGroup, parent, or destination conflicts.
+Virtual lint is advisory; inspect every reported Article, CitationGroup, and Person
+issue.
 
-Do not use `--apply`. Tell the user where the staged PDF and manifest are, summarize
+Do not use `--apply`. Tell the user where the staged file and manifest are, summarize
 CrossRef overrides and any new CitationGroup, and hand off the exact validation results.
 
 ## Application semantics
@@ -243,11 +252,11 @@ CrossRef overrides and any new CitationGroup, and hand off the exact validation 
 On explicit human application, actions run in manifest order. A no-copy parent creates
 or reuses its CitationGroup, creates unchecked editor Persons and the BOOK, and records
 normal Article history without touching the filesystem. A child then creates unchecked
-author Persons, points to that exact parent, installs the PDF through a verified
-temporary copy, extracts its text into the configured text store, indexes its pages for
-search, and adds the normal Article history entries. Only after those steps succeed does
-it remove the staged source. An interrupted exact partial state can be rerun; any
-differing database value, parent, or file checksum blocks the action.
+author Persons, points to that exact parent, and installs the file through a verified
+temporary copy. PDFs are then extracted into the configured text store and indexed for
+search; all formats receive the normal Article history entries. Only after those steps
+succeed does it remove the staged source. An interrupted exact partial state can be
+rerun; any differing database value, parent, or file checksum blocks the action.
 
 The action deliberately does not call the interactive `edittitle()`,
 `specify_authors()`, or `edit_until_clean()` loops used by the traditional shell flow.

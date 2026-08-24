@@ -3281,6 +3281,11 @@ class TypeTag(adt.ADT):
         tag=75,
     )
 
+    # One of multiple localities represented by the broad type_locality field. This is
+    # used for syntype series (or older names whose type kind remains unset) that came
+    # from more than one place.
+    PartialTypeLocality(location=Location, tag=76)  # type: ignore[name-defined]
+
     # Whether the type locality should count as evidence that the assigned taxon
     # occurred there. For example, use occurrence_dubious for an apparently authentic
     # old locality that is far outside the otherwise known range.

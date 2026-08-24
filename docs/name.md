@@ -587,6 +587,11 @@ names should have at least one. They fall into several groups:
     that is implausibly far outside the otherwise known range. An optional comment
     records the supporting reasoning. Origin and presence assessments belong on the
     Taxon as regional tags instead.
+  - _PartialTypeLocality_: Reference to one of multiple localities represented by the
+    Name's broad Region-wide type locality. Use at least two distinct tags, only for
+    syntypes or when the species-group type kind is still unset. The main type locality
+    must be either the Recent Location named for its Region or the corresponding "Region
+    fossil" Location.
   - _Repository_: Reference to a [collection](/docs/collection) that holds some of the
     type material. Should be used if and only if the "collection" field is set to the
     special [multiple](/c/multiple) collection. This usually appears when the species

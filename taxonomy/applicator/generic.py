@@ -819,6 +819,14 @@ def _format_create_value(
     return _format_manifest_value(value)
 
 
+def _is_empty_review_value(value: Any) -> bool:
+    if value is None:
+        return True
+    if isinstance(value, str | bytes | Mapping | Sequence | set | frozenset):
+        return len(value) == 0
+    return False
+
+
 def _print_review_detail(label: str, text: str) -> None:
     lines = text.splitlines() or [""]
     print(f"    - {label}: {lines[0]}")
@@ -1722,7 +1730,17 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
         model = registry.get(row.object.model)
         visible_changes = row.changes
         if row.action == CREATE_OBJECT:
-            change = f"create with fields {', '.join(row.values or ())}"
+            assert row.values is not None
+            visible_values = {
+                field_name: value
+                for field_name, value in row.values.items()
+                if not _is_empty_review_value(value)
+            }
+            change = (
+                f"create with fields {', '.join(visible_values)}"
+                if visible_values
+                else "create"
+            )
         elif row.action == UPDATE_OBJECT:
             visible_changes = tuple(
                 guarded_change
@@ -1764,14 +1782,19 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
             change = f"{row.field}: {formatted_tag}"
         print(f"{row.action:<14} {row.confidence:<8} {obj:<38} {change}")
         if row.action == CREATE_OBJECT:
-            if row.match is not None:
-                for field_name, value in row.match.items():
-                    _print_review_detail(
-                        "match",
-                        f"{field_name}={_format_create_value(model, field_name, value)}",
-                    )
-            assert row.values is not None
-            for field_name, value in row.values.items():
+            visible_match = {
+                field_name: value
+                for field_name, value in (row.match or {}).items()
+                if not _is_empty_review_value(value)
+            }
+            for field_name, value in visible_match.items():
+                _print_review_detail(
+                    "match",
+                    f"{field_name}={_format_create_value(model, field_name, value)}",
+                )
+            for field_name, value in visible_values.items():
+                if field_name in visible_match and visible_match[field_name] == value:
+                    continue
                 _print_review_detail(
                     "field",
                     f"{field_name}={_format_create_value(model, field_name, value)}",

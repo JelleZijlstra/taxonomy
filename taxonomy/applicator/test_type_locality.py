@@ -9,7 +9,12 @@ import pytest
 
 from taxonomy.applicator import type_locality as recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
-from taxonomy.db.constants import DistributionOrigin, OccurrenceValidity, RegionKind
+from taxonomy.db.constants import (
+    DistributionOrigin,
+    OccurrenceValidity,
+    RegionKind,
+    SpeciesGroupType,
+)
 from taxonomy.db.models import Location, Name, Period, Region, TypeTag
 from taxonomy.db.models.location import LocationStatus
 from taxonomy.db.models.tags import LocationTag, TaxonTag
@@ -66,6 +71,71 @@ def _new_target() -> dict[str, object]:
     }
 
 
+def _schema_four_target(
+    *,
+    location_id: int | None,
+    location_name: str,
+    region_id: int,
+    region_name: str,
+    fossil: bool = True,
+) -> dict[str, object]:
+    period_id = 10 if fossil else 11
+    period_name = "Pleistocene" if fossil else "Recent"
+    return {
+        "location_id": location_id,
+        "location_name": location_name,
+        "region_id": region_id,
+        "region_name": region_name,
+        "latitude": None,
+        "longitude": None,
+        "coordinate_source": None,
+        "coordinate_note": None,
+        "location_tags": [],
+        "min_period_id": period_id,
+        "min_period_name": period_name,
+        "max_period_id": period_id,
+        "max_period_name": period_name,
+        "min_age": None,
+        "max_age": None,
+        "stratigraphic_unit_id": None,
+        "stratigraphic_unit_name": None,
+        "serialized_location_tags": [],
+    }
+
+
+def _partial_row() -> dict[str, object]:
+    row = _row(action=recommendations.SET_PARTIAL_TYPE_LOCALITIES)
+    row.update(
+        {
+            "schema_version": 4,
+            "tag_comment": None,
+            "current_location_tags": [],
+            "target": _schema_four_target(
+                location_id=200,
+                location_name="Puy-de-Dôme fossil",
+                region_id=20,
+                region_name="Puy-de-Dôme",
+            ),
+            "partial_targets": [
+                _schema_four_target(
+                    location_id=201,
+                    location_name="Coudes",
+                    region_id=20,
+                    region_name="Puy-de-Dôme",
+                ),
+                _schema_four_target(
+                    location_id=None,
+                    location_name="Neschers",
+                    region_id=20,
+                    region_name="Puy-de-Dôme",
+                ),
+            ],
+            "current_partial_type_localities": [],
+        }
+    )
+    return row
+
+
 def _write_rows(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
@@ -74,6 +144,7 @@ def _write_rows(path: Path, rows: list[dict[str, object]]) -> None:
 class FakeRegion:
     id: int
     name: str
+    parent: recommendations.RegionLike | None = None
 
 
 @dataclass
@@ -131,6 +202,7 @@ class FakeName:
     type_locality: recommendations.LocationLike | None
     taxon: recommendations.TaxonLike = field(default_factory=FakeTaxon)
     type_tags: Sequence[TypeTag] | None = field(default_factory=list)
+    species_type_kind: SpeciesGroupType | None = None
 
     def add_type_tag(self, tag: TypeTag) -> None:
         if self.type_tags is None:
@@ -189,7 +261,7 @@ def test_virtual_proposal_links_name_to_new_virtual_location() -> None:
         new_locations=(
             recommendations.NewLocationDefinition(
                 row.target,
-                region,
+                cast(recommendations.RegionLike, region),
                 min_period=period,
                 max_period=period,
                 stratigraphic_unit=None,
@@ -247,13 +319,62 @@ def test_review_table_expands_changes_and_can_filter_actions(
     )
 
     output = capsys.readouterr().out
-    assert "Western Africa [existing #3684]" in output
+    assert "Western Africa [existing]" in output
     assert "Name 2" in output
     assert "Name 1" not in output
-    assert "    - current location: L1176 Africa" in output
-    assert "    - change: type_locality: L1176 Africa -> L3684 Western Africa" in output
-    assert "    - target field: region_name='Western Africa'" in output
+    assert "    - current location: Africa" in output
+    assert "    - change: type_locality: Africa -> Western Africa" in output
+    assert "    - current location tags:" not in output
+    assert "    - target:" not in output
+    assert "#3684" not in output
     assert "1 recommendation(s)" in output
+
+
+def test_review_table_collapses_named_target_fields_and_omits_empty_values(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    row = _row(
+        name_id=73453,
+        action=recommendations.MOVE_EXISTING_LOCATION,
+        target=_schema_four_target(
+            location_id=19426,
+            location_name="Vaupés Department",
+            region_id=4305,
+            region_name="Vaupés Department",
+            fossil=False,
+        ),
+    )
+    row.update(
+        {
+            "schema_version": 4,
+            "name": "Caiman sclerops apaporiensis",
+            "current_location_id": 19397,
+            "current_location_name": "Amazonas Department (Colombia)",
+            "current_location_tags": [],
+            "tag_comment": None,
+        }
+    )
+    _write_rows(path, [row])
+
+    recommendations.print_review_table(recommendations.read_recommendations(path))
+
+    output = capsys.readouterr().out
+    assert "Caiman sclerops apaporiensis" in output
+    assert "Vaupés Department [existing]" in output
+    assert "    - current location: Amazonas Department (Colombia)" in output
+    assert (
+        "    - change: type_locality: Amazonas Department (Colombia) -> "
+        "Vaupés Department" in output
+    )
+    assert "    - target: period='Recent'" in output
+    assert "73453" not in output
+    assert "19397" not in output
+    assert "19426" not in output
+    assert "4305" not in output
+    assert "None" not in output
+    assert "()" not in output
+    assert "_id=" not in output
 
 
 def test_review_prints_manual_evidence_without_truncation(
@@ -274,7 +395,7 @@ def test_review_prints_manual_evidence_without_truncation(
     recommendations.print_review_table(recommendations.read_recommendations(path))
 
     output = capsys.readouterr().out
-    assert "    - evidence (A10 Source): Exact evidence" in output
+    assert "    - evidence (Source): Exact evidence" in output
     assert "that must remain visible " * 10 in output
 
 
@@ -489,6 +610,362 @@ def test_schema_three_preserves_fossil_context_and_serialized_tags(
     assert plan.new_locations[0].target.serialized_location_tags == (
         LocationTag.PLSS("T33S R28W Sec. 21, 6th Meridian", "KS060330S0280W0"),
     )
+
+
+def test_schema_four_requires_multiple_partial_targets() -> None:
+    row = _partial_row()
+    row["partial_targets"] = cast(list[object], row["partial_targets"])[:1]
+
+    with pytest.raises(
+        recommendations.RecommendationError, match="at least two targets"
+    ):
+        recommendations.parse_recommendation(row, 1)
+
+
+def test_builds_partial_type_locality_plan_with_new_location(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    row = recommendations.parse_recommendation(_partial_row(), 1)
+    puy = FakeRegion(20, "Puy-de-Dôme")
+    fossil_period = FakeRegion(10, "Pleistocene")
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    broad = FakeLocation(
+        200,
+        "Puy-de-Dôme fossil",
+        puy,
+        min_period=fossil_period,
+        max_period=fossil_period,
+    )
+    coudes = FakeLocation(
+        201, "Coudes", puy, min_period=fossil_period, max_period=fossil_period
+    )
+    name = FakeName(1, "Name 1", current)
+
+    plan = recommendations.build_plan(
+        [row],
+        get_name=lambda _: name,
+        get_location={1176: current, 200: broad, 201: coudes}.__getitem__,
+        get_region=lambda _: puy,
+        get_period=lambda _: fossil_period,
+        find_location=lambda _: None,
+        label_name=lambda item: item.label,  # type: ignore[attr-defined]
+    )
+
+    assert [definition.target.location_name for definition in plan.new_locations] == [
+        "Neschers"
+    ]
+    assert plan.updates[0].target is broad
+    assert len(plan.updates[0].partial_targets) == 2
+    recommendations.execute_plan(plan, apply=False)
+    output = capsys.readouterr().out
+    assert "WOULD_CREATE_LOCATION name='Neschers'" in output
+    assert "WOULD_SET_PARTIAL_TYPE_LOCALITIES name_id=1" in output
+    assert "partials=Coudes,Neschers" in output
+    assert name.type_locality is current
+
+
+def test_partial_type_locality_plan_gets_or_creates_general_container(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    data = _partial_row()
+    target = cast(dict[str, object], data["target"])
+    target.update(
+        {
+            "location_id": None,
+            "location_name": "Puy-de-Dôme fossil",
+            "min_period_id": 1,
+            "min_period_name": "Phanerozoic",
+            "max_period_id": 1,
+            "max_period_name": "Phanerozoic",
+            "location_tags": [{"tag": "General", "comment": None}],
+        }
+    )
+    partial_targets = cast(list[dict[str, object]], data["partial_targets"])
+    partial_targets[1]["location_id"] = 202
+    row = recommendations.parse_recommendation(data, 1)
+    region = FakeRegion(20, "Puy-de-Dôme")
+    phanerozoic = FakeRegion(1, "Phanerozoic")
+    pleistocene = FakeRegion(10, "Pleistocene")
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    coudes = FakeLocation(
+        201, "Coudes", region, min_period=pleistocene, max_period=pleistocene
+    )
+    neschers = FakeLocation(
+        202, "Neschers", region, min_period=pleistocene, max_period=pleistocene
+    )
+    name = FakeName(1, "Name 1", current)
+    plan = recommendations.build_plan(
+        [row],
+        get_name=lambda _: name,
+        get_location={1176: current, 201: coudes, 202: neschers}.__getitem__,
+        get_region=lambda _: region,
+        get_period=lambda period_id: (phanerozoic if period_id == 1 else pleistocene),
+        find_location=lambda _: None,
+        label_name=lambda item: item.label,  # type: ignore[attr-defined]
+    )
+
+    definition = plan.new_locations[0]
+    assert definition.target.location_name == "Puy-de-Dôme fossil"
+    assert definition.use_general_factory
+    assert plan.updates[0].target is None
+    assert plan.updates[0].new_location_name == "Puy-de-Dôme fossil"
+
+    broad = FakeLocation(
+        200,
+        "Puy-de-Dôme fossil",
+        region,
+        min_period=phanerozoic,
+        max_period=phanerozoic,
+    )
+    monkeypatch.setattr(
+        Location,
+        "get_or_create_general",
+        classmethod(lambda cls, requested_region, period: cast(Location, broad)),
+    )
+    recommendations.execute_plan(plan, apply=True)
+
+    assert name.type_locality is broad
+    assert {
+        tag.location.id
+        for tag in name.type_tags or ()
+        if isinstance(tag, TypeTag.PartialTypeLocality)
+    } == {201, 202}
+
+
+def test_partial_type_locality_plan_can_revive_deleted_general_container() -> None:
+    data = _partial_row()
+    target = cast(dict[str, object], data["target"])
+    target.update(
+        {
+            "location_id": None,
+            "min_period_id": 1,
+            "min_period_name": "Phanerozoic",
+            "max_period_id": 1,
+            "max_period_name": "Phanerozoic",
+        }
+    )
+    row = recommendations.parse_recommendation(data, 1)
+    region = FakeRegion(20, "Puy-de-Dôme")
+    phanerozoic = FakeRegion(1, "Phanerozoic")
+    pleistocene = FakeRegion(10, "Pleistocene")
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    deleted = FakeLocation(
+        200,
+        "Puy-de-Dôme fossil",
+        region,
+        min_period=phanerozoic,
+        max_period=phanerozoic,
+        deleted=LocationStatus.deleted,
+    )
+    coudes = FakeLocation(
+        201, "Coudes", region, min_period=pleistocene, max_period=pleistocene
+    )
+    name = FakeName(1, "Name 1", current)
+
+    plan = recommendations.build_plan(
+        [row],
+        get_name=lambda _: name,
+        get_location={1176: current, 201: coudes}.__getitem__,
+        get_region=lambda _: region,
+        get_period=lambda period_id: (phanerozoic if period_id == 1 else pleistocene),
+        find_location=lambda location_name: (
+            deleted if location_name == "Puy-de-Dôme fossil" else None
+        ),
+        label_name=lambda item: item.label,  # type: ignore[attr-defined]
+    )
+
+    definition = next(
+        item
+        for item in plan.new_locations
+        if item.target.location_name == "Puy-de-Dôme fossil"
+    )
+    assert definition.use_general_factory
+    assert definition.deleted_location is deleted
+
+
+def test_partial_type_locality_plan_rejects_stale_tags() -> None:
+    row = recommendations.parse_recommendation(_partial_row(), 1)
+    puy = FakeRegion(20, "Puy-de-Dôme")
+    period = FakeRegion(10, "Pleistocene")
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    broad = FakeLocation(
+        200, "Puy-de-Dôme fossil", puy, min_period=period, max_period=period
+    )
+    coudes = FakeLocation(201, "Coudes", puy, min_period=period, max_period=period)
+    unexpected = FakeLocation(203, "Aubière", puy, min_period=period, max_period=period)
+    name = FakeName(
+        1,
+        "Name 1",
+        current,
+        type_tags=(TypeTag.PartialTypeLocality(cast(Location, unexpected)),),
+    )
+
+    with pytest.raises(
+        recommendations.RecommendationError,
+        match="current PartialTypeLocality tags differ",
+    ):
+        recommendations.build_plan(
+            [row],
+            get_name=lambda _: name,
+            get_location={1176: current, 200: broad, 201: coudes}.__getitem__,
+            get_region=lambda _: puy,
+            get_period=lambda _: period,
+            find_location=lambda _: None,
+            label_name=lambda item: item.label,  # type: ignore[attr-defined]
+        )
+
+
+def test_partial_type_locality_plan_rejects_holotype() -> None:
+    row = recommendations.parse_recommendation(_partial_row(), 1)
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    name = FakeName(1, "Name 1", current, species_type_kind=SpeciesGroupType.holotype)
+
+    with pytest.raises(recommendations.RecommendationError, match="syntypes or unset"):
+        recommendations.build_plan(
+            [row],
+            get_name=lambda _: name,
+            get_location=lambda _: current,
+            label_name=lambda item: item.label,  # type: ignore[attr-defined]
+        )
+
+
+def test_partial_type_locality_plan_is_idempotent() -> None:
+    data = _partial_row()
+    partial_targets = cast(list[dict[str, object]], data["partial_targets"])
+    partial_targets[1]["location_id"] = 202
+    row = recommendations.parse_recommendation(data, 1)
+    puy = FakeRegion(20, "Puy-de-Dôme")
+    period = FakeRegion(10, "Pleistocene")
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    broad = FakeLocation(
+        200, "Puy-de-Dôme fossil", puy, min_period=period, max_period=period
+    )
+    coudes = FakeLocation(201, "Coudes", puy, min_period=period, max_period=period)
+    neschers = FakeLocation(202, "Neschers", puy, min_period=period, max_period=period)
+    name = FakeName(
+        1,
+        "Name 1",
+        broad,
+        type_tags=(
+            TypeTag.PartialTypeLocality(cast(Location, coudes)),
+            TypeTag.PartialTypeLocality(cast(Location, neschers)),
+        ),
+    )
+
+    plan = recommendations.build_plan(
+        [row],
+        get_name=lambda _: name,
+        get_location={
+            1176: current,
+            200: broad,
+            201: coudes,
+            202: neschers,
+        }.__getitem__,
+        label_name=lambda item: item.label,  # type: ignore[attr-defined]
+    )
+
+    assert plan.updates[0].already_applied
+
+
+def test_applies_partial_type_localities_to_existing_locations() -> None:
+    data = _partial_row()
+    partial_targets = cast(list[dict[str, object]], data["partial_targets"])
+    partial_targets[1]["location_id"] = 202
+    row = recommendations.parse_recommendation(data, 1)
+    puy = FakeRegion(20, "Puy-de-Dôme")
+    period = FakeRegion(10, "Pleistocene")
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    broad = FakeLocation(
+        200, "Puy-de-Dôme fossil", puy, min_period=period, max_period=period
+    )
+    coudes = FakeLocation(201, "Coudes", puy, min_period=period, max_period=period)
+    neschers = FakeLocation(202, "Neschers", puy, min_period=period, max_period=period)
+    name = FakeName(1, "Name 1", current)
+    plan = recommendations.build_plan(
+        [row],
+        get_name=lambda _: name,
+        get_location={
+            1176: current,
+            200: broad,
+            201: coudes,
+            202: neschers,
+        }.__getitem__,
+        label_name=lambda item: item.label,  # type: ignore[attr-defined]
+    )
+
+    recommendations.execute_plan(plan, apply=True)
+
+    assert name.type_locality is broad
+    assert {
+        tag.location.id
+        for tag in name.type_tags or ()
+        if isinstance(tag, TypeTag.PartialTypeLocality)
+    } == {coudes.id, neschers.id}
+
+
+def test_virtual_proposal_links_partial_type_localities() -> None:
+    row = recommendations.parse_recommendation(_partial_row(), 1)
+    region = Region.virtual(name="Puy-de-Dôme", kind=RegionKind.other, tags=())
+    period = Period.virtual(name="Pleistocene")
+    current = Location.virtual(
+        name="Brèche de Coudes",
+        region=region,
+        min_period=period,
+        max_period=period,
+        tags=(),
+    )
+    broad = Location.virtual(
+        name="Puy-de-Dôme fossil",
+        region=region,
+        min_period=period,
+        max_period=period,
+        tags=(LocationTag.General,),
+    )
+    neschers = Location.virtual(
+        name="Neschers", region=region, min_period=period, max_period=period, tags=()
+    )
+    name = Name.virtual(type_locality=current, type_tags=())
+    plan = recommendations.RecommendationPlan(
+        updates=(
+            recommendations.PlannedUpdate(
+                row,
+                cast(recommendations.NameLike, name),
+                target=cast(recommendations.LocationLike, broad),
+                new_location_name=None,
+                already_applied=False,
+                partial_targets=(
+                    recommendations.PlannedPartialTarget(
+                        cast(recommendations.LocationLike, current), None
+                    ),
+                    recommendations.PlannedPartialTarget(
+                        cast(recommendations.LocationLike, neschers), None
+                    ),
+                ),
+            ),
+        ),
+        new_locations=(),
+        location_tag_updates=(),
+        serialized_location_tag_updates=(),
+        type_locality_validity_updates=(),
+        regional_origin_updates=(),
+        action_counts=Counter({recommendations.SET_PARTIAL_TYPE_LOCALITIES: 1}),
+    )
+    builder = ProposalBuilder()
+
+    recommendations.add_virtual_models(plan, builder)
+
+    proposed_name = next(
+        proposal.model
+        for proposal in builder.build()
+        if isinstance(proposal.model, Name)
+    )
+    assert proposed_name.type_locality is broad
+    partials = [
+        tag.location
+        for tag in proposed_name.type_tags
+        if isinstance(tag, TypeTag.PartialTypeLocality)
+    ]
+    assert set(partials) == {current, neschers}
 
 
 def test_applies_existing_incidental_and_introduced_tags(

@@ -38,8 +38,13 @@ If a neotype has been validly designated, the type locality is the origin of the
 neotype, and evidence prior to the designation of the neotype is not relevant.
 Similarly, if a lectotype has been designated, the type locality is the origin of the
 lectotype, even if other paralectotypes (previous syntypes) come from different areas.
-If there are syntypes, they may come from different places. In that case, a general
-Location can be created, named e.g. "A and B".
+If syntypes or otherwise unresolved original type material came from multiple places,
+assign the Name to the lowest suitable Region-wide Location: the Recent Location named
+exactly for its Region, or the "Region fossil" Location for fossil material. Add one
+`TypeTag.PartialTypeLocality` for each individually known locality. At least two
+distinct partial localities are required, and this representation is allowed only when
+`species_type_kind` is `syntypes` or unset. A later lectotype designation replaces this
+arrangement with the locality of the lectotype.
 
 Many older names lack explicitly designated type specimens. In that case, the best
 evidence for the type locality is the stated distribution of the animal. Sometimes later

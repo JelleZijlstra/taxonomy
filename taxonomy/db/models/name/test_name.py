@@ -9,6 +9,7 @@ import pytest
 import taxonomy
 from taxonomy.apis import zoobank
 from taxonomy.db.constants import NomenclatureStatus, Status
+from taxonomy.db.models.location import Location
 from taxonomy.db.models.name import NameTag, TypeTag
 from taxonomy.db.models.name.name import Name
 
@@ -29,6 +30,12 @@ def test_add_type_tag_sorts_tags() -> None:
     Name.add_type_tag(name, tag)  # type: ignore[arg-type]
 
     assert name.type_tags == tuple(sorted((existing, tag)))
+
+
+def test_partial_type_locality_serializes_location_reference() -> None:
+    location = Location(123)
+
+    assert TypeTag.PartialTypeLocality(location).serialize() == [76, 123]
 
 
 EXCLUDED = {

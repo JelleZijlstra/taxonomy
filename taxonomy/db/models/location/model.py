@@ -14,8 +14,15 @@ from clirm import Field
 from taxonomy import adt, events, getinput
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import coordinate_lint, helpers, models
+from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models.article import Article
-from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
+from taxonomy.db.models.base import (
+    ADTField,
+    BaseModel,
+    LintConfig,
+    TextOrNullField,
+    get_tag_based_derived_field,
+)
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.period import Period, period_sort_key
 from taxonomy.db.models.region import Region
@@ -169,6 +176,16 @@ class Location(BaseModel):
     grouping_field = "min_period"
     call_sign = "L"
     clirm_table_name = "location"
+
+    derived_fields: ClassVar[list[DerivedField[Any]]] = [
+        get_tag_based_derived_field(
+            "partial_type_localities",
+            lambda: models.Name,
+            "type_tags",
+            lambda: models.name.TypeTag.PartialTypeLocality,
+            1,
+        )
+    ]
 
     name = Field[str]()
     min_period = Field[Period | None]("min_period_id", related_name="locations_min")
@@ -1001,6 +1018,8 @@ class Location(BaseModel):
         if self.type_localities.count():
             return False
         if self.specimen_set.count():
+            return False
+        if self.get_raw_derived_field("partial_type_localities"):
             return False
         return True
 

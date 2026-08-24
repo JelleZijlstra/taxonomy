@@ -1,5 +1,18 @@
 # Repository Guidelines
 
+## Goal
+
+This repo contains the code behind a database covering the nomenclature, taxonomy, and
+geographic distribution of animals. Mammals are covered comprehensively, and there is
+coverage of a few other groups.
+
+Core goals are:
+
+- Accuracy: All information should be precise and accurate.
+- Traceability: All claims should be supported by sources, and it should be possible to
+  trace the database's decisions back to these sources.
+- Consistency: Similar cases should be treated similarly across the database.
+
 ## Project Structure & Module Organization
 
 - `taxonomy/`: Core library and CLI (`shell.py`); DB models under `taxonomy/db/`.
@@ -33,8 +46,8 @@
 ## Coding Style & Naming
 
 - Python 3.14+, 4-space indent, UTF-8.
-- Formatting: Black; Linting: Ruff (target py312).
-- Prefer type hints; run `mypy` locally.
+- Formatting: Black; Linting: Ruff (target py314).
+- Prefer type hints.
 - Isolate I/O and network; keep core logic in `taxonomy/`.
 
 ## Testing Guidelines
@@ -42,6 +55,7 @@
 - Framework: pytest. Name tests `test_*.py`; keep near code.
 - Tests must be deterministic and offline; mock external APIs in `taxonomy/apis/*`.
 - Keep fast unit tests; larger integration tests live beside modules.
+- Use clirm virtual models for testing.
 
 ## Commit & Pull Request Guidelines
 

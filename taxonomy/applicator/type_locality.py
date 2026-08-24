@@ -8,14 +8,18 @@ import json
 import textwrap
 from collections import Counter
 from collections.abc import Callable, Collection, Iterable, Mapping, Sequence
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol, cast
 
 from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db import coordinate_lint
-from taxonomy.db.constants import DistributionOrigin, OccurrenceValidity
+from taxonomy.db.constants import (
+    DistributionOrigin,
+    OccurrenceValidity,
+    SpeciesGroupType,
+)
 from taxonomy.db.models import (
     Article,
     Location,
@@ -29,8 +33,8 @@ from taxonomy.db.models import (
 from taxonomy.db.models.location import LocationStatus
 from taxonomy.db.models.tags import LocationTag, TaxonTag
 
-SCHEMA_VERSION = 3
-SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3}
+SCHEMA_VERSION = 4
+SUPPORTED_SCHEMA_VERSIONS = {1, 2, 3, 4}
 GENERAL_LOCATION_TAG = "General"
 UNPLACED_LOCATION_TAG = "Unplaced"
 ALLOWED_LOCATION_TAGS = {GENERAL_LOCATION_TAG, UNPLACED_LOCATION_TAG}
@@ -40,14 +44,21 @@ MOVE_EXISTING_LOCATION = "move_existing_location"
 CREATE_LOCATION = "create_location"
 MANUAL_REVIEW = "manual_review"
 NO_ACTION = "no_action"
+SET_PARTIAL_TYPE_LOCALITIES = "set_partial_type_localities"
 ALLOWED_ACTIONS = {
     ADD_IMPRECISE_LOCALITY,
     MOVE_EXISTING_LOCATION,
     CREATE_LOCATION,
     MANUAL_REVIEW,
     NO_ACTION,
+    SET_PARTIAL_TYPE_LOCALITIES,
 }
-ACTIONABLE_ACTIONS = {ADD_IMPRECISE_LOCALITY, MOVE_EXISTING_LOCATION, CREATE_LOCATION}
+ACTIONABLE_ACTIONS = {
+    ADD_IMPRECISE_LOCALITY,
+    MOVE_EXISTING_LOCATION,
+    CREATE_LOCATION,
+    SET_PARTIAL_TYPE_LOCALITIES,
+}
 
 
 class RecommendationError(Exception):
@@ -61,6 +72,7 @@ class _IdentifiedLike(Protocol):
 
 class RegionLike(_IdentifiedLike, Protocol):
     name: str
+    parent: RegionLike | None
 
 
 class ArticleLike(_IdentifiedLike, Protocol):
@@ -101,6 +113,7 @@ class NameLike(_IdentifiedLike, Protocol):
     type_locality: LocationLike | None
     type_tags: Sequence[TypeTag] | None
     taxon: TaxonLike
+    species_type_kind: SpeciesGroupType | None
 
     def add_type_tag(self, tag: TypeTag) -> None: ...
 
@@ -170,6 +183,8 @@ class Recommendation:
     tag_comment: str | None
     current_location_tags: tuple[LocationTagSpec, ...]
     target: Target | None
+    partial_targets: tuple[Target, ...]
+    current_partial_type_localities: tuple[tuple[int, str], ...]
     evidence: tuple[Evidence, ...]
     type_locality_validity: TypeLocalityValiditySpec | None
     regional_origins: tuple[RegionalOriginSpec, ...]
@@ -182,6 +197,14 @@ class NewLocationDefinition:
     min_period: NamedLike | None
     max_period: NamedLike | None
     stratigraphic_unit: NamedLike | None
+    use_general_factory: bool = False
+    deleted_location: LocationLike | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedPartialTarget:
+    target: LocationLike | None
+    new_location_name: str | None
 
 
 @dataclass(frozen=True, slots=True)
@@ -191,6 +214,7 @@ class PlannedUpdate:
     target: LocationLike | None
     new_location_name: str | None
     already_applied: bool
+    partial_targets: tuple[PlannedPartialTarget, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -377,12 +401,20 @@ def _parse_target(
     data: Any, line_number: int, action: str, schema_version: int
 ) -> Target | None:
     if data is None:
-        if action in {MOVE_EXISTING_LOCATION, CREATE_LOCATION}:
+        if action in {
+            MOVE_EXISTING_LOCATION,
+            CREATE_LOCATION,
+            SET_PARTIAL_TYPE_LOCALITIES,
+        }:
             raise RecommendationError(
                 f"line {line_number}: action {action!r} requires a target"
             )
         return None
-    if action not in {MOVE_EXISTING_LOCATION, CREATE_LOCATION}:
+    if action not in {
+        MOVE_EXISTING_LOCATION,
+        CREATE_LOCATION,
+        SET_PARTIAL_TYPE_LOCALITIES,
+    }:
         raise RecommendationError(
             f"line {line_number}: action {action!r} must not have a target"
         )
@@ -391,7 +423,7 @@ def _parse_target(
     location_id = _optional_int(data, "location_id", line_number)
     if action == MOVE_EXISTING_LOCATION and location_id is None:
         raise RecommendationError(
-            f"line {line_number}: move_existing_location requires target.location_id"
+            f"line {line_number}: action {action!r} requires target.location_id"
         )
     if action == CREATE_LOCATION and location_id is not None:
         raise RecommendationError(
@@ -467,6 +499,80 @@ def _parse_target(
             required=schema_version >= 3,
         ),
     )
+
+
+def _parse_partial_targets(
+    data: Any, line_number: int, action: str, schema_version: int
+) -> tuple[Target, ...]:
+    if action != SET_PARTIAL_TYPE_LOCALITIES:
+        if data is not None:
+            raise RecommendationError(
+                f"line {line_number}: partial_targets is only valid for "
+                f"{SET_PARTIAL_TYPE_LOCALITIES}"
+            )
+        return ()
+    if schema_version < 4:
+        raise RecommendationError(
+            f"line {line_number}: {SET_PARTIAL_TYPE_LOCALITIES} requires schema 4"
+        )
+    if not isinstance(data, list) or len(data) < 2:
+        raise RecommendationError(
+            f"line {line_number}: partial_targets must contain at least two targets"
+        )
+    output: list[Target] = []
+    identities: set[tuple[int | None, str]] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            raise RecommendationError(
+                f"line {line_number}: each partial target must be an object"
+            )
+        partial_action = (
+            MOVE_EXISTING_LOCATION
+            if item.get("location_id") is not None
+            else CREATE_LOCATION
+        )
+        target = _parse_target(item, line_number, partial_action, schema_version)
+        assert target is not None
+        identity = (target.location_id, target.location_name)
+        if identity in identities:
+            raise RecommendationError(
+                f"line {line_number}: duplicate partial target {identity!r}"
+            )
+        identities.add(identity)
+        output.append(target)
+    return tuple(output)
+
+
+def _parse_current_partial_type_localities(
+    data: Any, line_number: int, action: str, schema_version: int
+) -> tuple[tuple[int, str], ...]:
+    if action != SET_PARTIAL_TYPE_LOCALITIES:
+        if data is not None:
+            raise RecommendationError(
+                f"line {line_number}: current_partial_type_localities is only valid "
+                f"for {SET_PARTIAL_TYPE_LOCALITIES}"
+            )
+        return ()
+    if schema_version < 4 or not isinstance(data, list):
+        raise RecommendationError(
+            f"line {line_number}: current_partial_type_localities must be a list"
+        )
+    output: list[tuple[int, str]] = []
+    seen: set[int] = set()
+    for item in data:
+        if not isinstance(item, dict):
+            raise RecommendationError(
+                f"line {line_number}: each current partial locality must be an object"
+            )
+        location_id = _required_int(item, "location_id", line_number)
+        location_name = _required_str(item, "location_name", line_number)
+        if location_id in seen:
+            raise RecommendationError(
+                f"line {line_number}: duplicate current partial Location {location_id}"
+            )
+        seen.add(location_id)
+        output.append((location_id, location_name))
+    return tuple(output)
 
 
 def _parse_evidence(data: Any, line_number: int) -> tuple[Evidence, ...]:
@@ -591,6 +697,15 @@ def parse_recommendation(data: Any, line_number: int) -> Recommendation:
             data.get("current_location_tags"), line_number, required=schema_version >= 2
         ),
         target=target,
+        partial_targets=_parse_partial_targets(
+            data.get("partial_targets"), line_number, action, schema_version
+        ),
+        current_partial_type_localities=_parse_current_partial_type_localities(
+            data.get("current_partial_type_localities"),
+            line_number,
+            action,
+            schema_version,
+        ),
         evidence=_parse_evidence(data.get("evidence"), line_number),
         type_locality_validity=_parse_type_locality_validity(
             data.get("type_locality_validity"), line_number
@@ -692,6 +807,61 @@ def _has_imprecise_tag(name: NameLike) -> bool:
     )
 
 
+def _partial_type_localities(name: NameLike) -> tuple[LocationLike, ...]:
+    return tuple(
+        cast(LocationLike, tag.location)
+        for tag in name.type_tags or ()
+        if isinstance(tag, TypeTag.PartialTypeLocality)
+    )
+
+
+def _is_partial_container(location: LocationLike) -> bool:
+    period_names = {
+        period.name
+        for period in (location.min_period, location.max_period)
+        if period is not None
+    }
+    if location.name == location.region.name:
+        return period_names == {"Recent"}
+    return (
+        location.name == f"{location.region.name} fossil"
+        and bool(period_names)
+        and "Recent" not in period_names
+    )
+
+
+def _is_partial_container_target(target: Target) -> bool:
+    period_names = {
+        name
+        for name in (target.min_period_name, target.max_period_name)
+        if name is not None
+    }
+    if target.location_name == target.region_name:
+        return period_names == {"Recent"}
+    return (
+        target.location_name == f"{target.region_name} fossil"
+        and bool(period_names)
+        and "Recent" not in period_names
+    )
+
+
+def _expected_general_location_name(region: RegionLike, period: NamedLike) -> str:
+    if period.name == "Recent":
+        return region.name
+    if period.name == "Phanerozoic":
+        return f"{region.name} fossil"
+    return f"{period.name} ({region.name})"
+
+
+def _region_is_within(region: RegionLike, container: RegionLike) -> bool:
+    current: RegionLike | None = region
+    while current is not None:
+        if current.id == container.id:
+            return True
+        current = current.parent
+    return False
+
+
 def _has_type_locality_validity_tag(
     name: NameLike, spec: TypeLocalityValiditySpec
 ) -> bool:
@@ -733,7 +903,11 @@ def _make_location_tag(spec: LocationTagSpec) -> LocationTag:
 
 
 def _validate_target_location(
-    target: Target, location: LocationLike, *, allowed_names: Collection[str] = ()
+    target: Target,
+    location: LocationLike,
+    *,
+    allowed_names: Collection[str] = (),
+    allow_deleted: bool = False,
 ) -> None:
     if location.name != target.location_name and location.name not in allowed_names:
         raise RecommendationError(
@@ -748,7 +922,9 @@ def _validate_target_location(
             f"Location {location.id} Region does not match "
             f"{target.region_name!r} ({target.region_id})"
         )
-    if location.is_invalid():
+    if location.is_invalid() and not (
+        allow_deleted and location.deleted is LocationStatus.deleted
+    ):
         raise RecommendationError(f"Location {location.id} is invalid")
     if target.latitude is not None and target.longitude is not None:
         if location.latitude is None and location.longitude is None:
@@ -842,6 +1018,105 @@ def build_plan(
         _, planned = serialized_location_tags.setdefault(location.id, (location, set()))
         planned.update(tags)
 
+    def resolve_target(
+        target: Target,
+        *,
+        require_existing: bool,
+        allow_general_factory: bool = False,
+        line_number: int,
+    ) -> tuple[LocationLike | None, str | None]:
+        if target.location_id is not None:
+            location = get_location(target.location_id)
+            _validate_target_location(
+                target,
+                location,
+                allowed_names=allowed_target_names.get(location.id, ()),
+            )
+            add_location_tags(
+                location, target.location_tags, context=f"line {line_number}"
+            )
+            add_serialized_location_tags(location, target.serialized_location_tags)
+            return location, None
+        if require_existing:
+            raise RecommendationError(
+                "broad partial-locality target must already exist"
+            )
+        region = get_region(target.region_id)
+        if region.name != target.region_name:
+            raise RecommendationError(
+                f"Region {region.id} changed from {target.region_name!r} "
+                f"to {region.name!r}"
+            )
+        min_period = (
+            get_period(target.min_period_id)
+            if target.min_period_id is not None
+            else None
+        )
+        max_period = (
+            get_period(target.max_period_id)
+            if target.max_period_id is not None
+            else None
+        )
+        stratigraphic_unit = (
+            get_stratigraphic_unit(target.stratigraphic_unit_id)
+            if target.stratigraphic_unit_id is not None
+            else None
+        )
+        for actual, expected_name, label in (
+            (min_period, target.min_period_name, "minimum period"),
+            (max_period, target.max_period_name, "maximum period"),
+            (stratigraphic_unit, target.stratigraphic_unit_name, "stratigraphic unit"),
+        ):
+            if actual is not None and actual.name != expected_name:
+                raise RecommendationError(
+                    f"{label} {actual.id} changed from {expected_name!r} "
+                    f"to {actual.name!r}"
+                )
+        use_general_factory = False
+        if (
+            allow_general_factory
+            and min_period is max_period
+            and min_period is not None
+            and target.min_age is None
+            and target.max_age is None
+            and stratigraphic_unit is None
+            and target.latitude is None
+            and target.longitude is None
+            and target.location_name
+            == _expected_general_location_name(region, min_period)
+        ):
+            use_general_factory = True
+        found_location = find_location(target.location_name)
+        if found_location is not None and not (
+            use_general_factory and found_location.deleted is LocationStatus.deleted
+        ):
+            _validate_target_location(target, found_location)
+            add_location_tags(
+                found_location, target.location_tags, context=f"line {line_number}"
+            )
+            add_serialized_location_tags(
+                found_location, target.serialized_location_tags
+            )
+            return found_location, None
+        if found_location is not None:
+            _validate_target_location(target, found_location, allow_deleted=True)
+        definition = NewLocationDefinition(
+            target,
+            region,
+            min_period,
+            max_period,
+            stratigraphic_unit,
+            use_general_factory=use_general_factory,
+            deleted_location=found_location,
+        )
+        previous = new_definitions.get(target.location_name)
+        if previous is not None and previous.target != target:
+            raise RecommendationError(
+                f"inconsistent definitions for new Location {target.location_name!r}"
+            )
+        new_definitions[target.location_name] = definition
+        return None, target.location_name
+
     for row in rows:
         try:
             current = get_location(row.current_location_id)
@@ -922,88 +1197,115 @@ def build_plan(
                 continue
 
             assert row.target is not None
-            target_location: LocationLike | None
-            new_location_name: str | None = None
-            if row.action == MOVE_EXISTING_LOCATION:
-                assert row.target.location_id is not None
-                target_location = get_location(row.target.location_id)
-                _validate_target_location(
-                    row.target,
-                    target_location,
-                    allowed_names=allowed_target_names.get(target_location.id, ()),
-                )
-                add_location_tags(
-                    target_location,
-                    row.target.location_tags,
-                    context=f"line {row.line_number}",
-                )
-                add_serialized_location_tags(
-                    target_location, row.target.serialized_location_tags
-                )
-            else:
-                region = get_region(row.target.region_id)
-                if region.name != row.target.region_name:
+            if row.action == SET_PARTIAL_TYPE_LOCALITIES:
+                if name.species_type_kind not in (None, SpeciesGroupType.syntypes):
                     raise RecommendationError(
-                        f"Region {region.id} changed from {row.target.region_name!r} "
-                        f"to {region.name!r}"
+                        "set_partial_type_localities requires species_type_kind "
+                        "syntypes or unset"
                     )
-                target_location = find_location(row.target.location_name)
-                if target_location is not None:
-                    _validate_target_location(row.target, target_location)
-                    add_location_tags(
-                        target_location,
-                        row.target.location_tags,
-                        context=f"line {row.line_number}",
+                actual_partials = _partial_type_localities(name)
+                actual_snapshot = tuple(
+                    sorted((location.id, location.name) for location in actual_partials)
+                )
+                expected_snapshot = tuple(sorted(row.current_partial_type_localities))
+                target_location, target_new_name = resolve_target(
+                    row.target,
+                    require_existing=False,
+                    allow_general_factory=True,
+                    line_number=row.line_number,
+                )
+                if not (
+                    (
+                        target_location is not None
+                        and _is_partial_container(target_location)
                     )
-                    add_serialized_location_tags(
-                        target_location, row.target.serialized_location_tags
+                    or (
+                        target_location is None
+                        and _is_partial_container_target(row.target)
                     )
-                else:
-                    min_period = (
-                        get_period(row.target.min_period_id)
-                        if row.target.min_period_id is not None
-                        else None
+                ):
+                    raise RecommendationError(
+                        "target is not the Recent Region-wide Location or the "
+                        "'<Region> fossil' Location"
                     )
-                    max_period = (
-                        get_period(row.target.max_period_id)
-                        if row.target.max_period_id is not None
-                        else None
+                container_region = (
+                    target_location.region
+                    if target_location is not None
+                    else get_region(row.target.region_id)
+                )
+                planned_partials: list[PlannedPartialTarget] = []
+                desired_existing_ids: set[int] = set()
+                desired_names: set[str] = set()
+                for partial_target in row.partial_targets:
+                    partial_location, partial_new_name = resolve_target(
+                        partial_target,
+                        require_existing=False,
+                        allow_general_factory=True,
+                        line_number=row.line_number,
                     )
-                    stratigraphic_unit = (
-                        get_stratigraphic_unit(row.target.stratigraphic_unit_id)
-                        if row.target.stratigraphic_unit_id is not None
-                        else None
+                    partial_region = (
+                        partial_location.region
+                        if partial_location is not None
+                        else get_region(partial_target.region_id)
                     )
-                    for actual, expected_name, label in (
-                        (min_period, row.target.min_period_name, "minimum period"),
-                        (max_period, row.target.max_period_name, "maximum period"),
-                        (
-                            stratigraphic_unit,
-                            row.target.stratigraphic_unit_name,
-                            "stratigraphic unit",
-                        ),
-                    ):
-                        if actual is not None and actual.name != expected_name:
-                            raise RecommendationError(
-                                f"{label} {actual.id} changed from {expected_name!r} "
-                                f"to {actual.name!r}"
-                            )
-                    definition = NewLocationDefinition(
-                        row.target, region, min_period, max_period, stratigraphic_unit
-                    )
-                    previous = new_definitions.get(row.target.location_name)
-                    if previous is not None and previous.target != row.target:
+                    if not _region_is_within(partial_region, container_region):
                         raise RecommendationError(
-                            f"inconsistent definitions for new Location "
-                            f"{row.target.location_name!r}"
+                            f"partial target {partial_target.location_name!r} is outside "
+                            f"Region {container_region.name!r}"
                         )
-                    new_definitions[row.target.location_name] = definition
-                    new_location_name = row.target.location_name
+                    if partial_location is not None:
+                        desired_existing_ids.add(partial_location.id)
+                    if partial_target.location_name in desired_names:
+                        raise RecommendationError(
+                            f"duplicate partial target name {partial_target.location_name!r}"
+                        )
+                    desired_names.add(partial_target.location_name)
+                    planned_partials.append(
+                        PlannedPartialTarget(partial_location, partial_new_name)
+                    )
+                already_applied = (
+                    target_location is not None
+                    and name.type_locality is not None
+                    and name.type_locality.id == target_location.id
+                    and not any(item.new_location_name for item in planned_partials)
+                    and {location.id for location in actual_partials}
+                    == desired_existing_ids
+                )
+                if not already_applied:
+                    if actual_snapshot != expected_snapshot:
+                        raise RecommendationError(
+                            "current PartialTypeLocality tags differ from the manifest: "
+                            f"expected {expected_snapshot!r}, got {actual_snapshot!r}"
+                        )
+                    if (
+                        name.type_locality is None
+                        or name.type_locality.id != current.id
+                    ):
+                        raise RecommendationError(
+                            f"Name {name.id} is no longer assigned to Location {current.id}"
+                        )
+                updates.append(
+                    PlannedUpdate(
+                        row,
+                        name,
+                        target_location,
+                        target_new_name,
+                        already_applied,
+                        tuple(planned_partials),
+                    )
+                )
+                continue
+
+            standard_target_location, new_location_name = resolve_target(
+                row.target,
+                require_existing=row.action == MOVE_EXISTING_LOCATION,
+                line_number=row.line_number,
+            )
 
             already_applied = (
-                target_location is not None
+                standard_target_location is not None
                 and name.type_locality is not None
-                and name.type_locality.id == target_location.id
+                and name.type_locality.id == standard_target_location.id
             )
             if not already_applied and (
                 name.type_locality is None or name.type_locality.id != current.id
@@ -1014,7 +1316,11 @@ def build_plan(
                 )
             updates.append(
                 PlannedUpdate(
-                    row, name, target_location, new_location_name, already_applied
+                    row,
+                    name,
+                    standard_target_location,
+                    new_location_name,
+                    already_applied,
                 )
             )
         except RecommendationError as exc:
@@ -1105,7 +1411,7 @@ def _review_target(row: Recommendation) -> str:
     else:
         target = row.target
         if target.location_id is not None:
-            description = f"{target.location_name} [existing #{target.location_id}]"
+            description = f"{target.location_name} [existing]"
         else:
             description = f"{target.location_name} [new in {target.region_name}]"
         if target.latitude is not None and target.longitude is not None:
@@ -1118,11 +1424,43 @@ def _review_target(row: Recommendation) -> str:
             description += " tags=" + ",".join(
                 repr(tag) for tag in target.serialized_location_tags
             )
+        if row.partial_targets:
+            description += " partials=" + ", ".join(
+                target.location_name for target in row.partial_targets
+            )
     if row.type_locality_validity is not None:
         description += f" + validity={row.type_locality_validity.validity.name}"
     for origin in row.regional_origins:
         description += f" + {origin.region_name}:{origin.origin.name}"
     return description
+
+
+def _iter_review_target_details(target: Target) -> Iterable[tuple[str, Any]]:
+    if target.region_name != target.location_name:
+        yield "region", target.region_name
+    if target.coordinate_source is not None:
+        yield "coordinate_source", target.coordinate_source
+    if target.coordinate_note is not None:
+        yield "coordinate_note", target.coordinate_note
+    if (
+        target.min_period_name is not None
+        and target.min_period_name == target.max_period_name
+    ):
+        yield "period", target.min_period_name
+    else:
+        if target.min_period_name is not None:
+            yield "min_period", target.min_period_name
+        if target.max_period_name is not None:
+            yield "max_period", target.max_period_name
+    if target.min_age is not None and target.min_age == target.max_age:
+        yield "age", target.min_age
+    else:
+        if target.min_age is not None:
+            yield "min_age", target.min_age
+        if target.max_age is not None:
+            yield "max_age", target.max_age
+    if target.stratigraphic_unit_name is not None:
+        yield "stratigraphic_unit", target.stratigraphic_unit_name
 
 
 def _shorten(value: str, width: int) -> str:
@@ -1134,64 +1472,72 @@ def print_review_table(
     recommendations: Iterable[Recommendation], *, actions: set[str] | None = None
 ) -> None:
     rows = [row for row in recommendations if actions is None or row.action in actions]
-    print(
-        f"{'ID':>7}  {'ACTION':<25} {'CONF':<10} {'NAME':<32} "
-        f"{'TARGET':<48} EVIDENCE"
-    )
+    print(f"{'ACTION':<25} {'CONF':<10} {'NAME':<32} {'TARGET':<48} EVIDENCE")
     print("-" * 200)
     for row in rows:
         evidence = " | ".join(item.text for item in row.evidence if item.text.strip())
         if not evidence:
             evidence = row.reason
         print(
-            f"{row.name_id:>7}  {row.action:<25} {row.confidence:<10} "
-            f"{_shorten(row.name, 32):<32} {_shorten(_review_target(row), 48):<48} "
+            f"{row.action:<25} {row.confidence:<10} {_shorten(row.name, 32):<32} "
+            f"{_shorten(_review_target(row), 48):<48} "
             f"{_shorten(evidence, 90)}"
         )
         generic_recommendations._print_review_detail(
-            "current location",
-            f"L{row.current_location_id} {row.current_location_name}",
+            "current location", row.current_location_name
         )
-        generic_recommendations._print_review_detail(
-            "current location tags", repr(row.current_location_tags)
-        )
-        if row.action == ADD_IMPRECISE_LOCALITY:
+        if row.current_location_tags:
             generic_recommendations._print_review_detail(
-                "add type tag", f"ImpreciseLocality(comment={row.tag_comment!r})"
+                "current location tags", repr(row.current_location_tags)
             )
+        if row.action == ADD_IMPRECISE_LOCALITY:
+            description = "ImpreciseLocality"
+            if row.tag_comment is not None:
+                description += f"(comment={row.tag_comment!r})"
+            generic_recommendations._print_review_detail("add type tag", description)
         elif row.target is not None:
             target_identity = (
-                f"L{row.target.location_id} {row.target.location_name}"
+                row.target.location_name
                 if row.target.location_id is not None
                 else f"new Location {row.target.location_name}"
             )
             generic_recommendations._print_review_detail(
                 "change",
-                f"type_locality: L{row.current_location_id} "
-                f"{row.current_location_name} -> {target_identity}",
+                f"type_locality: {row.current_location_name} -> {target_identity}",
             )
-            for target_field in fields(row.target):
+            for field_name, value in _iter_review_target_details(row.target):
                 generic_recommendations._print_review_detail(
-                    "target field",
-                    f"{target_field.name}={getattr(row.target, target_field.name)!r}",
+                    "target", f"{field_name}={value!r}"
+                )
+            for partial_target in row.partial_targets:
+                partial_identity = (
+                    partial_target.location_name
+                    if partial_target.location_id is not None
+                    else f"new Location {partial_target.location_name}"
+                )
+                generic_recommendations._print_review_detail(
+                    "add type tag", f"PartialTypeLocality({partial_identity})"
                 )
         if row.type_locality_validity is not None:
             validity = row.type_locality_validity
+            description = f"validity={validity.validity.name}"
+            if validity.comment is not None:
+                description += f", comment={validity.comment!r}"
             generic_recommendations._print_review_detail(
-                "type-locality validity",
-                f"validity={validity.validity.name}, comment={validity.comment!r}",
+                "type-locality validity", description
             )
         for origin in row.regional_origins:
-            generic_recommendations._print_review_detail(
-                "regional origin",
-                f"region=R{origin.region_id} {origin.region_name!r}, "
-                f"origin={origin.origin.name}, source=A{origin.source_id} "
-                f"{origin.source_name!r}, comment={origin.comment!r}",
+            description = (
+                f"region={origin.region_name!r}, origin={origin.origin.name}, "
+                f"source={origin.source_name!r}"
             )
+            if origin.comment is not None:
+                description += f", comment={origin.comment!r}"
+            generic_recommendations._print_review_detail("regional origin", description)
         if row.action == MANUAL_REVIEW:
             for item in row.evidence:
                 generic_recommendations._print_review_detail(
-                    f"evidence (A{item.source_id} {item.source_name})", item.text
+                    f"evidence ({item.source_name})", item.text
                 )
     counts = Counter(row.action for row in rows)
     print(f"\n{len(rows)} recommendation(s): {dict(counts)}")
@@ -1300,24 +1646,41 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             *(_make_location_tag(spec) for spec in target.location_tags),
             *target.serialized_location_tags,
         )
-        new_location = builder.create(
-            Location,
-            context=f"new Location {target.location_name!r}",
-            name=target.location_name,
-            min_period=min_period,
-            max_period=max_period,
-            min_age=target.min_age,
-            max_age=target.max_age,
-            stratigraphic_unit=stratigraphic_unit,
-            region=definition.region,
-            comment=_coordinate_comment(target),
-            latitude=target.latitude,
-            longitude=target.longitude,
-            location_detail="None",
-            age_detail="None",
-            deleted=LocationStatus.valid,
-            tags=tuple(sorted(set(tags))),
-        )
+        if isinstance(definition.deleted_location, Location):
+            new_location = builder.copy(
+                definition.deleted_location,
+                context=f"revived Location {target.location_name!r}",
+            )
+            new_location.deleted = LocationStatus.valid
+            new_location.min_period = min_period
+            new_location.max_period = max_period
+            new_location.min_age = target.min_age
+            new_location.max_age = target.max_age
+            new_location.stratigraphic_unit = stratigraphic_unit
+            new_location.region = definition.region
+            new_location.comment = _coordinate_comment(target)
+            new_location.latitude = target.latitude
+            new_location.longitude = target.longitude
+            new_location.tags = tuple(sorted(set(new_location.tags or ()) | set(tags)))  # type: ignore[assignment]
+        else:
+            new_location = builder.create(
+                Location,
+                context=f"new Location {target.location_name!r}",
+                name=target.location_name,
+                min_period=min_period,
+                max_period=max_period,
+                min_age=target.min_age,
+                max_age=target.max_age,
+                stratigraphic_unit=stratigraphic_unit,
+                region=definition.region,
+                comment=_coordinate_comment(target),
+                latitude=target.latitude,
+                longitude=target.longitude,
+                location_detail="None",
+                age_detail="None",
+                deleted=LocationStatus.valid,
+                tags=tuple(sorted(set(tags))),
+            )
         new_locations[target.location_name] = new_location
 
     for validity_update in plan.type_locality_validity_updates:
@@ -1370,6 +1733,27 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             maybe_new_location = new_locations.get(planned_update.new_location_name)
             if maybe_new_location is not None:
                 name_proposal.type_locality = maybe_new_location
+        if row.action == SET_PARTIAL_TYPE_LOCALITIES:
+            partial_locations: list[Location] = []
+            for partial in planned_update.partial_targets:
+                if isinstance(partial.target, Location):
+                    partial_locations.append(builder.replacement(partial.target))
+                elif partial.new_location_name is not None:
+                    maybe_new_location = new_locations.get(partial.new_location_name)
+                    if maybe_new_location is not None:
+                        partial_locations.append(maybe_new_location)
+            other_tags = tuple(
+                tag
+                for tag in name_proposal.type_tags or ()
+                if not isinstance(tag, TypeTag.PartialTypeLocality)
+            )
+            name_proposal.type_tags = (  # type: ignore[assignment]
+                *other_tags,
+                *(
+                    TypeTag.PartialTypeLocality(location)
+                    for location in partial_locations
+                ),
+            )
 
 
 def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
@@ -1411,8 +1795,13 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
             f"ages={(target.min_age, target.max_age)!r} "
             f"stratigraphic_unit={target.stratigraphic_unit_name!r}"
         )
+        operation = (
+            "GET_OR_CREATE_GENERAL_LOCATION"
+            if definition.use_general_factory
+            else "CREATE_LOCATION"
+        )
         print(
-            f"{'CREATE_LOCATION' if apply else 'WOULD_CREATE_LOCATION'} "
+            f"{operation if apply else f'WOULD_{operation}'} "
             f"name={target.location_name!r} region={target.region_name!r} "
             f"coordinates={(target.latitude, target.longitude)!r} "
             f"{temporal_context} tags={tag_names}"
@@ -1421,15 +1810,22 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
             region = cast(Region, definition.region)
             period = definition.min_period or recent
             assert period is not None
-            location = Location.make(
-                target.location_name,
-                region,
-                cast(Period, period),
-                comment=_coordinate_comment(target),
-                stratigraphic_unit=cast(
+            if definition.use_general_factory:
+                location = Location.get_or_create_general(region, cast(Period, period))
+                location.comment = _coordinate_comment(target)
+                location.stratigraphic_unit = cast(
                     StratigraphicUnit | None, definition.stratigraphic_unit
-                ),
-            )
+                )
+            else:
+                location = Location.make(
+                    target.location_name,
+                    region,
+                    cast(Period, period),
+                    comment=_coordinate_comment(target),
+                    stratigraphic_unit=cast(
+                        StratigraphicUnit | None, definition.stratigraphic_unit
+                    ),
+                )
             if definition.max_period is not None:
                 location.max_period = cast(Period, definition.max_period)
             location.min_age = target.min_age
@@ -1504,6 +1900,50 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
             )
             if apply:
                 planned_update.name.add_type_tag(_make_imprecise_tag(row.tag_comment))
+        elif row.action == SET_PARTIAL_TYPE_LOCALITIES:
+            container = planned_update.target
+            if container is None:
+                assert planned_update.new_location_name is not None
+                if apply:
+                    container = cast(
+                        LocationLike, created[planned_update.new_location_name]
+                    )
+            partial_locations: list[LocationLike] = []
+            partial_names: list[str] = []
+            for partial in planned_update.partial_targets:
+                resolved_partial = partial.target
+                if resolved_partial is None:
+                    assert partial.new_location_name is not None
+                    partial_names.append(partial.new_location_name)
+                    if apply:
+                        resolved_partial = cast(
+                            LocationLike, created[partial.new_location_name]
+                        )
+                else:
+                    partial_names.append(resolved_partial.name)
+                if resolved_partial is not None:
+                    partial_locations.append(resolved_partial)
+            print(
+                f"{'SET_PARTIAL_TYPE_LOCALITIES' if apply else 'WOULD_SET_PARTIAL_TYPE_LOCALITIES'} "
+                f"name_id={row.name_id} name={row.name!r} "
+                f"container={(container.name if container is not None else planned_update.new_location_name)!r} "
+                f"partials={','.join(partial_names)}"
+            )
+            if apply:
+                assert container is not None
+                planned_update.name.type_locality = container
+                other_tags = tuple(
+                    tag
+                    for tag in planned_update.name.type_tags or ()
+                    if not isinstance(tag, TypeTag.PartialTypeLocality)
+                )
+                planned_update.name.type_tags = (
+                    *other_tags,
+                    *(
+                        TypeTag.PartialTypeLocality(cast(Location, location))
+                        for location in partial_locations
+                    ),
+                )
         else:
             location_target = planned_update.target
             if location_target is None:

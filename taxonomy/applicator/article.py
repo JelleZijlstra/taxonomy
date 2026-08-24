@@ -1,8 +1,9 @@
-"""Planner and executor for adding a cataloged Article and optional staged PDF.
+"""Planner and executor for adding a cataloged Article and optional staged file.
 
 ``create_article`` is intentionally specialized: it validates bibliographic metadata,
 an optional CitationGroup creation, an optional parent Article, and the filesystem move
-as one restartable plan.
+as one restartable plan. Ordinary Articles use PDFs; parented supplementary Articles
+may use another catalog-supported electronic format.
 The public CLI is :mod:`scripts.apply_recommendations`.
 """
 
@@ -45,6 +46,7 @@ SUPPORTED_ARTICLE_TYPES = {
     ArticleType.WEB,
     ArticleType.MISCELLANEOUS,
     ArticleType.PART,
+    ArticleType.SUPPLEMENT,
 }
 
 SCALAR_FIELDS = {
@@ -457,9 +459,9 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         raise RecommendationError(
             f"line {line_number}: invalid Article name {name!r}: {'; '.join(errors)}"
         )
-    if file is not None and parser.extension != "pdf":
+    if file is not None and not parser.extension:
         raise RecommendationError(
-            f"line {line_number}: Article name must have lowercase .pdf extension"
+            f"line {line_number}: electronic Article name must have an extension"
         )
     if file is None and parser.extension:
         raise RecommendationError(
@@ -584,7 +586,9 @@ def _file_digest(path: Path) -> tuple[int, str]:
     return size, digest.hexdigest()
 
 
-def _check_pdf(path: Path, spec: FileSpec, *, line: int, label: str) -> None:
+def _check_file(
+    path: Path, spec: FileSpec, *, expected_extension: str, line: int, label: str
+) -> None:
     try:
         actual_size, digest = _file_digest(path)
         with path.open("rb") as file:
@@ -593,7 +597,7 @@ def _check_pdf(path: Path, spec: FileSpec, *, line: int, label: str) -> None:
         raise RecommendationError(
             f"line {line}: could not read {label} {path}: {exc}"
         ) from exc
-    if b"%PDF-" not in header:
+    if expected_extension == "pdf" and b"%PDF-" not in header:
         raise RecommendationError(f"line {line}: {label} {path} is not a PDF")
     if actual_size != spec.size:
         raise RecommendationError(
@@ -836,6 +840,15 @@ def build_plan(
             raise RecommendationError(
                 f"line {line}: create_article does not support {article_type.name}"
             )
+        extension = get_name_parser(recommendation.name).extension
+        if (
+            recommendation.file is not None
+            and extension != "pdf"
+            and article_type is not ArticleType.SUPPLEMENT
+        ):
+            raise RecommendationError(
+                f"line {line}: only SUPPLEMENT Articles may use non-PDF files"
+            )
         kind = (
             ArticleKind.electronic
             if recommendation.file is not None
@@ -843,7 +856,11 @@ def build_plan(
         )
         if kind is ArticleKind.no_copy and article_type is not ArticleType.BOOK:
             raise RecommendationError(f"line {line}: only BOOK Articles may omit file")
-        if article_type in {ArticleType.CHAPTER, ArticleType.PART}:
+        if article_type in {
+            ArticleType.CHAPTER,
+            ArticleType.PART,
+            ArticleType.SUPPLEMENT,
+        }:
             if recommendation.parent is None:
                 raise RecommendationError(
                     f"line {line}: {article_type.name} Article requires article.parent"
@@ -854,7 +871,7 @@ def build_plan(
                 )
         elif recommendation.parent is not None:
             raise RecommendationError(
-                f"line {line}: article.parent is supported only for CHAPTER and PART"
+                f"line {line}: article.parent is supported only for CHAPTER, PART, and SUPPLEMENT"
             )
         fields = {
             field: value
@@ -1019,7 +1036,10 @@ def build_plan(
                 parent_article = earlier_action.article
                 parent_type = earlier_action.article_type
                 planned_parent_name = parent_spec.name
-            if parent_type is not ArticleType.BOOK:
+            if (
+                article_type in {ArticleType.CHAPTER, ArticleType.PART}
+                and parent_type is not ArticleType.BOOK
+            ):
                 raise RecommendationError(
                     f"line {line}: {article_type.name} parent must be a BOOK Article"
                 )
@@ -1062,15 +1082,22 @@ def build_plan(
         else:
             assert source is not None and destination is not None
             if source.exists():
-                _check_pdf(source, recommendation.file, line=line, label="staged file")
+                _check_file(
+                    source,
+                    recommendation.file,
+                    expected_extension=extension,
+                    line=line,
+                    label="staged file",
+                )
             elif existing is None or not destination.exists():
                 raise RecommendationError(
                     f"line {line}: staged file does not exist: {source}"
                 )
             if destination.exists():
-                _check_pdf(
+                _check_file(
                     destination,
                     recommendation.file,
+                    expected_extension=extension,
                     line=line,
                     label="destination file",
                 )
@@ -1244,7 +1271,7 @@ def _create_article(name: str, values: Mapping[str, Any]) -> Article:
     return Article.make(name, **values)
 
 
-def _install_pdf(source: Path, destination: Path, expected_sha256: str) -> None:
+def _install_file(source: Path, destination: Path, expected_sha256: str) -> None:
     if destination.exists():
         return
     temporary: Path | None = None
@@ -1261,7 +1288,9 @@ def _install_pdf(source: Path, destination: Path, expected_sha256: str) -> None:
             output.flush()
             os.fsync(output.fileno())
         if _file_digest(temporary)[1] != expected_sha256:
-            raise RecommendationError(f"copied PDF checksum mismatch for {destination}")
+            raise RecommendationError(
+                f"copied file checksum mismatch for {destination}"
+            )
         temporary.replace(destination)
         temporary = None
     finally:
@@ -1270,8 +1299,9 @@ def _install_pdf(source: Path, destination: Path, expected_sha256: str) -> None:
 
 
 def _run_auxiliary(article: Article, *, add_history: bool) -> None:
-    article.store_pdf_content()
-    article.index_pdf_for_search()
+    if get_name_parser(article.name).extension == "pdf":
+        article.store_pdf_content()
+        article.index_pdf_for_search()
     if add_history:
         article.add_to_history()
         article.add_to_history("name")
@@ -1291,7 +1321,7 @@ def execute_plan(
     ] = _create_citation_group,
     get_or_create_person: Callable[..., Person] = Person.get_or_create_unchecked,
     create_article: Callable[[str, Mapping[str, Any]], Article] = _create_article,
-    install_pdf: Callable[[Path, Path, str], None] = _install_pdf,
+    install_file: Callable[[Path, Path, str], None] = _install_file,
     run_auxiliary: Callable[..., None] = _run_auxiliary,
     add_article_history: Callable[[Article], None] = _add_article_history,
 ) -> Mapping[str, Article]:
@@ -1362,7 +1392,7 @@ def execute_plan(
             continue
         assert action.source_path is not None and action.destination_path is not None
         if not action.destination_path.exists():
-            install_pdf(action.source_path, action.destination_path, file.sha256)
+            install_file(action.source_path, action.destination_path, file.sha256)
         run_auxiliary(article, add_history=True)
         if action.source_path.exists():
             action.source_path.unlink()

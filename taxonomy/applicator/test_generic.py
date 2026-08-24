@@ -219,9 +219,52 @@ def test_review_expands_create_object_fields_and_match_guards(
     output = capsys.readouterr().out
     assert "create with fields name, latitude, tags" in output
     assert "    - match: name='Precise site'" in output
-    assert "    - field: name='Precise site'" in output
+    assert "    - field: name='Precise site'" not in output
     assert "    - field: latitude='37°N'" in output
     assert "    - field: tags=[General]" in output
+
+
+def test_create_object_review_omits_empty_values_and_keeps_falsey_scalars(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    row = recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": recommendations.CREATE_OBJECT,
+            "confidence": "high",
+            "reason": "Create a reviewed issue date.",
+            "evidence": [{"kind": "source", "text": "Exact source evidence."}],
+            "object": {
+                "model": "IssueDate",
+                "ref": "issue_date",
+                "label": "Reviewed issue date",
+            },
+            "match": {"date": "1878-02", "series": None, "tags": []},
+            "values": {
+                "date": "1878-02",
+                "series": None,
+                "issue": "",
+                "tags": [],
+                "start_page": 0,
+                "volume": False,
+            },
+        },
+        1,
+    )
+
+    recommendations.print_review_table([row])
+
+    output = capsys.readouterr().out
+    assert "create with fields date, start_page, volume" in output
+    assert "    - match: date='1878-02'" in output
+    assert "    - field: date='1878-02'" not in output
+    assert "    - match: series=" not in output
+    assert "    - field: series=" not in output
+    assert "    - field: issue=" not in output
+    assert "    - match: tags=" not in output
+    assert "    - field: tags=" not in output
+    assert "    - field: start_page=0" in output
+    assert "    - field: volume=False" in output
 
 
 def test_schema_v2_update_object_applies_multiple_guarded_changes() -> None:

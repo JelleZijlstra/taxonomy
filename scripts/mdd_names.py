@@ -311,7 +311,7 @@ def _mdd_coordinates_match(first: str, second: str, *, is_latitude: bool) -> boo
 def get_type_locality_coordinates(
     names_for_tags: Sequence[Name], name_for_types: Name
 ) -> tuple[str, str]:
-    """Return name-level coordinates, falling back to the type-locality Location."""
+    """Return name-level coordinates, then partial or ordinary Location coordinates."""
     coordinates: tuple[str, str] | None = None
     for name in names_for_tags:
         for tag in name.type_tags:
@@ -321,6 +321,30 @@ def get_type_locality_coordinates(
                     coordinates = parsed
     if coordinates is not None:
         return coordinates
+
+    partial_locations = {
+        tag.location.id: tag.location
+        for name in names_for_tags
+        for tag in name.type_tags
+        if isinstance(tag, TypeTag.PartialTypeLocality)
+    }
+    if partial_locations:
+        partial_extent: coordinate_lint.CoordinateExtent | None = None
+        for location in partial_locations.values():
+            if location.latitude is None or location.longitude is None:
+                return "", ""
+            extent = coordinate_lint.make_extent(location.latitude, location.longitude)
+            if extent is None:
+                return "", ""
+            partial_extent = (
+                extent if partial_extent is None else partial_extent.union(extent)
+            )
+        assert partial_extent is not None
+        return (
+            _format_mdd_coordinate(partial_extent.latitude),
+            _format_mdd_coordinate(partial_extent.longitude),
+        )
+
     location = name_for_types.type_locality
     if location is None or location.latitude is None or location.longitude is None:
         return "", ""

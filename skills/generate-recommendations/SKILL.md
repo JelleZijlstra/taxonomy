@@ -239,12 +239,16 @@ An `edit_location` row uses `changes` entries with `field`, `old_value`, and
 also carry an optional top-level `review_note` for an important caveat that should be
 printed in full by `--review-manual` without making the action non-executable.
 
-### Type-locality actions, schema version 3
+### Type-locality actions, schema version 4
 
 - `create_location`: create a fully described target Location and move a Name to it;
   identical repeated target definitions create one Location.
 - `move_existing_location`: move a Name to a validated existing Location.
 - `add_imprecise_locality`: add `TypeTag.ImpreciseLocality` without moving the Name.
+- `set_partial_type_localities`: move a syntype or type-kind-unset Name to a Region-wide
+  Recent or `<Region> fossil` Location (existing, newly created, or revived with
+  `Location.get_or_create_general`) and replace its guarded `PartialTypeLocality` set
+  with at least two existing or newly defined component Locations.
 - `manual_review`: retain an unresolved recommendation and its evidence.
 - `no_action`: record why no type-locality change is recommended.
 
