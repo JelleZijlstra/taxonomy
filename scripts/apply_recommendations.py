@@ -228,6 +228,14 @@ def _declared_affected_objects(
             yield generic_recommendations._replace_created_models(
                 generic_action.object, replacements
             )
+            if (
+                generic_action.recommendation.action
+                == generic_recommendations.MERGE_PERSON
+            ):
+                merge_data = generic_action.new_value
+                yield generic_recommendations._replace_created_models(
+                    merge_data["target"], replacements
+                )
     for location_action in location_plan.actions:
         if isinstance(
             location_action,

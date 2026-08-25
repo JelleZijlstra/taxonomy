@@ -349,6 +349,7 @@ def apply_lint_fix(issue: LintIssue, cfg: LintConfig) -> tuple[bool, LintIssue |
 
 Linter = Callable[[ModelT, LintConfig], Iterable[LintResult]]
 DuplicateKey = Callable[[ModelT], Hashable | None]
+DuplicateKeys = Callable[[ModelT], Iterable[Hashable]]
 DuplicateFixer = Callable[[Hashable, ModelT, list[ModelT]], LintResult | None]
 InteractiveDuplicateFixer = Callable[[Hashable, list[ModelT], LintConfig], None]
 
@@ -641,54 +642,103 @@ class Lint(Generic[ModelT]):
         interactive_fixer: InteractiveDuplicateFixer[ModelT] | None = None,
     ) -> Callable[[DuplicateKey[ModelT]], LintWrapper[ModelT]]:
         def decorator(dupe_key: DuplicateKey[ModelT]) -> LintWrapper[ModelT]:
-            @cache
-            def get_object_to_issues() -> dict[int, list[tuple[str, list[ModelT]]]]:
-                key_to_objs: dict[Hashable, list[ModelT]] = {}
-                for obj in query or self.model_cls.select_valid():
-                    key = dupe_key(obj)
-                    if key is not None:
-                        key_to_objs.setdefault(key, []).append(obj)
-                output: dict[int, list[tuple[str, list[ModelT]]]] = {}
-                for key, objs in key_to_objs.items():
-                    if len(objs) > 1:
-                        objs = sorted(objs, key=lambda o: o.id)
-                        # Skip the first object, as it's likely the one we'd want to keep
-                        for obj in objs[1:]:
-                            others = [o for o in objs if o != obj]
-                            message = f"Duplicate of {others} (key {key!r})"
-                            output.setdefault(obj.id, []).append((message, others))
-                return output
+            def get_keys(obj: ModelT) -> Iterable[Hashable]:
+                key = dupe_key(obj)
+                if key is not None:
+                    yield key
 
-            def linter(obj: ModelT, cfg: LintConfig) -> Iterable[LintResult]:
-                if obj.is_invalid():
-                    return
-                mapping = get_object_to_issues()
-                if obj.id in mapping:
-                    my_key = dupe_key(obj)
-                    if my_key is None:
-                        return
-                    for message, others in mapping[obj.id]:
-                        # Recheck in case information has changed
-                        matching_others = [
-                            o
-                            for o in others
-                            if dupe_key(o) == my_key and not o.is_invalid()
-                        ]
-                        if matching_others:
-                            is_ignored = self.is_ignoring_lint(obj, label)
-                            if fixer is None or is_ignored:
-                                yield message
-                            else:
-                                issue = fixer(my_key, obj, matching_others)
-                                yield message if issue is None else issue
-                            if interactive_fixer is not None and not is_ignored:
-                                interactive_fixer(my_key, [obj, *matching_others], cfg)
-
-            return self.add(
-                label, disabled=disabled, clear_caches=get_object_to_issues.cache_clear
-            )(linter)
+            return self._add_multi_duplicate_finder(
+                label,
+                get_keys,
+                disabled=disabled,
+                query=query,
+                fixer=fixer,
+                interactive_fixer=interactive_fixer,
+            )
 
         return decorator
+
+    def add_multi_duplicate_finder(
+        self,
+        label: str,
+        *,
+        disabled: bool = False,
+        query: Iterable[ModelT] | None = None,
+        fixer: DuplicateFixer[ModelT] | None = None,
+        interactive_fixer: InteractiveDuplicateFixer[ModelT] | None = None,
+    ) -> Callable[[DuplicateKeys[ModelT]], LintWrapper[ModelT]]:
+        """Register a duplicate finder where each object may have multiple keys."""
+
+        def decorator(dupe_keys: DuplicateKeys[ModelT]) -> LintWrapper[ModelT]:
+            return self._add_multi_duplicate_finder(
+                label,
+                dupe_keys,
+                disabled=disabled,
+                query=query,
+                fixer=fixer,
+                interactive_fixer=interactive_fixer,
+            )
+
+        return decorator
+
+    def _add_multi_duplicate_finder(
+        self,
+        label: str,
+        dupe_keys: DuplicateKeys[ModelT],
+        *,
+        disabled: bool,
+        query: Iterable[ModelT] | None,
+        fixer: DuplicateFixer[ModelT] | None,
+        interactive_fixer: InteractiveDuplicateFixer[ModelT] | None,
+    ) -> LintWrapper[ModelT]:
+        @cache
+        def get_object_to_issues() -> (
+            dict[int, list[tuple[Hashable, str, list[ModelT]]]]
+        ):
+            key_to_objs: dict[Hashable, list[ModelT]] = {}
+            for obj in query or self.model_cls.select_valid():
+                for key in dict.fromkeys(dupe_keys(obj)):
+                    key_to_objs.setdefault(key, []).append(obj)
+            output: dict[int, list[tuple[Hashable, str, list[ModelT]]]] = {}
+            for key, objs in key_to_objs.items():
+                if len(objs) > 1:
+                    objs = sorted(objs, key=lambda o: o.id)
+                    # Skip the first object, as it's likely the one we'd want to keep
+                    for obj in objs[1:]:
+                        others = [o for o in objs if o != obj]
+                        message = f"Duplicate of {others} (key {key!r})"
+                        output.setdefault(obj.id, []).append((key, message, others))
+            return output
+
+        def linter(obj: ModelT, cfg: LintConfig) -> Iterable[LintResult]:
+            if obj.is_invalid():
+                return
+            mapping = get_object_to_issues()
+            if obj.id not in mapping:
+                return
+            my_keys = set(dupe_keys(obj))
+            for key, message, others in mapping[obj.id]:
+                if key not in my_keys:
+                    continue
+                # Recheck in case information has changed
+                matching_others = [
+                    other
+                    for other in others
+                    if key in set(dupe_keys(other)) and not other.is_invalid()
+                ]
+                if matching_others:
+                    is_ignored = self.is_ignoring_lint(obj, label)
+                    if fixer is None or is_ignored:
+                        yield message
+                    else:
+                        issue = fixer(key, obj, matching_others)
+                        yield message if issue is None else issue
+                    if interactive_fixer is not None and not is_ignored:
+                        interactive_fixer(key, [obj, *matching_others], cfg)
+
+        return self.add(
+            label, disabled=disabled, clear_caches=get_object_to_issues.cache_clear
+        )(linter)
 
     def run(self, obj: ModelT, cfg: LintConfig) -> Iterable[LintResult]:
         if cfg.enable_all:

@@ -14,17 +14,16 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import NamingConvention, PersonType
 from taxonomy.db.derived_data import DerivedField, LazyType, load_derived_data
-from taxonomy.db.openlibrary import get_author
-
-from .base import (
+from taxonomy.db.models.base import (
     ADTField,
     BaseModel,
     LintConfig,
     TextOrNullField,
     get_tag_based_derived_field,
 )
-from .lint import field_issue
-from .lint_types import LintResult
+from taxonomy.db.models.lint import field_issue
+from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.openlibrary import get_author
 
 ALLOWED_TUSSENVOEGSELS = {
     NamingConvention.dutch: {
@@ -65,6 +64,33 @@ UNCHECKED_TYPES = (
     PersonType.soft_redirect,
     PersonType.hard_redirect,
 )
+
+ORCID_PATTERN = re.compile(r"\d{4}-\d{4}-\d{4}-\d{3}[\dX]")
+
+
+def normalize_orcid(text: str) -> str:
+    """Normalize an ORCID supplied by an external metadata source."""
+    return (
+        text.strip()
+        .removeprefix("https://orcid.org/")
+        .removeprefix("http://orcid.org/")
+        .removeprefix("https://www.orcid.org/")
+        .removeprefix("http://www.orcid.org/")
+        .upper()
+    )
+
+
+def is_valid_orcid(text: str) -> bool:
+    """Return whether text is a canonical ORCID with a valid check digit."""
+    if ORCID_PATTERN.fullmatch(text) is None:
+        return False
+    digits = text.replace("-", "")
+    total = 0
+    for digit in digits[:-1]:
+        total = (total + int(digit)) * 2
+    result = (12 - total % 11) % 11
+    expected = "X" if result == 10 else str(result)
+    return digits[-1] == expected
 
 
 class PersonLevel(enum.IntEnum):
@@ -479,6 +505,9 @@ class Person(BaseModel):
     def edit(self) -> None:
         self.fill_field("tags")
 
+    def add_tag(self, tag: adt.ADT) -> None:
+        self.tags = (*self.tags, tag)  # type: ignore[assignment]
+
     def sort_key(self) -> tuple[str, ...]:
         return (
             self.family_name,
@@ -520,7 +549,7 @@ class Person(BaseModel):
                 ):
                     yield f"{self}: invalid Wikipedia link: {tag}"
             elif isinstance(tag, models.tags.PersonTag.ORCID):
-                if not re.fullmatch(r"\d{4}-\d{4}-\d{4}-\d{4}", tag.text):
+                if not is_valid_orcid(tag.text):
                     yield f"{self}: invalid ORCID: {tag}"
             elif isinstance(tag, models.tags.PersonTag.OnlineBio):
                 if not tag.text.startswith(("http://", "https://")):
@@ -534,7 +563,14 @@ class Person(BaseModel):
         if self.type is PersonType.unchecked:
             if self.bio:
                 yield f"{self}: unchecked but bio set"
-            if self.tags:
+            non_identifier_tags = [
+                tag
+                for tag in self.tags
+                if not isinstance(
+                    tag, (models.tags.PersonTag.ORCID, models.tags.PersonTag.IgnoreLint)
+                )
+            ]
+            if non_identifier_tags:
                 yield f"{self}: unchecked but tags set"
             if self.birth:
                 yield f"{self}: unchecked but year of birth set"
@@ -543,6 +579,11 @@ class Person(BaseModel):
         # For aliases, we allow setting both to control the initials displayed.
         if self.type is not PersonType.alias and self.given_names and self.initials:
             yield f"{self}: has both given names and initials"
+
+        from . import lint as person_lint
+
+        yield from person_lint.LINT.run(self, cfg)
+
         if self.naming_convention is NamingConvention.other:
             return
         if self.tussenvoegsel:
@@ -628,6 +669,12 @@ class Person(BaseModel):
                 grammar = parsing.family_name_pattern
             if not parsing.matches_grammar(self.family_name, grammar):
                 yield f"{self}: invalid family name: {self.family_name!r}"
+
+    @classmethod
+    def clear_lint_caches(cls) -> None:
+        from . import lint as person_lint
+
+        person_lint.LINT.clear_caches()
 
     @classmethod
     def fix_bad_suffixes(cls) -> None:
@@ -1228,6 +1275,8 @@ def is_more_specific_than(
     left: Person | VirtualPerson, right: Person | VirtualPerson
 ) -> bool:
     if isinstance(left, Person) and isinstance(right, Person):
+        if left.type in (PersonType.hard_redirect, PersonType.soft_redirect):
+            return False
         if right.type in (PersonType.hard_redirect, PersonType.soft_redirect):
             return right.target == left
     if isinstance(right, Person):

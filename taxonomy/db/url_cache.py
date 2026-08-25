@@ -53,6 +53,8 @@ class CacheDomain(enum.Enum):
     zoobank_act_negative = 21
     zoobank_publication_negative = 22
     openstreetmap = 23  # OpenStreetMap API element metadata
+    orcid_doi_search = 24  # ORCID expanded search by exact DOI
+    orcid_record = 25  # ORCID public record by ORCID iD
 
 
 KeyT = TypeVar("KeyT")

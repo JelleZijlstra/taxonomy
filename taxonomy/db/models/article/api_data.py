@@ -20,7 +20,7 @@ from taxonomy.db import helpers
 from taxonomy.db.constants import ArticleType, DateSource
 from taxonomy.db.helpers import clean_string, trimdoi
 from taxonomy.db.models.citation_group import CitationGroup
-from taxonomy.db.models.person import VirtualPerson
+from taxonomy.db.models.person import VirtualPerson, normalize_orcid
 from taxonomy.db.url_cache import CacheDomain, cached, clear_memory_cache, dirty_cache
 
 from .article import Article, ArticleTag
@@ -28,6 +28,13 @@ from .lint import infer_publication_date_from_tags
 
 RawData = dict[str, Any]
 _options = config.get_options()
+
+
+@dataclass(frozen=True)
+class DoiAuthor:
+    person: VirtualPerson
+    orcid: str | None
+    authenticated_orcid: bool
 
 
 @lru_cache
@@ -572,40 +579,8 @@ def expand_doi_json(doi: str) -> RawData:
             title = title[0] + title[1:].lower()
         data["title"] = clean_string(title)
 
-    for key in ("author", "editor"):
-        if author_raw := work.get(key):
-            authors = []
-            for author in author_raw:
-                # doi:10.24272/j.issn.2095-8137.2020.132 has some stray authors that look like
-                # they should be affiliations.
-                if "family" not in author:
-                    continue
-                family_name = clean_string(author["family"])
-                if family_name.isupper():
-                    family_name = family_name.title()
-                initials = given_names = None
-                if given := author.get("given"):
-                    given = clean_string(given.title())
-                    if given:
-                        if given[-1].isupper():
-                            given = given + "."
-                        given = re.sub(r"\b([A-Z]) ", r"\1.", given)
-                        if parsing.matches_grammar(
-                            given.replace(" ", ""), parsing.initials_pattern
-                        ):
-                            initials = given.replace(" ", "")
-                        else:
-                            given_names = re.sub(r"\. ([A-Z]\.)", r".\1", given)
-                authors.append(
-                    VirtualPerson(
-                        family_name=family_name,
-                        initials=initials,
-                        given_names=given_names,
-                    )
-                )
-            if authors:
-                data["author_tags"] = authors
-            break
+    if doi_authors := _get_doi_authors_from_work(work):
+        data["author_tags"] = [author.person for author in doi_authors]
 
     if volume := work.get("volume"):
         data["volume"] = volume.removeprefix("0")
@@ -671,6 +646,59 @@ def expand_doi_json(doi: str) -> RawData:
     if year:
         data["year"] = year
     return data
+
+
+def get_doi_authors(doi: str) -> list[DoiAuthor]:
+    result = get_doi_json(doi)
+    if result is None:
+        return []
+    return _get_doi_authors_from_work(result["message"])
+
+
+def _get_doi_authors_from_work(work: dict[str, Any]) -> list[DoiAuthor]:
+    for key in ("author", "editor"):
+        if author_raw := work.get(key):
+            authors = []
+            for author in author_raw:
+                # doi:10.24272/j.issn.2095-8137.2020.132 has some stray authors
+                # that look like they should be affiliations.
+                if "family" not in author:
+                    continue
+                family_name = clean_string(author["family"])
+                if family_name.isupper():
+                    family_name = family_name.title()
+                initials = given_names = None
+                if given := author.get("given"):
+                    given = clean_string(given.title())
+                    if given:
+                        if given[-1].isupper():
+                            given = given + "."
+                        given = re.sub(r"\b([A-Z]) ", r"\1.", given)
+                        if parsing.matches_grammar(
+                            given.replace(" ", ""), parsing.initials_pattern
+                        ):
+                            initials = given.replace(" ", "")
+                        else:
+                            given_names = re.sub(r"\. ([A-Z]\.)", r".\1", given)
+                raw_orcid = author.get("ORCID")
+                orcid = (
+                    normalize_orcid(raw_orcid)
+                    if isinstance(raw_orcid, str) and raw_orcid
+                    else None
+                )
+                authors.append(
+                    DoiAuthor(
+                        person=VirtualPerson(
+                            family_name=family_name,
+                            initials=initials,
+                            given_names=given_names,
+                        ),
+                        orcid=orcid,
+                        authenticated_orcid=author.get("authenticated-orcid") is True,
+                    )
+                )
+            return authors
+    return []
 
 
 def get_container_title(work: dict[str, Any]) -> str | None:

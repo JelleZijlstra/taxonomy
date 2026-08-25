@@ -33,6 +33,8 @@ class Options(NamedTuple):
     googlekey: str = ""
     googlecus: str = ""
     crossrefid: str = ""
+    orcid_client_id: str = ""
+    orcid_client_secret: str = ""
 
     paleobiodb_cookie: Mapping[str, str] = {}
 
@@ -175,6 +177,8 @@ def parse_config_file(filename: Path) -> Options:
             googlekey=section.get("googlekey", ""),
             googlecus=section.get("googlecus", ""),
             crossrefid=section.get("crossrefid", ""),
+            orcid_client_id=section.get("orcid_client_id", ""),
+            orcid_client_secret=section.get("orcid_client_secret", ""),
             paleobiodb_cookie=(
                 json.loads(section["paleobiodb_cookie"])
                 if "paleobiodb_cookie" in section

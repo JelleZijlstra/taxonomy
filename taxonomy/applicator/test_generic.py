@@ -4,7 +4,7 @@ import pytest
 
 from taxonomy.applicator import generic as recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
-from taxonomy.db.constants import AltitudeUnit, RegionKind
+from taxonomy.db.constants import AltitudeUnit, NamingConvention, PersonType, RegionKind
 from taxonomy.db.models import (
     BaseModel,
     CitationGroup,
@@ -13,12 +13,13 @@ from taxonomy.db.models import (
     Location,
     Name,
     OccurrenceRecord,
+    Person,
     Region,
 )
 from taxonomy.db.models.name import NameTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.region import RegionTag
-from taxonomy.db.models.tags import LocationTag
+from taxonomy.db.models.tags import LocationTag, PersonTag
 
 
 def _make_location(
@@ -588,6 +589,268 @@ def test_merge_collection_composes_with_target_label_change(
         find_collection_references=lambda _source: [],
     )
     assert all(action.already_applied for action in rebuilt.actions)
+
+
+def _person_guard(person: Person) -> dict[str, object]:
+    return {
+        "family_name": person.family_name,
+        "given_names": person.given_names,
+        "initials": person.initials,
+        "suffix": person.suffix,
+        "tussenvoegsel": person.tussenvoegsel,
+        "birth": person.birth,
+        "death": person.death,
+        "tags": [tag.serialize() for tag in person.tags],
+        "naming_convention": {
+            "enum": "NamingConvention",
+            "name": person.naming_convention.name,
+        },
+        "type": {"enum": "PersonType", "name": person.type.name},
+        "target": (
+            None
+            if person.target is None
+            else {
+                "model": "Person",
+                "id": person.target.id,
+                "label": person.target.family_name,
+            }
+        ),
+        "bio": person.bio,
+        "ol_id": person.ol_id,
+    }
+
+
+def _merge_person_row(source: Person, target: Person) -> dict[str, object]:
+    references: dict[str, list[object]] = {
+        field_name: [] for field_name in recommendations._PERSON_MERGE_REFERENCE_FIELDS
+    }
+    return {
+        "schema_version": 2,
+        "action": recommendations.MERGE_PERSON,
+        "confidence": "high",
+        "reason": "The shared ORCID and publication record establish one identity.",
+        "evidence": [
+            {
+                "kind": "ORCID and article author evidence",
+                "text": "Both records map to ORCID 0000-0001-2345-6789.",
+            }
+        ],
+        "object": {"model": "Person", "id": 1, "label": source.family_name},
+        "target": {"model": "Person", "id": 2, "label": target.family_name},
+        "guard": {
+            "source": _person_guard(source),
+            "target": _person_guard(target),
+            "references": references,
+        },
+    }
+
+
+def _build_person_merge_plan(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[recommendations.RecommendationPlan, Person, Person]:
+    source = Person.virtual(
+        family_name="Smith",
+        given_names="Jane Anne",
+        birth="1970",
+        tags=(PersonTag.ORCID("0000-0001-2345-6789"),),
+        naming_convention=NamingConvention.english,
+        type=PersonType.unchecked,
+    )
+    target = Person.virtual(
+        family_name="Smith",
+        initials="J.A.",
+        naming_convention=NamingConvention.english,
+        type=PersonType.checked,
+        tags=(PersonTag.ORCID("0000-0003-3641-8321"),),
+    )
+
+    class EmptyQuery:
+        def filter(self, *_args: object) -> tuple[()]:
+            return ()
+
+    monkeypatch.setattr(Person, "select", classmethod(lambda _cls: EmptyQuery()))
+
+    def get_object(model: type[BaseModel], object_id: int) -> BaseModel:
+        return {(Person, 1): source, (Person, 2): target}[(model, object_id)]
+
+    row = recommendations.parse_recommendation(_merge_person_row(source, target), 1)
+    plan = recommendations.build_plan(
+        [row], model_registry={"Person": Person}, get_object=get_object
+    )
+    return plan, source, target
+
+
+def test_merge_person_is_guarded_restart_safe_and_transfers_metadata(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    plan, source, target = _build_person_merge_plan(monkeypatch)
+    reassigned: list[Person] = []
+
+    def reassign_references(
+        self: Person, target: Person | None = None, *, respect_ignore_lint: bool = True
+    ) -> None:
+        assert self is source
+        assert target is not None
+        assert not respect_ignore_lint
+        reassigned.append(target)
+
+    monkeypatch.setattr(Person, "reassign_references", reassign_references)
+
+    recommendations.execute_plan(plan, apply=False)
+    assert "WOULD_MERGE_PERSON source=Person:1" in capsys.readouterr().out
+    assert source.type is PersonType.unchecked
+
+    recommendations.execute_plan(plan, apply=True)
+    assert reassigned == [target]
+    assert source.type is PersonType.hard_redirect  # type: ignore[comparison-overlap]
+    assert source.target is target
+    assert source.tags == ()
+    assert source.birth is None
+    assert target.birth == "1970"
+    assert set(target.tags) == {
+        PersonTag.ORCID("0000-0001-2345-6789"),
+        PersonTag.ORCID("0000-0003-3641-8321"),
+        PersonTag.IgnoreLint(
+            "multiple_orcids",
+            comment=(
+                "Person records with independently matching public ORCID identities "
+                "were merged."
+            ),
+        ),
+    }
+
+    rebuilt = recommendations.build_plan(
+        [recommendations.parse_recommendation(_merge_person_row_from_plan(plan), 1)],
+        model_registry={"Person": Person},
+        get_object=lambda _model, object_id: source if object_id == 1 else target,
+    )
+    assert rebuilt.actions[0].already_applied
+
+
+def test_merge_person_combines_general_with_specific_naming_convention() -> None:
+    assert (
+        recommendations._combine_person_naming_conventions(
+            NamingConvention.general, NamingConvention.portuguese
+        )
+        is NamingConvention.portuguese
+    )
+    with pytest.raises(
+        recommendations.RecommendationError, match="conflicting naming conventions"
+    ):
+        recommendations._combine_person_naming_conventions(
+            NamingConvention.portuguese, NamingConvention.spanish
+        )
+
+
+def test_merge_person_allows_evidence_backed_naming_convention_resolution(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = Person.virtual(
+        family_name="Lin",
+        given_names="Si-min",
+        naming_convention=NamingConvention.pinyin,
+        type=PersonType.unchecked,
+    )
+    target = Person.virtual(
+        family_name="Lin",
+        given_names="Si-Min",
+        naming_convention=NamingConvention.chinese,
+        type=PersonType.unchecked,
+    )
+
+    class EmptyQuery:
+        def filter(self, *_args: object) -> tuple[()]:
+            return ()
+
+    monkeypatch.setattr(Person, "select", classmethod(lambda _cls: EmptyQuery()))
+    row_data = _merge_person_row(source, target)
+    row_data["resolved_naming_convention"] = {
+        "enum": "NamingConvention",
+        "name": "pinyin",
+    }
+    row = recommendations.parse_recommendation(row_data, 1)
+    plan = recommendations.build_plan(
+        [row],
+        model_registry={"Person": Person},
+        get_object=lambda _model, object_id: source if object_id == 1 else target,
+    )
+    assert plan.actions[0].new_value["target_values"]["naming_convention"] is (
+        NamingConvention.pinyin
+    )
+
+
+def _merge_person_row_from_plan(
+    plan: recommendations.RecommendationPlan,
+) -> dict[str, object]:
+    row = plan.actions[0].recommendation
+    assert row.target is not None
+    assert row.match is not None
+    return {
+        "schema_version": row.schema_version,
+        "action": row.action,
+        "confidence": row.confidence,
+        "reason": row.reason,
+        "evidence": [
+            {"kind": evidence.kind, "text": evidence.text} for evidence in row.evidence
+        ],
+        "object": {"model": "Person", "id": 1, "label": row.object.label},
+        "target": {"model": "Person", "id": 2, "label": row.target.label},
+        "guard": {
+            "source": dict(row.match["source"]),
+            "target": dict(row.match["target"]),
+            "references": dict(row.match["references"]),
+        },
+    }
+
+
+def test_merge_person_rejects_stale_reference_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan, source, target = _build_person_merge_plan(monkeypatch)
+    row = plan.actions[0].recommendation
+    monkeypatch.setattr(
+        recommendations,
+        "_person_reference_snapshot",
+        lambda _person: {
+            **{
+                field_name: []
+                for field_name in recommendations._PERSON_MERGE_REFERENCE_FIELDS
+            },
+            "articles": [99],
+        },
+    )
+
+    with pytest.raises(recommendations.RecommendationError, match="references changed"):
+        recommendations.build_plan(
+            [row],
+            model_registry={"Person": Person},
+            get_object=lambda _model, object_id: source if object_id == 1 else target,
+        )
+
+
+def test_merge_person_participates_in_virtual_proposal_graph(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    plan, _source, target = _build_person_merge_plan(monkeypatch)
+    builder = ProposalBuilder()
+
+    recommendations.add_virtual_models(plan, builder)
+
+    proposed_people = [
+        proposal.model
+        for proposal in builder.build()
+        if isinstance(proposal.model, Person)
+    ]
+    proposed_source = next(
+        person for person in proposed_people if person.given_names == "Jane Anne"
+    )
+    proposed_target = next(
+        person for person in proposed_people if person.initials == "J.A."
+    )
+    assert proposed_source.type is PersonType.hard_redirect
+    assert proposed_source.target is proposed_target
+    assert proposed_target.birth == "1970"
+    assert target.birth is None
 
 
 def _merge_region_row(*, target_label: str = "Canonical Region") -> dict[str, object]:

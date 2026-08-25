@@ -24,6 +24,9 @@ class PersonTag(adt.ADT):
     TransliteratedFamilyName(text=Managed, tag=5)  # type: ignore[name-defined]
     ORCID(text=Managed, tag=6)  # type: ignore[name-defined]
     OnlineBio(text=URL, tag=7)  # type: ignore[name-defined]
+    IgnoreLint(  # type: ignore[name-defined]
+        label=Managed, comment=NotRequired[Markdown], tag=8
+    )
 
 
 class LocationTag(adt.ADT):

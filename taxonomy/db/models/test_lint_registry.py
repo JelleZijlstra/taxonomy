@@ -519,6 +519,22 @@ def test_duplicate_finder_can_return_structured_fix() -> None:
     assert second.needs_ignore is False
 
 
+def test_multi_duplicate_finder_checks_each_key() -> None:
+    first = FakeObject(1, needs_ignore=True, is_virtual=True)
+    second = FakeObject(2, needs_ignore=True, is_virtual=True)
+    lint = make_lint([first, second])
+
+    @lint.add_multi_duplicate_finder("duplicate")
+    def duplicate_keys(obj: FakeObject) -> tuple[str, ...]:
+        if obj.id == 1:
+            return ("shared", "first-only")
+        return ("shared", "second-only")
+
+    issues = list(duplicate_keys.linter(second, LintConfig(autofix=False)))
+
+    assert issues == ["Duplicate of [FakeObject(1)] (key 'shared')"]
+
+
 def test_already_satisfied_tag_fix_does_not_call_fix_callback() -> None:
     obj = FakeObject(1, needs_ignore=False, is_virtual=True)
     lint = make_lint([obj])

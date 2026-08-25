@@ -16,7 +16,7 @@ import Levenshtein
 import requests
 
 from taxonomy import getinput, urlparse
-from taxonomy.apis import bhl, zoobank
+from taxonomy.apis import bhl, orcid, zoobank
 from taxonomy.apis.hdl import is_hdl_valid as api_is_hdl_valid
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
 from taxonomy.db import helpers, models
@@ -26,6 +26,8 @@ from taxonomy.db.constants import (
     ArticleType,
     DateSource,
     Group,
+    NamingConvention,
+    PersonType,
     Rank,
 )
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, LintResource
@@ -44,7 +46,19 @@ from taxonomy.db.models.lint import (
     fixes_issue,
 )
 from taxonomy.db.models.lint_types import LintIssue, LintResult
-from taxonomy.db.models.person import AuthorTag, is_more_specific_than
+from taxonomy.db.models.person import (
+    AuthorTag,
+    Person,
+    VirtualPerson,
+    get_initials,
+    is_more_specific_than,
+    is_valid_orcid,
+    normalize_orcid,
+)
+from taxonomy.db.models.person.name_matching import (
+    external_identity_matches_person,
+    format_external_identity,
+)
 
 from . import jstor_db
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
@@ -2519,6 +2533,518 @@ def data_from_doi(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     yield from _check_doi_authors(art, data, cfg)
 
 
+def _normalized_author_name_part(text: str) -> str:
+    return helpers.simplify_string(text, clean_words=False).replace("-", "")
+
+
+_GIVEN_NAME_PARTICLES = {
+    "al",
+    "da",
+    "das",
+    "de",
+    "del",
+    "della",
+    "den",
+    "der",
+    "di",
+    "do",
+    "dos",
+    "du",
+    "e",
+    "el",
+    "la",
+    "las",
+    "le",
+    "los",
+    "van",
+    "von",
+    "y",
+}
+
+
+def _family_name_variants(person: Person) -> set[str]:
+    names = {person.family_name}
+    if person.tussenvoegsel:
+        names.add(f"{person.tussenvoegsel} {person.family_name}")
+    if person.suffix:
+        names.add(f"{person.family_name} {person.suffix}")
+        if person.tussenvoegsel:
+            names.add(f"{person.tussenvoegsel} {person.family_name} {person.suffix}")
+    names.update(
+        tag.text
+        for tag in person.get_tags(
+            person.tags, models.tags.PersonTag.TransliteratedFamilyName
+        )
+    )
+    if person.naming_convention in (
+        NamingConvention.russian,
+        NamingConvention.ukrainian,
+    ):
+        names.add(person.get_transliterated_family_name())
+    variants = {_normalized_author_name_part(name) for name in names}
+    if person.naming_convention is NamingConvention.pinyin and "lu" in variants:
+        # Crossref commonly retains the input-method spellings Lyu or Lv for Lü.
+        variants.update({"lyu", "lv"})
+    return variants
+
+
+def _initial_variants(person: Person | VirtualPerson) -> set[str]:
+    variants: set[str] = set()
+    if initials := get_initials(person):
+        variants.add(_normalized_author_name_part(initials).replace(".", ""))
+    if person.given_names:
+        significant_names = " ".join(
+            part
+            for part in person.given_names.split()
+            if part.strip(".,").casefold() not in _GIVEN_NAME_PARTICLES
+        )
+        if significant_names:
+            without_particles = VirtualPerson(
+                family_name=person.family_name,
+                given_names=significant_names,
+                naming_convention=person.naming_convention,
+            )
+            if initials := get_initials(without_particles):
+                variants.add(_normalized_author_name_part(initials).replace(".", ""))
+        split_initials = "".join(
+            part[0]
+            for part in re.split(r"[.\s-]+", person.given_names)
+            if part and part.casefold() not in _GIVEN_NAME_PARTICLES
+        )
+        if split_initials:
+            variants.add(_normalized_author_name_part(split_initials))
+    return variants
+
+
+def _full_name_tokens(person: Person | VirtualPerson) -> list[str]:
+    text = " ".join(
+        part
+        for part in (
+            person.given_names or person.initials,
+            person.tussenvoegsel,
+            person.family_name,
+            person.suffix,
+        )
+        if part
+    )
+    return [
+        _normalized_author_name_part(part) for part in re.split(r"[\s-]+", text) if part
+    ]
+
+
+def _raw_full_name(person: Person | VirtualPerson) -> str:
+    return " ".join(
+        part
+        for part in (
+            person.given_names or person.initials,
+            person.tussenvoegsel,
+            person.family_name,
+            person.suffix,
+        )
+        if part
+    )
+
+
+def _significant_full_name_tokens(person: Person | VirtualPerson) -> list[str]:
+    return [
+        token
+        for token in _full_name_tokens(person)
+        if token.casefold() not in _GIVEN_NAME_PARTICLES
+    ]
+
+
+def _full_name_initials(person: Person | VirtualPerson) -> list[str]:
+    return sorted(
+        _normalized_author_name_part(part)[0]
+        for part in re.split(r"[.\s-]+", _raw_full_name(person))
+        if part
+        and part.strip(",").casefold() not in _GIVEN_NAME_PARTICLES
+        and _normalized_author_name_part(part)
+    )
+
+
+def _has_abbreviated_name_part(person: Person | VirtualPerson) -> bool:
+    return person.initials is not None or "." in _raw_full_name(person)
+
+
+def _given_name_tokens(person: Person | VirtualPerson) -> list[str]:
+    if not person.given_names:
+        return []
+    return [
+        _normalized_author_name_part(part)
+        for part in re.split(r"[\s-]+", person.given_names)
+        if part and part.strip(".,").casefold() not in _GIVEN_NAME_PARTICLES
+    ]
+
+
+def _given_names_match_as_subset(doi_author: VirtualPerson, person: Person) -> bool:
+    doi_names = _given_name_tokens(doi_author)
+    person_names = _given_name_tokens(person)
+    if not doi_names or not person_names or len(doi_names) == len(person_names):
+        return False
+    shorter, longer = sorted((doi_names, person_names), key=len)
+    return shorter == longer[: len(shorter)] or shorter == longer[-len(shorter) :]
+
+
+def _family_names_match(doi_author: VirtualPerson, person: Person) -> bool:
+    doi_family = _normalized_author_name_part(doi_author.family_name)
+    variants = _family_name_variants(person)
+    if doi_family in variants:
+        return True
+    # Crossref inconsistently moves later given names and second family names across
+    # the given/family boundary. Require at least four characters so short East Asian
+    # family names do not match unrelated longer names merely by being a substring.
+    return any(
+        len(shorter) >= 4 and (longer.startswith(shorter) or longer.endswith(shorter))
+        for variant in variants
+        for shorter, longer in ((doi_family, variant), (variant, doi_family))
+    )
+
+
+def _doi_author_matches_person(doi_author: VirtualPerson, person: Person) -> bool:
+    doi_tokens = _full_name_tokens(doi_author)
+    person_tokens = _full_name_tokens(person)
+    if person.naming_convention is not NamingConvention.unspecified and sorted(
+        doi_tokens
+    ) == sorted(person_tokens):
+        # Reviewed naming conventions let us accept Crossref field reversal without
+        # hiding the common Person-table mistake of swapping two unchecked fields.
+        return True
+    doi_significant = _significant_full_name_tokens(doi_author)
+    person_significant = _significant_full_name_tokens(person)
+    if sorted(doi_significant) == sorted(person_significant) and sorted(
+        doi_tokens
+    ) != sorted(person_tokens):
+        # Crossref often drops particles such as ``de`` and ``da`` from compound
+        # Portuguese and Spanish names.
+        return True
+    if (
+        _has_abbreviated_name_part(doi_author) or _has_abbreviated_name_part(person)
+    ) and _full_name_initials(doi_author) == _full_name_initials(person):
+        shared_full_tokens = {token for token in doi_significant if len(token) > 1} & {
+            token for token in person_significant if len(token) > 1
+        }
+        if shared_full_tokens:
+            # This covers citation forms such as V. Deepak and N.S. Achyuthan while
+            # requiring both a shared unabbreviated token and the same complete set
+            # of initials. Full-name field reversals remain lint errors.
+            return True
+    if person.suffix and sorted(_full_name_tokens(doi_author)) == sorted(
+        _full_name_tokens(person)
+    ):
+        # Crossref sometimes parses a generational suffix as the family name.
+        return True
+    if person.given_names is None and (
+        _full_name_tokens(doi_author) == _full_name_tokens(person)
+        or "".join(_full_name_tokens(doi_author)) == "".join(_full_name_tokens(person))
+    ):
+        # Some older Person records keep an indivisible full name in family_name.
+        return True
+    if person.naming_convention is NamingConvention.pinyin:
+        # Crossref frequently receives Chinese names in citation order but assumes
+        # Western given-name/family-name order when splitting the fields.
+        if sorted(_full_name_tokens(doi_author)) == sorted(_full_name_tokens(person)):
+            return True
+        if (
+            doi_author.given_names
+            and person.given_names
+            and _normalized_author_name_part(doi_author.family_name)
+            == _normalized_author_name_part(person.given_names)
+            and _normalized_author_name_part(doi_author.given_names)
+            == _normalized_author_name_part(person.family_name)
+        ):
+            return True
+    elif person.naming_convention is NamingConvention.burmese:
+        if _full_name_tokens(doi_author) == _full_name_tokens(person):
+            return True
+        person_tokens = _full_name_tokens(person)
+        if (
+            person.given_names is None
+            and person_tokens
+            and _normalized_author_name_part(doi_author.family_name)
+            == person_tokens[-1]
+            and doi_author.initials
+        ):
+            doi_initial_text = _normalized_author_name_part(
+                doi_author.initials
+            ).replace(".", "")
+            person_initial_text = "".join(token[0] for token in person_tokens[:-1])
+            if doi_initial_text == person_initial_text:
+                return True
+    elif person.naming_convention is NamingConvention.vietnamese:
+        # The database stores the Vietnamese given name in family_name for citation,
+        # while Crossref usually calls the inherited family name the family name.
+        if sorted(_full_name_tokens(doi_author)) == sorted(_full_name_tokens(person)):
+            return True
+    if not _family_names_match(doi_author, person):
+        return False
+    if _given_names_match_as_subset(doi_author, person):
+        return True
+    doi_initials = _initial_variants(doi_author)
+    person_initials = _initial_variants(person)
+    if not doi_initials or not person_initials:
+        return True
+    return any(
+        normalized_doi.startswith(normalized_person)
+        or normalized_person.startswith(normalized_doi)
+        for normalized_doi in doi_initials
+        for normalized_person in person_initials
+    )
+
+
+def _format_doi_author(person: VirtualPerson) -> str:
+    given_names = person.given_names or person.initials
+    parts = [given_names] if given_names else []
+    if person.tussenvoegsel:
+        parts.append(person.tussenvoegsel)
+    parts.append(person.family_name)
+    if person.suffix:
+        parts.append(person.suffix)
+    return " ".join(parts)
+
+
+def _doi_author_identity_matches(doi_author: Any, person: Person) -> bool:
+    if _doi_author_matches_person(doi_author.person, person):
+        return True
+    if doi_author.orcid is None:
+        return False
+    return normalize_orcid(doi_author.orcid) in {
+        normalize_orcid(tag.text)
+        for tag in person.get_tags(person.tags, models.tags.PersonTag.ORCID)
+    }
+
+
+@LINT.add("infer_author_orcids", requires_network=True)
+def infer_author_orcids(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
+    if art.doi is None or art.has_tag(ArticleTag.GeneralDOI):
+        return
+    doi_authors = models.article.api_data.get_doi_authors(art.doi)
+    if not any(doi_author.orcid is not None for doi_author in doi_authors):
+        return
+    local_authors = art.get_authors()
+    if len(doi_authors) != len(local_authors):
+        yield (
+            f"DOI author mismatch blocks ORCID inference: DOI has "
+            f"{len(doi_authors)} authors, article has {len(local_authors)}"
+        )
+        return
+    mismatches = [
+        (index, doi_author.person, person)
+        for index, (doi_author, person) in enumerate(
+            zip(doi_authors, local_authors, strict=True), start=1
+        )
+        if not _doi_author_identity_matches(doi_author, person)
+    ]
+    if mismatches:
+        details = "; ".join(
+            f"position {index}: DOI {_format_doi_author(doi_author)!r}, "
+            f"article {person.get_full_name()!r}"
+            for index, doi_author, person in mismatches[:5]
+        )
+        if len(mismatches) > 5:
+            details += f"; and {len(mismatches) - 5} more"
+        yield f"DOI author mismatch blocks ORCID inference: {details}"
+        return
+    for doi_author, person in zip(doi_authors, local_authors, strict=True):
+        if doi_author.orcid is None:
+            continue
+        if not is_valid_orcid(doi_author.orcid):
+            yield (
+                f"invalid ORCID {doi_author.orcid!r} for DOI author "
+                f"{doi_author.person.family_name} in {art.doi}"
+            )
+            continue
+        existing_tags = list(person.get_tags(person.tags, models.tags.PersonTag.ORCID))
+        existing_orcids = {normalize_orcid(tag.text) for tag in existing_tags}
+        if doi_author.orcid in existing_orcids:
+            continue
+        authentication = "authenticated " if doi_author.authenticated_orcid else ""
+        if existing_tags:
+            yield (
+                f"DOI {art.doi} gives {authentication}ORCID {doi_author.orcid} "
+                f"for {person}, which already has ORCID tags {existing_tags}"
+            )
+            continue
+        tag = models.tags.PersonTag.ORCID(doi_author.orcid)
+        yield add_tag_issue(
+            f"adding {authentication}ORCID {doi_author.orcid} to {person} "
+            f"from DOI {art.doi}",
+            person,
+            tag,
+        )
+
+
+def _orcid_result_matches_person(
+    result: orcid.OrcidSearchResult, person: Person
+) -> bool:
+    existing_orcids = {
+        normalize_orcid(tag.text)
+        for tag in person.get_tags(person.tags, models.tags.PersonTag.ORCID)
+    }
+    if result.orcid in existing_orcids:
+        return True
+    return external_identity_matches_person(
+        given_names=result.given_names,
+        family_names=result.family_names,
+        credit_name=result.credit_name,
+        other_names=result.other_names,
+        person=person,
+    )
+
+
+def _format_orcid_search_result(result: orcid.OrcidSearchResult) -> str:
+    name = format_external_identity(
+        given_names=result.given_names,
+        family_names=result.family_names,
+        credit_name=result.credit_name,
+    )
+    return f"{name} ({result.orcid})"
+
+
+@LINT.add("infer_author_orcids_from_orcid", requires_network=True)
+def infer_author_orcids_from_orcid(
+    art: Article, cfg: LintConfig
+) -> Iterable[LintResult]:
+    """Infer Person identifiers from public ORCID profiles claiming the DOI."""
+    if art.doi is None or art.has_tag(ArticleTag.GeneralDOI):
+        return
+    results = orcid.search_orcids_by_doi(art.doi)
+    if not results:
+        return
+    local_authors = list(
+        dict.fromkeys(person.resolve_redirect() for person in art.get_authors())
+    )
+    candidates_by_person: dict[Person, list[orcid.OrcidSearchResult]] = defaultdict(
+        list
+    )
+    for result in results:
+        matches = [
+            person
+            for person in local_authors
+            if _orcid_result_matches_person(result, person)
+        ]
+        if len(matches) == 1:
+            candidates_by_person[matches[0]].append(result)
+        elif len(matches) > 1:
+            people = ", ".join(person.get_full_name() for person in matches)
+            yield (
+                f"ORCID DOI author is ambiguous: {_format_orcid_search_result(result)} "
+                f"matches multiple article authors: {people}"
+            )
+        elif any(
+            (
+                result.given_names,
+                result.family_names,
+                result.credit_name,
+                result.other_names,
+            )
+        ):
+            yield (
+                f"ORCID DOI author does not match an article author: "
+                f"{_format_orcid_search_result(result)}"
+            )
+
+    for person, candidates in candidates_by_person.items():
+        candidate_orcids = {candidate.orcid for candidate in candidates}
+        if len(candidate_orcids) > 1:
+            yield (
+                f"multiple ORCID profiles claiming DOI {art.doi} match {person}: "
+                f"{sorted(candidate_orcids)}"
+            )
+            continue
+        candidate_orcid = next(iter(candidate_orcids))
+        existing_tags = list(person.get_tags(person.tags, models.tags.PersonTag.ORCID))
+        existing_orcids = {normalize_orcid(tag.text) for tag in existing_tags}
+        if candidate_orcid in existing_orcids:
+            continue
+        if existing_tags:
+            yield (
+                f"ORCID search for DOI {art.doi} gives {candidate_orcid} for "
+                f"{person}, which already has ORCID tags {existing_tags}"
+            )
+            continue
+        tag = models.tags.PersonTag.ORCID(candidate_orcid)
+        yield add_tag_issue(
+            f"adding ORCID {candidate_orcid} to {person} from public ORCID "
+            f"work DOI {art.doi}",
+            person,
+            tag,
+        )
+
+
+@LINT.add(
+    "data_from_orcid", required_resources={LintResource.NETWORK, LintResource.SLOW}
+)
+def data_from_orcid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
+    """Compare title and year with consistent public ORCID work summaries.
+
+    ORCID work metadata may be entered by researchers or imported from another
+    service, so disagreements are evidence for review and are never autofixed.
+    """
+    if (
+        art.doi is None
+        or art.kind is ArticleKind.alternative_version
+        or art.has_tag(ArticleTag.GeneralDOI)
+    ):
+        return
+    doi = orcid.normalize_doi(art.doi)
+    author_orcids = {
+        normalize_orcid(tag.text)
+        for person in art.get_authors()
+        for tag in person.get_tags(person.tags, models.tags.PersonTag.ORCID)
+    }
+    evidence = [
+        (author_orcid, work)
+        for author_orcid in sorted(author_orcids)
+        if (profile := orcid.get_orcid_profile(author_orcid)) is not None
+        for work in profile.works
+        if work.doi == doi
+    ]
+    if not evidence:
+        return
+    evidence_orcids = sorted({profile_orcid for profile_orcid, _ in evidence})
+    source_names = sorted(
+        {work.source_name for _, work in evidence if work.source_name is not None}
+    )
+    evidence_description = f"ORCID records {evidence_orcids}"
+    if source_names:
+        evidence_description += f", sources {source_names}"
+
+    titles_by_normalized: dict[str, set[str]] = defaultdict(set)
+    for _, work in evidence:
+        if work.title:
+            normalized = helpers.simplify_string(work.title, clean_words=False).rstrip(
+                "*"
+            )
+            if normalized:
+                titles_by_normalized[normalized].add(work.title)
+    article_title = (
+        helpers.simplify_string(art.title, clean_words=False).rstrip("*")
+        if art.title is not None
+        else None
+    )
+    if article_title is not None and len(titles_by_normalized) == 1:
+        ((orcid_title, display_titles),) = titles_by_normalized.items()
+        if article_title != orcid_title:
+            yield (
+                f"title mismatch: {sorted(display_titles)!r} "
+                f"({evidence_description}) vs. "
+                f"{art.title} (article)"
+            )
+
+    years = {
+        work.publication_year
+        for _, work in evidence
+        if work.publication_year is not None
+    }
+    article_year = art.valid_numeric_year()
+    if article_year is not None and len(years) == 1 and article_year not in years:
+        yield (
+            f"year mismatch: {next(iter(years))} ({evidence_description}) vs. "
+            f"{article_year} (article)"
+        )
+
+
 def _check_doi_title(art: Article, data: dict[str, Any]) -> Iterable[str]:
     if "title" not in data or art.title is None:
         return
@@ -2663,7 +3189,9 @@ def _check_doi_authors(
     for doi_author, tag in zip(doi_authors, art.author_tags, strict=True):
         art_author = tag.person
         if is_more_specific_than(doi_author, art_author):
-            new_authors.append(AuthorTag.Author(doi_author.create_person()))
+            new_authors.append(
+                AuthorTag.Author(_resolve_doi_author_person(doi_author, art_author))
+            )
         else:
             new_authors.append(tag)
     if new_authors == list(art.author_tags):
@@ -2671,6 +3199,25 @@ def _check_doi_authors(
     message = "updating authors from DOI"
     getinput.print_diff(art.author_tags, new_authors)
     yield field_issue(message, art, "author_tags", tuple(new_authors))
+
+
+def _resolve_doi_author_person(doi_author: VirtualPerson, current: Person) -> Person:
+    """Create a DOI author without ever returning a redirect Person.
+
+    A more detailed deposited spelling may already exist only as a redirect to the
+    current canonical Person. Returning that spelling made the DOI lint recreate
+    references to redirects on every run.
+    """
+    candidate = doi_author.create_person()
+    seen: set[int] = set()
+    while candidate.type in (PersonType.hard_redirect, PersonType.soft_redirect):
+        if candidate.id in seen or candidate.target is None:
+            return current
+        seen.add(candidate.id)
+        candidate = candidate.target
+    if candidate == current or candidate.is_more_specific_than(current):
+        return candidate
+    return current
 
 
 @LINT.add("infer_pmid", requires_network=True)

@@ -35,17 +35,18 @@ disambiguators, and modifiers follow a colon and a space.
 
 ### name
 
-The name should preferably a geographic feature such as a town, river, mountain, cave,
-or collecting site. Use modern names, even when the source material uses obsolete names.
-An established fossil-site name may be retained when it remains the stable name of the
-site in paleontological literature, even if the corresponding modern place has been
-renamed. In particular, avoid names now considered offensive. Expand abbreviations such
-as "Mt.", "Ft.", or "St.", unless the abbreviated form is actually part of the official
-name. Use concise names, ideally the name of a single geographical feature, even if the
-source may use a more elaborate description. Preserve diacritics in the modern spelling
-of proper names (for example, `Valparaíso`); do not reduce a name to ASCII merely
-because a source or legacy database record omits the diacritics. Established English
-names for countries and broad regions may retain their conventional English spelling.
+The name should preferably be a geographic feature such as a town, river, mountain,
+cave, or collecting site. Use modern names, even when the source material uses obsolete
+names. An established fossil-site name may be retained when it remains the stable name
+of the site in paleontological literature, even if the corresponding modern place has
+been renamed. In particular, avoid names now considered offensive. Expand abbreviations
+such as "Mt.", "Ft.", or "St.", unless the abbreviated form is actually part of the
+official name. Use concise names, ideally the name of a single geographical feature,
+even if the source may use a more elaborate description. Preserve diacritics in the
+modern spelling of proper names (for example, `Valparaíso`); do not reduce a name to
+ASCII merely because a source or legacy database record omits the diacritics.
+Established English names for countries and broad regions may retain their conventional
+English spelling.
 
 Locations should preferably denote precise locations (at the scale of a few kilometers
 at most), but if necessary a general location can be used encompassing a larger area if
@@ -62,6 +63,14 @@ as `near`.
 
 If a type locality is said to be "near" or in the "vicinity" of a place, just use the
 place as the locality; words like "near" add no precision.
+
+Do not append enclosing places to an otherwise globally unique toponym with a comma. Use
+`Foo`, not `Foo, Bar`, when `Foo` uniquely identifies the geographic feature. If
+qualification is necessary, use the enclosing Region as a disambiguator, as in
+`Foo (Bar)`, or put genuine sublocality information in the modifier. Preserve a comma
+when it is part of an official or established locality name or when the Location really
+combines parallel geographic components. Source wording and useful hierarchy that are
+omitted from the canonical name should remain in the relevant detail tag or comment.
 
 ### disambiguator
 
@@ -88,16 +97,36 @@ categories include:
 - Geographic offsets such as "1 km N", when the source gives a location like "1 km north
   of some town". This should be standardized to use "km", "m", or "mi", in a format like
   "2 km S 1 km W" or "3.1 mi W".
+- Unquantified compass directions. Use the eight standard abbreviations `N`, `NE`, `E`,
+  `SE`, `S`, `SW`, `W`, and `NW`. A direction alone denotes the corresponding part of
+  the named feature: `Taiwan: NW` is the northwestern part of Taiwan. A direction
+  followed by _of_ denotes an area outside the named feature on that side:
+  `Taiwan: NW of` is an area northwest of Taiwan. These modifiers do not imply a
+  distance and do not by themselves support coordinate inference. An outside Location
+  must be assigned to the Region it is physically in; use _NearbyRegion_ when the Region
+  of the base feature is needed as an anchor or disambiguator. Quantified offsets retain
+  the existing form without _of_, as in `Walnut Creek: 1 mi E`.
 - Coordinates or PLSS data, when there are multiple collecting locations denoted by the
   same geographic name but with slightly different coordinates
 - Subdivisions, such as the upper part or mouth of a river.
+- Elevations. Put one space between the number and `m` or `ft`, and use comma thousands
+  separators for every integer of at least four digits: `1,500 m` and `10,000 ft`, not
+  `1500 m` or `10000 ft`. Apply the same convention to every endpoint of a range, as in
+  `9,000-10,000 ft`. Preserve source-supported qualifiers such as _about_ or _above_.
 
-Modifiers should be concise and use a small, standardized vocabulary.
+Modifiers should be concise and use a small, standardized vocabulary. When a directional
+part has another independent modifier, put the direction first and separate the
+components with a comma, as in `South Africa: E, interior`. A comma within the modifier
+separates distinct properties of the same Location; it does not append an enclosing
+place to the base name.
 
 ### Examples
 
 - `Castries (Hérault): 1 km N`
 - `Foo River (California): mouth`
+- `Taiwan: NW`
+- `Taiwan: NW of`
+- `Mount Example: 1,500 m`
 - `Eastgate (Barstovian)`
 - `Maastricht Formation (Limburg, Netherlands)`
 

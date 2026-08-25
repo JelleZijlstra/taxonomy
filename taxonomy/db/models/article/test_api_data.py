@@ -6,10 +6,44 @@ from unittest.mock import Mock
 import pytest
 
 from taxonomy.db.models.article import api_data
+from taxonomy.db.models.person import VirtualPerson
 
 
 def _search_results(*results: dict[str, str]) -> dict[str, Any]:
     return {"resultList": {"result": list(results)}}
+
+
+def test_get_doi_authors_preserves_orcid_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        api_data,
+        "get_doi_json",
+        Mock(
+            return_value={
+                "message": {
+                    "author": [
+                        {
+                            "family": "Smith",
+                            "given": "Jane A",
+                            "ORCID": "https://orcid.org/0000-0002-1694-233X",
+                            "authenticated-orcid": True,
+                        }
+                    ]
+                }
+            }
+        ),
+    )
+
+    assert api_data.get_doi_authors("10.1234/example") == [
+        api_data.DoiAuthor(
+            person=VirtualPerson(
+                family_name="Smith", given_names="Jane A.", initials=None
+            ),
+            orcid="0000-0002-1694-233X",
+            authenticated_orcid=True,
+        )
+    ]
 
 
 @pytest.mark.parametrize(

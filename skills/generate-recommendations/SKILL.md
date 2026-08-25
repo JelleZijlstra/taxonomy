@@ -136,6 +136,16 @@ lint enforces that they match the canonical label, and `Collection.merge()` does
 rewrite identifiers. If the target itself needs renaming or other metadata changes, put
 a guarded `update_object` immediately before the merge.
 
+Schema-version 2 `merge_person` combines two records for the same human identity. It
+requires complete source and target Person-field snapshots plus guarded ID lists for
+every Article, Name, Book, patronym, collector, involvement, and redirect reference. The
+action moves all references to the canonical target, unions compatible tags and
+biographical identifiers, clears transferred metadata from the source, and retains the
+source name as a hard redirect. If the union contains multiple ORCIDs, it records a
+reviewed `IgnoreLint("multiple_orcids")` tag on the canonical Person. Planning rejects
+stale reference sets, redirect targets, and conflicting birth, death, biography, or Open
+Library identifiers.
+
 Schema-version 2 `merge_region` moves ordinary database references from one existing
 Region to another and converts the source into a redirect whose `parent` is the target.
 The planner rejects deleted sources, invalid targets, redirects to a different target,

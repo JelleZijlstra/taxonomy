@@ -19,6 +19,7 @@ from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db import constants, models
 from taxonomy.db.models import BaseModel
 from taxonomy.db.models.base import ADTField
+from taxonomy.db.models.person import AuthorTag
 
 SCHEMA_VERSION = 1
 SCHEMA_VERSION_2 = 2
@@ -29,6 +30,7 @@ ADD_TAG = "add_tag"
 REMOVE_TAG = "remove_tag"
 MANUAL_REVIEW = "manual_review"
 MERGE_COLLECTION = "merge_collection"
+MERGE_PERSON = "merge_person"
 MERGE_REGION = "merge_region"
 DELETE_REGION = "delete_region"
 ALLOWED_ACTIONS = {
@@ -39,6 +41,7 @@ ALLOWED_ACTIONS = {
     REMOVE_TAG,
     MANUAL_REVIEW,
     MERGE_COLLECTION,
+    MERGE_PERSON,
     MERGE_REGION,
     DELETE_REGION,
 }
@@ -284,12 +287,16 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             match=guard,
             schema_version=version,
         )
-    if action in {MERGE_COLLECTION, MERGE_REGION}:
+    if action in {MERGE_COLLECTION, MERGE_PERSON, MERGE_REGION}:
         if version != SCHEMA_VERSION_2:
             raise RecommendationError(
                 f"line {line_number}: {action} requires schema_version 2"
             )
-        expected_model = "Collection" if action == MERGE_COLLECTION else "Region"
+        expected_model = {
+            MERGE_COLLECTION: "Collection",
+            MERGE_PERSON: "Person",
+            MERGE_REGION: "Region",
+        }[action]
         if object_spec.model != expected_model or object_spec.object_id is None:
             raise RecommendationError(
                 f"line {line_number}: {action} object must be an existing "
@@ -305,6 +312,46 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             raise RecommendationError(
                 f"line {line_number}: {action} source and target must differ"
             )
+        person_guard: Mapping[str, Any] | None = None
+        person_resolution: Mapping[str, Any] | None = None
+        if action == MERGE_PERSON:
+            guard = data.get("guard")
+            if not isinstance(guard, dict):
+                raise RecommendationError(
+                    f"line {line_number}: merge_person requires a guard object"
+                )
+            if set(guard) != {"source", "target", "references"}:
+                raise RecommendationError(
+                    f"line {line_number}: merge_person guard must contain exactly "
+                    "source, target, and references"
+                )
+            if not isinstance(guard["source"], dict) or not isinstance(
+                guard["target"], dict
+            ):
+                raise RecommendationError(
+                    f"line {line_number}: merge_person source and target guards "
+                    "must be objects"
+                )
+            references = guard["references"]
+            if not isinstance(references, dict) or not all(
+                isinstance(name, str)
+                and isinstance(ids, list)
+                and all(isinstance(object_id, int) for object_id in ids)
+                for name, ids in references.items()
+            ):
+                raise RecommendationError(
+                    f"line {line_number}: merge_person references must map names to "
+                    "integer ID lists"
+                )
+            person_guard = guard
+            resolved_naming_convention = data.get("resolved_naming_convention")
+            if resolved_naming_convention is not None:
+                if not isinstance(resolved_naming_convention, dict):
+                    raise RecommendationError(
+                        f"line {line_number}: merge_person "
+                        "resolved_naming_convention must be an enum value"
+                    )
+                person_resolution = {"naming_convention": resolved_naming_convention}
         return Recommendation(
             line_number,
             action,
@@ -314,11 +361,13 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             object_spec,
             None,
             target=target,
+            values=person_resolution,
             object_updates=(
                 _parse_merge_object_updates(data.get("object_updates"), line_number)
                 if action == MERGE_COLLECTION
                 else ()
             ),
+            match=person_guard,
             schema_version=version,
         )
     if action == CREATE_OBJECT:
@@ -958,6 +1007,68 @@ def _values_equal(left: Any, right: Any) -> bool:
     return left == right
 
 
+_PERSON_MERGE_GUARD_FIELDS = (
+    "family_name",
+    "given_names",
+    "initials",
+    "suffix",
+    "tussenvoegsel",
+    "birth",
+    "death",
+    "tags",
+    "naming_convention",
+    "type",
+    "target",
+    "bio",
+    "ol_id",
+)
+_PERSON_MERGE_REFERENCE_FIELDS = (
+    "books",
+    "articles",
+    "names",
+    "patronyms",
+    "collected",
+    "involved",
+    "targets",
+)
+_PERSON_MERGE_TRANSFER_FIELDS = ("birth", "death", "bio", "ol_id")
+
+
+def _person_reference_snapshot(person: models.Person) -> dict[str, list[int]]:
+    snapshot = {
+        field_name: sorted(person.get_raw_derived_field(field_name) or ())
+        for field_name in _PERSON_MERGE_REFERENCE_FIELDS
+        if field_name != "targets"
+    }
+    snapshot["targets"] = sorted(
+        alias.id
+        for alias in models.Person.select().filter(models.Person.target == person)
+    )
+    return snapshot
+
+
+def _combine_person_naming_conventions(
+    *conventions: constants.NamingConvention,
+) -> constants.NamingConvention:
+    """Combine compatible conventions, treating ``general`` as a fallback."""
+    specific = {
+        convention
+        for convention in conventions
+        if convention
+        not in {
+            constants.NamingConvention.unspecified,
+            constants.NamingConvention.general,
+        }
+    }
+    if len(specific) > 1:
+        raise RecommendationError("merge_person has conflicting naming conventions")
+    if specific:
+        return next(iter(specific))
+    if constants.NamingConvention.general in conventions:
+        return constants.NamingConvention.general
+    return constants.NamingConvention.unspecified
+
+
 def _validate_create_invariants(
     model: type[BaseModel], values: Mapping[str, Any], *, context: str
 ) -> None:
@@ -1169,6 +1280,7 @@ def build_plan(
                 MANUAL_REVIEW,
                 UPDATE_OBJECT,
                 MERGE_COLLECTION,
+                MERGE_PERSON,
                 MERGE_REGION,
                 DELETE_REGION,
             }:
@@ -1373,6 +1485,304 @@ def build_plan(
                         {"parent": actual_parent, "removed": actual_removed},
                         {"target": target, "updates": tuple(planned_updates)},
                         already_applied=source_applied and updates_applied,
+                    )
+                )
+                continue
+            if row.action == MERGE_PERSON:
+                if not isinstance(obj, models.Person):
+                    raise RecommendationError("merge_person object is not a Person")
+                assert row.target is not None
+                assert row.target.object_id is not None
+                target = get_object(model, row.target.object_id)
+                if not isinstance(target, models.Person):
+                    raise RecommendationError("merge_person target is not a Person")
+                if _object_label(model, target) != row.target.label:
+                    raise RecommendationError(
+                        f"Person {target.id} changed from {row.target.label!r} to "
+                        f"{_object_label(model, target)!r}"
+                    )
+                if target.type not in {
+                    constants.PersonType.unchecked,
+                    constants.PersonType.checked,
+                }:
+                    raise RecommendationError("merge_person target is not canonical")
+                assert row.match is not None
+                source_guard = cast(Mapping[str, Any], row.match["source"])
+                target_guard = cast(Mapping[str, Any], row.match["target"])
+                references_guard = cast(Mapping[str, Any], row.match["references"])
+                expected_guard_fields = set(_PERSON_MERGE_GUARD_FIELDS)
+                if (
+                    set(source_guard) != expected_guard_fields
+                    or set(target_guard) != expected_guard_fields
+                ):
+                    raise RecommendationError(
+                        "merge_person source and target guards must snapshot every "
+                        "Person field"
+                    )
+                if set(references_guard) != set(_PERSON_MERGE_REFERENCE_FIELDS):
+                    raise RecommendationError(
+                        "merge_person references guard has unexpected fields"
+                    )
+
+                def decode_guard(
+                    person: models.Person, guard: Mapping[str, Any], role: str
+                ) -> dict[str, Any]:
+                    decoded: dict[str, Any] = {}
+                    for field_name in _PERSON_MERGE_GUARD_FIELDS:
+                        field = type(person).clirm_fields[field_name]
+                        decoded[field_name] = _decode_complete_field_value(
+                            field,
+                            guard[field_name],
+                            context=f"merge_person {role}.{field_name} guard",
+                            references=references,
+                        )
+                    return decoded
+
+                expected_source = decode_guard(obj, source_guard, "source")
+                expected_target = decode_guard(target, target_guard, "target")
+                source_applied = (
+                    obj.type is constants.PersonType.hard_redirect
+                    and _values_equal(obj.target, target)
+                )
+                if source_applied:
+                    for field_name in (
+                        "family_name",
+                        "given_names",
+                        "initials",
+                        "suffix",
+                        "tussenvoegsel",
+                        "naming_convention",
+                    ):
+                        if not _values_equal(
+                            getattr(obj, field_name), expected_source[field_name]
+                        ):
+                            raise RecommendationError(
+                                f"already-merged source changed field {field_name!r}"
+                            )
+                    if (
+                        any(
+                            getattr(obj, field_name) is not None
+                            for field_name in _PERSON_MERGE_TRANSFER_FIELDS
+                        )
+                        or obj.tags
+                    ):
+                        raise RecommendationError(
+                            "already-merged source retains transferred metadata"
+                        )
+                    if any(_person_reference_snapshot(obj).values()):
+                        raise RecommendationError(
+                            "already-merged source still has references"
+                        )
+                else:
+                    if obj.type not in {
+                        constants.PersonType.unchecked,
+                        constants.PersonType.checked,
+                    }:
+                        raise RecommendationError(
+                            "merge_person source is not canonical"
+                        )
+                    for field_name, expected in expected_source.items():
+                        if not _values_equal(getattr(obj, field_name), expected):
+                            raise RecommendationError(
+                                f"merge_person source guard for {field_name!r} "
+                                "does not match"
+                            )
+                    actual_references = _person_reference_snapshot(obj)
+                    expected_references = {
+                        field_name: sorted(
+                            cast(Sequence[int], references_guard[field_name])
+                        )
+                        for field_name in _PERSON_MERGE_REFERENCE_FIELDS
+                    }
+                    if actual_references != expected_references:
+                        raise RecommendationError(
+                            "merge_person source references changed from the guard"
+                        )
+
+                for field_name in (
+                    "family_name",
+                    "given_names",
+                    "initials",
+                    "suffix",
+                    "tussenvoegsel",
+                    "target",
+                ):
+                    if not _values_equal(
+                        getattr(target, field_name), expected_target[field_name]
+                    ):
+                        raise RecommendationError(
+                            f"merge_person target guard for {field_name!r} does not "
+                            "match"
+                        )
+
+                target_identity = f"id:{target.id}"
+                target_values: dict[str, Any] = {}
+                resolved_convention = None
+                if row.values is not None:
+                    resolved_convention = _decode_field_value(
+                        models.Person.clirm_fields["naming_convention"],
+                        row.values["naming_convention"],
+                        context="merge_person resolved_naming_convention",
+                        references=references,
+                    )
+                    if resolved_convention not in {
+                        expected_source["naming_convention"],
+                        expected_target["naming_convention"],
+                    }:
+                        raise RecommendationError(
+                            "merge_person resolved naming convention must be one "
+                            "of the guarded source or target conventions"
+                        )
+                row_convention = (
+                    resolved_convention
+                    if resolved_convention is not None
+                    else _combine_person_naming_conventions(
+                        expected_source["naming_convention"],
+                        expected_target["naming_convention"],
+                    )
+                )
+                actual_target_convention = target.naming_convention
+                if actual_target_convention not in {
+                    expected_target["naming_convention"],
+                    row_convention,
+                }:
+                    raise RecommendationError(
+                        "merge_person target naming convention changed incompatibly"
+                    )
+                convention_key = ("Person", target_identity, "naming_convention")
+                planned_convention = planned_values.get(
+                    convention_key, actual_target_convention
+                )
+                final_convention = (
+                    resolved_convention
+                    if resolved_convention is not None
+                    else _combine_person_naming_conventions(
+                        planned_convention, row_convention
+                    )
+                )
+                target_values["naming_convention"] = final_convention
+                planned_values[convention_key] = final_convention
+
+                final_type = (
+                    constants.PersonType.checked
+                    if constants.PersonType.checked
+                    in {expected_source["type"], expected_target["type"]}
+                    else constants.PersonType.unchecked
+                )
+                if target.type not in {expected_target["type"], final_type}:
+                    raise RecommendationError(
+                        "merge_person target type changed incompatibly"
+                    )
+                target_type_key = ("Person", target_identity, "type")
+                planned_type = planned_values.get(target_type_key, target.type)
+                if planned_type not in {
+                    constants.PersonType.unchecked,
+                    constants.PersonType.checked,
+                }:
+                    raise RecommendationError(
+                        "merge_person planned target type is invalid"
+                    )
+                final_type = (
+                    constants.PersonType.checked
+                    if constants.PersonType.checked in {planned_type, final_type}
+                    else constants.PersonType.unchecked
+                )
+                target_values["type"] = final_type
+                planned_values[target_type_key] = final_type
+
+                for field_name in _PERSON_MERGE_TRANSFER_FIELDS:
+                    source_value = expected_source[field_name]
+                    guarded_target_value = expected_target[field_name]
+                    actual_target_value = getattr(target, field_name)
+                    if not _values_equal(
+                        actual_target_value, guarded_target_value
+                    ) and not (
+                        guarded_target_value is None
+                        and _values_equal(actual_target_value, source_value)
+                    ):
+                        raise RecommendationError(
+                            f"merge_person target field {field_name!r} changed "
+                            "incompatibly from the guard"
+                        )
+                    field_key = ("Person", target_identity, field_name)
+                    current_value = planned_values.get(field_key, actual_target_value)
+                    if (
+                        current_value is not None
+                        and source_value is not None
+                        and not _values_equal(current_value, source_value)
+                    ):
+                        raise RecommendationError(
+                            f"merge_person has conflicting {field_name!r} values"
+                        )
+                    final_value = (
+                        current_value if current_value is not None else source_value
+                    )
+                    target_values[field_name] = final_value
+                    planned_values[field_key] = final_value
+
+                guarded_target_tags = tuple(expected_target["tags"] or ())
+                actual_target_tags = tuple(target.tags or ())
+                if not all(tag in actual_target_tags for tag in guarded_target_tags):
+                    raise RecommendationError(
+                        "merge_person target tags no longer contain the guarded set"
+                    )
+                target_tags_key = ("Person", target_identity, "tags")
+                current_target_tags = tuple(
+                    planned_values.get(target_tags_key, actual_target_tags) or ()
+                )
+                final_target_tags = tuple(
+                    sorted({*current_target_tags, *expected_source["tags"]})
+                )
+                orcid_tags = {
+                    tag.text
+                    for tag in final_target_tags
+                    if isinstance(tag, models.tags.PersonTag.ORCID)
+                }
+                if len(orcid_tags) > 1 and not any(
+                    isinstance(tag, models.tags.PersonTag.IgnoreLint)
+                    and tag.label == "multiple_orcids"
+                    for tag in final_target_tags
+                ):
+                    final_target_tags = tuple(
+                        sorted(
+                            {
+                                *final_target_tags,
+                                models.tags.PersonTag.IgnoreLint(
+                                    "multiple_orcids",
+                                    comment=(
+                                        "Person records with independently matching "
+                                        "public ORCID identities were merged."
+                                    ),
+                                ),
+                            }
+                        )
+                    )
+                target_values["tags"] = final_target_tags
+                planned_values[target_tags_key] = final_target_tags
+
+                source_identity = f"id:{obj.id}"
+                planned_values[("Person", source_identity, "type")] = (
+                    constants.PersonType.hard_redirect
+                )
+                planned_values[("Person", source_identity, "target")] = target
+                planned_values[("Person", source_identity, "tags")] = ()
+                for field_name in _PERSON_MERGE_TRANSFER_FIELDS:
+                    planned_values[("Person", source_identity, field_name)] = None
+                actions.append(
+                    PlannedAction(
+                        row,
+                        obj,
+                        {
+                            "source": expected_source,
+                            "target": expected_target,
+                            "references": dict(references_guard),
+                        },
+                        {"target": target, "target_values": target_values},
+                        already_applied=source_applied
+                        and all(
+                            _values_equal(getattr(target, field_name), value)
+                            for field_name, value in target_values.items()
+                        ),
                     )
                 )
                 continue
@@ -1757,6 +2167,12 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
                 f"merge into Collection {row.target.object_id} {row.target.label}; "
                 f"update {len(row.object_updates)} referenced object(s)"
             )
+        elif row.action == MERGE_PERSON:
+            assert row.target is not None
+            change = (
+                f"merge into Person {row.target.object_id} {row.target.label}; "
+                "move all guarded references and retain a hard redirect"
+            )
         elif row.action == MERGE_REGION:
             assert row.target is not None
             change = (
@@ -1916,6 +2332,73 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             collection_source_proposal.parent = builder.replacement(collection_target)
             collection_source_proposal.removed = True
             continue
+        if row.action == MERGE_PERSON:
+            merge_data = cast(Mapping[str, Any], planned.new_value)
+            person_target = cast(models.Person, merge_data["target"])
+            proposed_person_target = builder.replacement(person_target)
+            if proposed_person_target is person_target:
+                proposed_person_target = builder.copy(
+                    person_target, context=f"generic manifest line {row.line_number}"
+                )
+            for field_name, value in cast(
+                Mapping[str, Any], merge_data["target_values"]
+            ).items():
+                setattr(proposed_person_target, field_name, value)
+
+            reference_specs = (
+                ("books", "author_tags", AuthorTag.Author),
+                ("articles", "author_tags", AuthorTag.Author),
+                ("names", "author_tags", AuthorTag.Author),
+                ("patronyms", "type_tags", models.TypeTag.NamedAfter),
+                ("collected", "type_tags", models.TypeTag.CollectedBy),
+                ("involved", "type_tags", models.TypeTag.Involved),
+            )
+            person_source = cast(models.Person, planned.object)
+            for derived_field, tag_field, tag_type in reference_specs:
+                for referencing_obj in (
+                    person_source.get_derived_field(derived_field) or ()
+                ):
+                    proposal = builder.replacement(referencing_obj)
+                    if proposal is referencing_obj:
+                        proposal = builder.copy(
+                            referencing_obj,
+                            context=f"generic manifest line {row.line_number}",
+                        )
+                    tags = getattr(proposal, tag_field)
+                    setattr(
+                        proposal,
+                        tag_field,
+                        tuple(
+                            (
+                                tag.replace(person=proposed_person_target)
+                                if isinstance(tag, tag_type)
+                                and tag.person == person_source
+                                else tag
+                            )
+                            for tag in tags
+                        ),
+                    )
+            for alias in models.Person.select().filter(
+                models.Person.target == person_source
+            ):
+                alias_proposal = builder.replacement(alias)
+                if alias_proposal is alias:
+                    alias_proposal = builder.copy(
+                        alias, context=f"generic manifest line {row.line_number}"
+                    )
+                alias_proposal.target = proposed_person_target
+
+            source_proposal = builder.replacement(person_source)
+            if source_proposal is person_source:
+                source_proposal = builder.copy(
+                    person_source, context=f"generic manifest line {row.line_number}"
+                )
+            source_proposal.type = constants.PersonType.hard_redirect
+            source_proposal.target = proposed_person_target
+            source_proposal.tags = ()  # type: ignore[assignment]
+            for field_name in _PERSON_MERGE_TRANSFER_FIELDS:
+                setattr(source_proposal, field_name, None)
+            continue
         if row.action == MERGE_REGION:
             merge_data = cast(Mapping[str, Any], planned.new_value)
             region_target = cast(models.Region, merge_data["target"])
@@ -1940,17 +2423,15 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             region_source_proposal = cast(models.Region, region_source_proposal)
             region_source_proposal.parent = proposed_region_target
             region_source_proposal.kind = constants.RegionKind.redirect
-            region_source_proposal.tags = ()  # type: ignore[assignment]
             continue
         if row.action == DELETE_REGION:
-            source_proposal = builder.replacement(planned.object)
-            if source_proposal is planned.object:
-                source_proposal = builder.copy(
+            deleted_region_proposal = builder.replacement(planned.object)
+            if deleted_region_proposal is planned.object:
+                deleted_region_proposal = builder.copy(
                     planned.object, context=f"generic manifest line {row.line_number}"
                 )
-            source_proposal = cast(models.Region, source_proposal)
-            source_proposal.kind = constants.RegionKind.deleted
-            source_proposal.tags = ()  # type: ignore[assignment]
+            deleted_region_proposal = cast(models.Region, deleted_region_proposal)
+            deleted_region_proposal.kind = constants.RegionKind.deleted
             continue
         if row.action == UPDATE_OBJECT:
             proposal = builder.replacement(planned.object)
@@ -2117,6 +2598,44 @@ def execute_plan(
                 source.removed = True
             applied += 1
             continue
+        if row.action == MERGE_PERSON:
+            merge_data = cast(Mapping[str, Any], planned.new_value)
+            target = cast(models.Person, merge_data["target"])
+            verb = "MERGE_PERSON" if apply else "WOULD_MERGE_PERSON"
+            assert row.target is not None
+            print(
+                f"{verb} source=Person:{row.object.object_id} "
+                f"label={row.object.label!r} target=Person:{target.id} "
+                f"label={row.target.label!r}"
+            )
+            if apply:
+                person_source = cast(
+                    models.Person, _replace_created_models(planned.object, replacements)
+                )
+                resolved_target = cast(
+                    models.Person, _replace_created_models(target, replacements)
+                )
+                for field_name, value in cast(
+                    Mapping[str, Any], merge_data["target_values"]
+                ).items():
+                    setattr(
+                        resolved_target,
+                        field_name,
+                        _replace_created_models(value, replacements),
+                    )
+                for alias in models.Person.select().filter(
+                    models.Person.target == person_source
+                ):
+                    alias.target = resolved_target
+                person_source.reassign_references(
+                    target=resolved_target, respect_ignore_lint=False
+                )
+                person_source.type = constants.PersonType.hard_redirect
+                person_source.target = resolved_target
+                for field_name in _PERSON_MERGE_TRANSFER_FIELDS:
+                    setattr(person_source, field_name, None)
+            applied += 1
+            continue
         if row.action == MERGE_REGION:
             merge_data = cast(Mapping[str, Any], planned.new_value)
             target = cast(models.Region, merge_data["target"])
@@ -2128,13 +2647,13 @@ def execute_plan(
                 f"label={row.target.label!r}"
             )
             if apply:
-                source = cast(
+                region_source = cast(
                     models.Region, _replace_created_models(planned.object, replacements)
                 )
-                resolved_target = cast(
+                resolved_region_target = cast(
                     models.Region, _replace_created_models(target, replacements)
                 )
-                source.merge(resolved_target)
+                region_source.merge(resolved_region_target)
             applied += 1
             continue
         if row.action == DELETE_REGION:
@@ -2144,10 +2663,10 @@ def execute_plan(
                 f"label={row.object.label!r}"
             )
             if apply:
-                source = cast(
+                deleted_region = cast(
                     models.Region, _replace_created_models(planned.object, replacements)
                 )
-                source.remove()
+                deleted_region.remove()
             applied += 1
             continue
         verb = row.action.upper() if apply else f"WOULD_{row.action.upper()}"
