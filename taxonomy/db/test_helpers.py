@@ -3,7 +3,13 @@ from datetime import date
 import pytest
 
 from taxonomy.db import constants, helpers
-from taxonomy.db.constants import Group, Rank, SpecimenDetailText, StringCleanupOption
+from taxonomy.db.constants import (
+    Group,
+    Rank,
+    SourceDetailText,
+    SpecimenDetailText,
+    StringCleanupOption,
+)
 
 from .helpers import (
     get_date_object,
@@ -64,6 +70,34 @@ def test_clean_string_preserves_bracketed_initials_and_markdown_links() -> None:
     text = "[M]agnus, [F]élicité, and [M](https://example.com)"
 
     assert helpers.clean_string(text, normalize_sex_symbols=True) == text
+
+
+def test_clean_string_normalizes_unambiguous_detail_ocr_when_requested() -> None:
+    text = "Stones®eld, ®rst, speci®c, Text-®gs, N® 12, and n® A. 13"
+
+    assert helpers.clean_string(text) == text
+    assert helpers.clean_string(text, normalize_detail_ocr=True) == (
+        "Stonesfield, first, specific, Text-figs, N° 12, and n° A. 13"
+    )
+
+
+def test_clean_string_preserves_ambiguous_registered_sign_uses() -> None:
+    text = '2® roi and l"® section'
+
+    assert helpers.clean_string(text, normalize_detail_ocr=True) == text
+
+
+def test_clean_string_removes_extracted_pdf_line_break_markers() -> None:
+    text = "vorweltli¬ chen"
+
+    assert helpers.clean_string(text) == text
+    assert helpers.clean_string(text, normalize_detail_ocr=True) == "vorweltlichen"
+
+
+def test_clean_string_normalizes_unambiguous_mojibake() -> None:
+    text = 'Sowerbyâ€™s beaked whale, 226â€"235'
+
+    assert helpers.clean_string(text) == "Sowerby's beaked whale, 226–235"
 
 
 @pytest.mark.parametrize(
@@ -137,7 +171,15 @@ def test_clean_string_preserves_ambiguous_or_invalid_asterisk_uses(text: str) ->
 def test_specimen_detail_text_requests_sex_symbol_normalization() -> None:
     assert helpers.get_string_kind(SpecimenDetailText) is constants.StringKind.markdown
     assert helpers.get_string_cleanup_options(SpecimenDetailText) == {
-        StringCleanupOption.normalize_sex_symbols
+        StringCleanupOption.normalize_sex_symbols,
+        StringCleanupOption.normalize_detail_ocr,
+    }
+
+
+def test_source_detail_text_requests_detail_ocr_normalization() -> None:
+    assert helpers.get_string_kind(SourceDetailText) is constants.StringKind.markdown
+    assert helpers.get_string_cleanup_options(SourceDetailText) == {
+        StringCleanupOption.normalize_detail_ocr
     }
 
 

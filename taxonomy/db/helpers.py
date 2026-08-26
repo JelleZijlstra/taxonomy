@@ -1329,6 +1329,7 @@ def interactive_clean_string(
     *,
     clean_whitespace: bool = True,
     normalize_sex_symbols: bool = False,
+    normalize_detail_ocr: bool = False,
     verbose: bool = False,
     interactive: bool = True,
 ) -> str:
@@ -1336,6 +1337,7 @@ def interactive_clean_string(
         text,
         clean_whitespace=clean_whitespace,
         normalize_sex_symbols=normalize_sex_symbols,
+        normalize_detail_ocr=normalize_detail_ocr,
     )
     text = text.replace("\n- ", "\n-\\ -")
     if "- " not in text:
@@ -1411,7 +1413,11 @@ def is_string_clean(text: str) -> str | None:
 
 
 def clean_string(
-    text: str, *, clean_whitespace: bool = True, normalize_sex_symbols: bool = False
+    text: str,
+    *,
+    clean_whitespace: bool = True,
+    normalize_sex_symbols: bool = False,
+    normalize_detail_ocr: bool = False,
 ) -> str:
     """Clean a string.
 
@@ -1427,6 +1433,20 @@ def clean_string(
         # Markdown links such as "[M](...)".
         text = re.sub(r"\[M\](?![^\W\d_]|\()", "\N{MALE SIGN}", text)
         text = re.sub(r"\[F\](?![^\W\d_]|\()", "\N{FEMALE SIGN}", text)
+
+    if normalize_detail_ocr:
+        # Some older PDFs encode the fi ligature as the registered-sign glyph.
+        # Limit this to word positions: real ordinal-like uses such as "2® roi"
+        # remain unchanged for manual review.
+        text = re.sub(r"(?<=[^\W\d_])®(?=[^\W\d_])", "fi", text)
+        text = re.sub(r"(?<![\w®])®(?=[^\W\d_])", "fi", text)
+        # The same PDF encoding maps the degree sign in numero abbreviations to
+        # the registered-sign glyph.
+        text = re.sub(r"\b([Nn])®", r"\1°", text)
+        # A not-sign followed by whitespace is a discretionary line-break marker
+        # in text extracted from a family of older PDFs. Requiring letters on both
+        # sides avoids changing isolated glyphs within Detail quotations.
+        text = re.sub(r"(?<=[^\W\d_])¬\s+(?=[^\W\d_])", "", text)
 
     # As an optimization, skip various expensive transformations if we know we
     # don't need them.
@@ -1444,6 +1464,10 @@ def clean_string(
         text = text.replace("u€", "ü")
         text = text.replace("o€", "ö")
         text = text.replace("€a", "ä")
+        text = text.replace("€u", "ü")
+        text = text.replace("a€", "ä")
+        text = text.replace("â€™", "'")
+        text = re.sub(r'(?<=\d)â€"(?=\d)', "–", text)
         text = re.sub(r"([aeiouAEIOU]) ̈", r"\1" + "\N{COMBINING DIAERESIS}", text)
         text = re.sub(r"([aeiouAEIOUnN]) ̃", r"\1" + "\N{COMBINING TILDE}", text)
         text = re.sub(r"([aeiouAEIOUnN]) ́", r"\1" + "\N{COMBINING ACUTE ACCENT}", text)

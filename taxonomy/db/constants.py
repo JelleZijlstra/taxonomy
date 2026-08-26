@@ -1117,11 +1117,18 @@ class StringKind(enum.IntEnum):
 
 class StringCleanupOption(enum.IntEnum):
     normalize_sex_symbols = 1
+    normalize_detail_ocr = 2
 
 
 type Markdown = Annotated[str, StringKind.markdown]
+type SourceDetailText = Annotated[
+    str, StringKind.markdown, StringCleanupOption.normalize_detail_ocr
+]
 type SpecimenDetailText = Annotated[
-    str, StringKind.markdown, StringCleanupOption.normalize_sex_symbols
+    str,
+    StringKind.markdown,
+    StringCleanupOption.normalize_sex_symbols,
+    StringCleanupOption.normalize_detail_ocr,
 ]
 type Managed = Annotated[str, StringKind.managed]
 type Regex = Annotated[str, StringKind.regex]

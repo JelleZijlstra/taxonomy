@@ -1601,7 +1601,7 @@ def build_plan(
                 expected_source = decode_reassign_guard(obj, source_guard, "source")
                 expected_target = decode_reassign_guard(target, target_guard, "target")
                 orcid = cast(str, row.values["orcid"])
-                target_identity = f"id:{target.id}"
+                target_identity = f"id:{row.target.object_id}"
                 current_target_tags = tuple(
                     planned_values.get(
                         ("Person", target_identity, "tags"), target.tags or ()
@@ -1660,7 +1660,8 @@ def build_plan(
                             f"{field_name!r} does not match"
                         )
 
-                source_identity = f"id:{obj.id}"
+                assert row.object.object_id is not None
+                source_identity = f"id:{row.object.object_id}"
                 final_target_tags = current_target_tags
                 if not _person_tags_contain_orcid(final_target_tags, orcid):
                     final_target_tags = tuple(
@@ -1740,6 +1741,14 @@ def build_plan(
 
                 expected_source = decode_guard(obj, source_guard, "source")
                 expected_target = decode_guard(target, target_guard, "target")
+                assert row.object.object_id is not None
+                source_identity = f"id:{row.object.object_id}"
+                planned_source_tags = tuple(
+                    planned_values.get(
+                        ("Person", source_identity, "tags"), expected_source["tags"]
+                    )
+                    or ()
+                )
                 source_applied = (
                     obj.type is constants.PersonType.hard_redirect
                     and _values_equal(obj.target, target)
@@ -1759,12 +1768,16 @@ def build_plan(
                             raise RecommendationError(
                                 f"already-merged source changed field {field_name!r}"
                             )
-                    if (
-                        any(
-                            getattr(obj, field_name) is not None
-                            for field_name in _PERSON_MERGE_TRANSFER_FIELDS
+                    actual_source_tags = tuple(obj.tags or ())
+                    if actual_source_tags and not _values_equal(
+                        actual_source_tags, planned_source_tags
+                    ):
+                        raise RecommendationError(
+                            "already-merged source tags changed from the planned value"
                         )
-                        or obj.tags
+                    if any(
+                        getattr(obj, field_name) is not None
+                        for field_name in _PERSON_MERGE_TRANSFER_FIELDS
                     ):
                         raise RecommendationError(
                             "already-merged source retains transferred metadata"
@@ -1815,7 +1828,7 @@ def build_plan(
                             "match"
                         )
 
-                target_identity = f"id:{target.id}"
+                target_identity = f"id:{row.target.object_id}"
                 target_values: dict[str, Any] = {}
                 resolved_convention = None
                 if row.values is not None:
@@ -1931,7 +1944,7 @@ def build_plan(
                     planned_values.get(target_tags_key, actual_target_tags) or ()
                 )
                 final_target_tags = tuple(
-                    sorted({*current_target_tags, *expected_source["tags"]})
+                    sorted({*current_target_tags, *planned_source_tags})
                 )
                 orcid_tags = {
                     tag.text
@@ -1960,12 +1973,13 @@ def build_plan(
                 target_values["tags"] = final_target_tags
                 planned_values[target_tags_key] = final_target_tags
 
-                source_identity = f"id:{obj.id}"
                 planned_values[("Person", source_identity, "type")] = (
                     constants.PersonType.hard_redirect
                 )
                 planned_values[("Person", source_identity, "target")] = target
-                planned_values[("Person", source_identity, "tags")] = ()
+                planned_values[("Person", source_identity, "tags")] = (
+                    planned_source_tags
+                )
                 for field_name in _PERSON_MERGE_TRANSFER_FIELDS:
                     planned_values[("Person", source_identity, field_name)] = None
                 actions.append(

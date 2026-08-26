@@ -704,7 +704,7 @@ def test_merge_person_is_guarded_restart_safe_and_transfers_metadata(
     assert reassigned == [target]
     assert source.type is PersonType.hard_redirect  # type: ignore[comparison-overlap]
     assert source.target is target
-    assert source.tags == ()
+    assert source.tags == (PersonTag.ORCID("0000-0001-2345-6789"),)
     assert source.birth is None
     assert target.birth == "1970"
     assert set(target.tags) == {
@@ -725,6 +725,78 @@ def test_merge_person_is_guarded_restart_safe_and_transfers_metadata(
         get_object=lambda _model, object_id: source if object_id == 1 else target,
     )
     assert rebuilt.actions[0].already_applied
+
+    # Redirects merged by older applicator versions had their tags cleared. Keep
+    # those manifests restart-safe while retaining tags for all new merges.
+    source.tags = ()
+    legacy_rebuilt = recommendations.build_plan(
+        [recommendations.parse_recommendation(_merge_person_row_from_plan(plan), 1)],
+        model_registry={"Person": Person},
+        get_object=lambda _model, object_id: source if object_id == 1 else target,
+    )
+    assert legacy_rebuilt.actions[0].already_applied
+
+
+def test_merge_person_copies_composed_source_tag_changes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _plan, source, target = _build_person_merge_plan(monkeypatch)
+    old_orcid = PersonTag.ORCID("0000-0001-2345-6789")
+    work_exception = PersonTag.IgnoreORCIDWork(
+        orcid="0000-0001-2345-6789",
+        doi="10.1234/example",
+        comment="Reviewed exception.",
+    )
+    update_data = {
+        "schema_version": 2,
+        "action": recommendations.UPDATE_OBJECT,
+        "confidence": "high",
+        "reason": "Replace stale source metadata before merging.",
+        "evidence": [{"kind": "ORCID record", "text": "The work was reviewed."}],
+        "object": {"model": "Person", "id": 1, "label": source.family_name},
+        "changes": [
+            {"operation": "remove", "field": "tags", "value": old_orcid.serialize()},
+            {"operation": "add", "field": "tags", "value": work_exception.serialize()},
+        ],
+    }
+    rows = [
+        recommendations.parse_recommendation(update_data, 1),
+        recommendations.parse_recommendation(_merge_person_row(source, target), 2),
+    ]
+    composed = recommendations.build_plan(
+        rows,
+        model_registry={"Person": Person},
+        get_object=lambda _model, object_id: source if object_id == 1 else target,
+    )
+
+    target_values = composed.actions[1].new_value["target_values"]
+    assert set(target_values["tags"]) == {
+        PersonTag.ORCID("0000-0003-3641-8321"),
+        work_exception,
+    }
+
+    builder = ProposalBuilder()
+    recommendations.add_virtual_models(composed, builder)
+    proposed_source = next(
+        proposal.model
+        for proposal in builder.build()
+        if isinstance(proposal.model, Person)
+        and proposal.model.given_names == "Jane Anne"
+    )
+    assert proposed_source.type is PersonType.hard_redirect
+    assert proposed_source.tags == (work_exception,)
+
+    def reassign_references(
+        self: Person, target: Person | None = None, *, respect_ignore_lint: bool = True
+    ) -> None:
+        assert self is source
+        assert target is not None
+        assert not respect_ignore_lint
+
+    monkeypatch.setattr(Person, "reassign_references", reassign_references)
+    recommendations.execute_plan(composed, apply=True)
+    assert source.tags == (work_exception,)
+    assert set(target.tags) == {PersonTag.ORCID("0000-0003-3641-8321"), work_exception}
 
 
 def test_merge_person_combines_general_with_specific_naming_convention() -> None:

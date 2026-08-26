@@ -59,7 +59,9 @@ def test_generic_string_cleanup_normalizes_safe_input_shortcuts(
     monkeypatch.setattr(Name, "__str__", lambda _: "test name")
     article = models.Article.virtual(name="source.pdf", kind=ArticleKind.electronic)
     specimen_detail = TypeTag.SpecimenDetail("Adult [M], skin and skull.", article)
-    etymology_detail = TypeTag.EtymologyDetail("[M]agnus, for its large size.", article)
+    etymology_detail = TypeTag.EtymologyDetail(
+        "[M]agnus, from a speci®c epithet.", article
+    )
     location_detail = TypeTag.LocationDetail("at 23*29'N, 68*54'W", article)
     name = Name.virtual(
         group=Group.species,
@@ -92,14 +94,17 @@ def test_generic_string_cleanup_normalizes_safe_input_shortcuts(
     )
 
     issues = list(name.check_all_fields(LintConfig(autofix=False, interactive=False)))
-    assert len(issues) == 2
+    assert len(issues) == 3
     for issue in issues:
         assert not isinstance(issue, str)
         assert issue.fix is not None
         assert issue.fix.apply() is True
     assert TypeTag.SpecimenDetail("Adult ♂, skin and skull.", article) in name.type_tags
     assert TypeTag.LocationDetail("at 23°29'N, 68°54'W", article) in name.type_tags
-    assert etymology_detail in name.type_tags
+    assert (
+        TypeTag.EtymologyDetail("[M]agnus, from a specific epithet.", article)
+        in name.type_tags
+    )
 
 
 def test_redirect_name_issue_changes_only_redirect_fields() -> None:

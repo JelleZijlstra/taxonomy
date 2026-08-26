@@ -436,6 +436,10 @@ class BaseModel(Model):
                                     StringCleanupOption.normalize_sex_symbols
                                     in cleanup_options
                                 ),
+                                normalize_detail_ocr=(
+                                    StringCleanupOption.normalize_detail_ocr
+                                    in cleanup_options
+                                ),
                                 interactive=cfg.interactive,
                             )
                             if cleaned != attr_value:

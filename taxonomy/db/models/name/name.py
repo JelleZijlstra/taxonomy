@@ -43,6 +43,7 @@ from taxonomy.db.constants import (
     PhylogeneticDefinitionType,
     Rank,
     RegionKind,
+    SourceDetailText,
     SpeciesBasis,
     SpecimenDetailText,
     Status,
@@ -3168,7 +3169,7 @@ class TypeTag(adt.ADT):
     )
     # phrasing of the type locality in a particular source
     LocationDetail(  # type: ignore[name-defined]
-        text=Markdown,
+        text=SourceDetailText,
         source=Article,
         comment=NotRequired[Markdown],
         page=NotRequired[Managed],
@@ -3191,15 +3192,15 @@ class TypeTag(adt.ADT):
     # indicates that it was originally a genus coelebs
     GenusCoelebs(comments=NotRequired[Markdown], tag=21)  # type: ignore[name-defined]
     # quotation with information about a type species
-    TypeSpeciesDetail(text=Markdown, source=Article, tag=22)  # type: ignore[name-defined]
+    TypeSpeciesDetail(text=SourceDetailText, source=Article, tag=22)  # type: ignore[name-defined]
     # Likely location of the type specimen.
     ProbableRepository(repository=Collection, reasoning=NotRequired[Markdown], tag=23)  # type: ignore[name-defined]
     # Data on the repository of the type material.
-    CollectionDetail(text=Markdown, source=Article, tag=24)  # type: ignore[name-defined]
+    CollectionDetail(text=SourceDetailText, source=Article, tag=24)  # type: ignore[name-defined]
     # Quotes about the original citation.
-    CitationDetail(text=Markdown, source=Article, tag=25)  # type: ignore[name-defined]
-    DefinitionDetail(text=Markdown, source=Article, tag=26)  # type: ignore[name-defined]
-    EtymologyDetail(text=Markdown, source=Article, tag=27)  # type: ignore[name-defined]
+    CitationDetail(text=SourceDetailText, source=Article, tag=25)  # type: ignore[name-defined]
+    DefinitionDetail(text=SourceDetailText, source=Article, tag=26)  # type: ignore[name-defined]
+    EtymologyDetail(text=SourceDetailText, source=Article, tag=27)  # type: ignore[name-defined]
     NamedAfter(person=Person, tag=28)  # type: ignore[name-defined]
     CollectedBy(person=Person, tag=29)  # type: ignore[name-defined]
 
@@ -3217,7 +3218,7 @@ class TypeTag(adt.ADT):
     # Indicates that a General type locality cannot be fixed
     ImpreciseLocality(comment=NotRequired[Markdown], tag=40)  # type: ignore[name-defined]
     # Arbitrary text about nomenclature
-    NomenclatureDetail(text=Markdown, source=Article, tag=41)  # type: ignore[name-defined]
+    NomenclatureDetail(text=SourceDetailText, source=Article, tag=41)  # type: ignore[name-defined]
     TextualOriginalRank(text=Managed, tag=42)  # type: ignore[name-defined]
     # Denotes that this name does something grammatically incorrect. A published
     # paper should correct it.
@@ -3240,7 +3241,7 @@ class TypeTag(adt.ADT):
     # Used for subgenera proposed without an associated genus
     NoOriginalParent(tag=56)  # type: ignore[name-defined]
     # Sources for old names
-    SourceDetail(text=Markdown, source=Article, tag=57)  # type: ignore[name-defined]
+    SourceDetail(text=SourceDetailText, source=Article, tag=57)  # type: ignore[name-defined]
 
     # Can be used optionally to hold the fully verbatim original name, including abbreviations.
     # Not mandatory.
@@ -3249,7 +3250,7 @@ class TypeTag(adt.ADT):
     IgnorePotentialCitationFrom(article=Article, comment=NotRequired[Markdown], tag=59)  # type: ignore[name-defined]
 
     # Description of the taxon
-    DescriptionDetail(text=Markdown, source=Article, tag=60)  # type: ignore[name-defined]
+    DescriptionDetail(text=SourceDetailText, source=Article, tag=60)  # type: ignore[name-defined]
 
     InterpretedTypeLocality(text=Markdown, tag=61)  # type: ignore[name-defined]
     InterpretedTypeSpecimen(text=Markdown, tag=62)  # type: ignore[name-defined]
