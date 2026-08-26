@@ -2030,6 +2030,12 @@ class ArticleTag(adt.ADT):
     # DOI that doesn't apply to this article
     RejectedDOI(doi=Managed, tag=33)  # type: ignore[name-defined]
 
+    # A reviewed ORCID profile that claims this Article's DOI as its own work even
+    # though the profile belongs to none of the Article's authors.
+    IgnoreORCIDProfile(  # type: ignore[name-defined]
+        orcid=Managed, comment=NotRequired[Markdown], tag=34
+    )
+
 
 @lru_cache
 def _getpdfcontent(path: str) -> str:

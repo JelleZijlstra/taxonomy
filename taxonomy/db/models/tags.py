@@ -27,6 +27,9 @@ class PersonTag(adt.ADT):
     IgnoreLint(  # type: ignore[name-defined]
         label=Managed, comment=NotRequired[Markdown], tag=8
     )
+    IgnoreORCIDWork(  # type: ignore[name-defined]
+        orcid=Managed, doi=Managed, comment=NotRequired[Markdown], tag=9
+    )
 
 
 class LocationTag(adt.ADT):

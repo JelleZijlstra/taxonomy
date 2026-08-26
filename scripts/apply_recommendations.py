@@ -228,10 +228,10 @@ def _declared_affected_objects(
             yield generic_recommendations._replace_created_models(
                 generic_action.object, replacements
             )
-            if (
-                generic_action.recommendation.action
-                == generic_recommendations.MERGE_PERSON
-            ):
+            if generic_action.recommendation.action in {
+                generic_recommendations.MERGE_PERSON,
+                generic_recommendations.REASSIGN_PERSON_REFERENCES,
+            }:
                 merge_data = generic_action.new_value
                 yield generic_recommendations._replace_created_models(
                     merge_data["target"], replacements

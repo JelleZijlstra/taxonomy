@@ -41,3 +41,7 @@ Articles have the following fields:
     article was published.
   - _InitialsOnly_: indicating that the article's authors are given only with initials,
     not full names.
+  - _IgnoreORCIDProfile_: a reviewed exception for one ORCID profile that claims the
+    Article's DOI even though that profile belongs to none of the Article's authors.
+    Unlike a general lint ignore, this does not suppress other ORCID profiles that may
+    later provide valid author evidence for the same Article.

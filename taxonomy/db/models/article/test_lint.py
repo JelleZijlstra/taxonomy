@@ -90,6 +90,7 @@ def _person_with_orcids(*orcids: str) -> Mock:
 def _article_with_author(person: Person) -> Mock:
     article = Mock(spec=Article)
     article.doi = "10.1234/example"
+    article.tags = ()
     article.get_authors.return_value = [person]
     article.has_tag.return_value = False
     return article
@@ -248,9 +249,122 @@ def test_infer_author_orcids_from_orcid_warns_on_unmatched_profile(
     assert issues == [
         (
             "ORCID DOI author does not match an article author: "
-            "John Jones (0000-0002-1694-233X)"
+            "John Jones (0000-0002-1694-233X; given names 'John'; family name "
+            "'Jones'); closest article author: 'Jane Smith' (given names 'Jane'; "
+            "family name 'Smith')"
         )
     ]
+
+
+def test_infer_author_orcids_from_orcid_skips_reviewed_profile(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    article = _article_with_author(_person_with_orcids())
+    article.tags = (
+        ArticleTag.IgnoreORCIDProfile(
+            "0000-0002-1694-233X", comment="The profile is not an author."
+        ),
+    )
+    monkeypatch.setattr(
+        orcid,
+        "search_orcids_by_doi",
+        Mock(
+            return_value=[
+                orcid.OrcidSearchResult(
+                    orcid="0000-0002-1694-233X",
+                    given_names="John",
+                    family_names="Jones",
+                    credit_name=None,
+                    other_names=(),
+                    institution_names=(),
+                )
+            ]
+        ),
+    )
+
+    assert (
+        list(
+            lint.infer_author_orcids_from_orcid.linter(
+                article, LintConfig(autofix=False, interactive=False)
+            )
+        )
+        == []
+    )
+
+
+def test_infer_author_orcids_from_orcid_accepts_all_stored_duplicate_profiles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    orcid_ids = ("0000-0002-1694-233X", "0000-0001-5109-3700")
+    article = _article_with_author(_person_with_orcids(*orcid_ids))
+    monkeypatch.setattr(
+        orcid,
+        "search_orcids_by_doi",
+        Mock(
+            return_value=[
+                orcid.OrcidSearchResult(
+                    orcid=orcid_id,
+                    given_names="Jane",
+                    family_names="Smith",
+                    credit_name=None,
+                    other_names=(),
+                    institution_names=(),
+                )
+                for orcid_id in orcid_ids
+            ]
+        ),
+    )
+
+    assert (
+        list(
+            lint.infer_author_orcids_from_orcid.linter(
+                article, LintConfig(autofix=False, interactive=False)
+            )
+        )
+        == []
+    )
+
+
+def test_infer_author_orcids_from_orcid_shows_closest_reversed_author(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    likely_author = _person_with_orcids()
+    likely_author.family_name = "de los Reyes"
+    likely_author.given_names = "Martín L."
+    likely_author.naming_convention = NamingConvention.spanish
+    likely_author.get_full_name.return_value = "Martín L. de los Reyes"
+    other_author = _person_with_orcids()
+    other_author.family_name = "Poiré"
+    other_author.given_names = "Daniel"
+    other_author.get_full_name.return_value = "Daniel Poiré"
+    article = _article_with_author(likely_author)
+    article.get_authors.return_value = [likely_author, other_author]
+    monkeypatch.setattr(
+        orcid,
+        "search_orcids_by_doi",
+        Mock(
+            return_value=[
+                orcid.OrcidSearchResult(
+                    orcid="0000-0002-2438-7161",
+                    given_names="De los Reyes",
+                    family_names="Martin",
+                    credit_name=None,
+                    other_names=(),
+                    institution_names=(),
+                )
+            ]
+        ),
+    )
+
+    issues = list(
+        lint.infer_author_orcids_from_orcid.linter(
+            article, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
+    assert len(issues) == 1
+    assert "closest article author: 'Martín L. de los Reyes'" in str(issues[0])
+    assert "given names 'Martín L.'; family name 'de los Reyes'" in str(issues[0])
 
 
 def test_infer_author_orcids_from_orcid_warns_on_existing_identifier(
@@ -284,6 +398,46 @@ def test_infer_author_orcids_from_orcid_warns_on_existing_identifier(
     assert len(issues) == 1
     assert isinstance(issues[0], str)
     assert "already has ORCID tags" in issues[0]
+
+
+def test_infer_author_orcids_from_orcid_prefers_stored_identifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    identified = _person_with_orcids("0000-0002-1694-233X")
+    identified.family_name = "Szczygielski"
+    identified.given_names = "Tomasz"
+    identified.get_full_name.return_value = "Tomasz Szczygielski"
+    similar = _person_with_orcids()
+    similar.family_name = "Sulej"
+    similar.given_names = "Tomasz"
+    similar.get_full_name.return_value = "Tomasz Sulej"
+    article = _article_with_author(identified)
+    article.get_authors.return_value = [identified, similar]
+    monkeypatch.setattr(
+        orcid,
+        "search_orcids_by_doi",
+        Mock(
+            return_value=[
+                orcid.OrcidSearchResult(
+                    orcid="0000-0002-1694-233X",
+                    given_names="Tomasz",
+                    family_names="Szczygielski",
+                    credit_name=None,
+                    other_names=("Tomasz Sulej",),
+                    institution_names=(),
+                )
+            ]
+        ),
+    )
+
+    assert (
+        list(
+            lint.infer_author_orcids_from_orcid.linter(
+                article, LintConfig(autofix=False, interactive=False)
+            )
+        )
+        == []
+    )
 
 
 def test_data_from_orcid_warns_on_consistent_metadata_mismatch(
@@ -336,6 +490,39 @@ def test_data_from_orcid_warns_on_consistent_metadata_mismatch(
             "sources ['Crossref']) vs. 2023 (article)"
         ),
     ]
+
+
+def test_data_from_orcid_accepts_translated_title(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    article = _article_with_author(_person_with_orcids("0000-0002-1694-233X"))
+    article.title = "Status of *Ndamathaia* and carnivores"
+    profile = orcid.OrcidProfile(
+        orcid="0000-0002-1694-233X",
+        given_names="Jane",
+        family_names="Smith",
+        credit_name=None,
+        other_names=(),
+        works=(
+            orcid.OrcidWork(
+                doi="10.1234/example",
+                title="Status of Nadamathaia and canivores",
+                journal_title="Journal",
+                publication_year=None,
+                source_name="Scopus",
+                translated_title="Status of Ndamathaia and carnivores",
+            ),
+        ),
+    )
+    monkeypatch.setattr(orcid, "get_orcid_profile", Mock(return_value=profile))
+
+    issues = list(
+        lint.data_from_orcid.linter(
+            article, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
+    assert issues == []
 
 
 def test_infer_author_orcids_warns_on_author_sequence_mismatch(

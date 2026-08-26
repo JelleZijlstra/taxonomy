@@ -75,19 +75,21 @@ omitted from the canonical name should remain in the relevant detail tag or comm
 ### disambiguator
 
 A disambiguator within parentheses should be used when the name is not globally unique.
-It should normally name an enclosing [Region](region), an assigned [Period](period), or
-an assigned stratigraphic unit. Qualified Region and stratigraphic-unit names may be
-written in parenthetical, comma-separated, or unqualified form when the relationship is
-unambiguous; for example, the Region `Limburg (Netherlands)` supports the disambiguator
-`Limburg, Netherlands`. A stable geographic qualifier may exceptionally disambiguate
-places with the same base name in the same Region; document such an exception with an
-`IgnoreLint` tag if the disambiguator lint cannot verify it. The generic disambiguators
-`island`, `region`, and `historical region` are always allowed for geographic features
-whose scope would otherwise be unclear, as in `Saint Martin (island)` and
-`Guinea (region)`. If there is a modifier and the location is outside the region
-designated by the base name (for example, the nearby coast, or an "X km N" locality that
-crosses a border), the region of the base name is acceptable as a disambiguator; this
-can be indicated with a "NearbyRegion" tag on the location.
+It should normally name an enclosing [Region](region). For a fossil site, it may instead
+name an assigned [Period](period) or stratigraphic unit when that is the useful
+distinction. Do not use `Recent` or another temporal label to disambiguate an extant
+Location; use its geographic Region. Qualified Region and stratigraphic-unit names may
+be written in parenthetical, comma-separated, or unqualified form when the relationship
+is unambiguous; for example, the Region `Limburg (Netherlands)` supports the
+disambiguator `Limburg, Netherlands`. A stable geographic qualifier may exceptionally
+disambiguate places with the same base name in the same Region; document such an
+exception with an `IgnoreLint` tag if the disambiguator lint cannot verify it. The
+generic disambiguators `island`, `region`, and `historical region` are always allowed
+for geographic features whose scope would otherwise be unclear, as in
+`Saint Martin (island)` and `Guinea (region)`. If there is a modifier and the location
+is outside the region designated by the base name (for example, the nearby coast, or an
+"X km N" locality that crosses a border), the region of the base name is acceptable as a
+disambiguator; this can be indicated with a "NearbyRegion" tag on the location.
 
 ### modifier
 

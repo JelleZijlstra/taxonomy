@@ -567,7 +567,12 @@ class Person(BaseModel):
                 tag
                 for tag in self.tags
                 if not isinstance(
-                    tag, (models.tags.PersonTag.ORCID, models.tags.PersonTag.IgnoreLint)
+                    tag,
+                    (
+                        models.tags.PersonTag.ORCID,
+                        models.tags.PersonTag.IgnoreLint,
+                        models.tags.PersonTag.IgnoreORCIDWork,
+                    ),
                 )
             ]
             if non_identifier_tags:

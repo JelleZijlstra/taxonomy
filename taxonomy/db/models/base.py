@@ -6,6 +6,7 @@ import inspect
 import json
 import pickle
 import re
+import reprlib
 import sqlite3
 import traceback
 import typing
@@ -29,6 +30,40 @@ from taxonomy.db.constants import StringCleanupOption, StringKind
 from .lint_types import LintIssue, LintResult
 
 settings = config.get_options()
+
+
+def _model_identity_key(obj: Any) -> tuple[type[Any], int]:
+    try:
+        object_id = obj.id
+    except VirtualReferenceError:
+        object_id = id(obj)
+    return type(obj), object_id
+
+
+def _format_model_identity(obj: Any) -> str:
+    try:
+        object_id = obj.id
+    except VirtualReferenceError:
+        return f"virtual {type(obj).__name__}"
+    return f"{type(obj).__name__} {object_id}"
+
+
+def _find_redirect_cycle(start: Any) -> tuple[Any, ...] | None:
+    """Return the cyclic portion of a redirect chain, including its repeated end."""
+    path: list[Any] = []
+    positions: dict[tuple[type[Any], int], int] = {}
+    current = start
+    while current is not None:
+        key = _model_identity_key(current)
+        if key in positions:
+            return (*path[positions[key] :], current)
+        positions[key] = len(path)
+        path.append(current)
+        try:
+            current = current.get_redirect_target()
+        except type(current).DoesNotExist:
+            return None
+    return None
 
 
 class LazyClirm(Clirm):
@@ -326,6 +361,14 @@ class BaseModel(Model):
                     yield f"{self}: references non-existent object {value} in field {field}"
                     continue
                 if target is not None:
+                    cycle = _find_redirect_cycle(value)
+                    if cycle is not None:
+                        path = " -> ".join(_format_model_identity(obj) for obj in cycle)
+                        yield (
+                            f"{self}: field {field} points into a redirect cycle: "
+                            f"{path}"
+                        )
+                        continue
                     message = (
                         f"{self}: references redirected object {value} -> {target} in"
                         f" field {field}"
@@ -751,6 +794,7 @@ class BaseModel(Model):
                 return label
         return BaseModel.__repr__(self)
 
+    @reprlib.recursive_repr()
     def __repr__(self) -> str:
         return "{}({})".format(
             self.__class__.__name__,

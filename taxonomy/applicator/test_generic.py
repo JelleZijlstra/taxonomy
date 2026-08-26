@@ -853,6 +853,161 @@ def test_merge_person_participates_in_virtual_proposal_graph(
     assert target.birth is None
 
 
+def _reassign_person_references_row(
+    source: Person, target: Person
+) -> dict[str, object]:
+    references: dict[str, list[object]] = {
+        field_name: []
+        for field_name in recommendations._PERSON_REASSIGN_REFERENCE_FIELDS
+    }
+    return {
+        "schema_version": 2,
+        "action": recommendations.REASSIGN_PERSON_REFERENCES,
+        "confidence": "high",
+        "reason": (
+            "The shared ORCID verifies these existing references, but the abbreviated "
+            "source name is not globally identity-safe."
+        ),
+        "evidence": [
+            {
+                "kind": "ORCID and Article author evidence",
+                "text": "Both records map to ORCID 0000-0001-9748-2947.",
+            }
+        ],
+        "object": {"model": "Person", "id": 1, "label": source.family_name},
+        "target": {"model": "Person", "id": 2, "label": target.family_name},
+        "orcid": "0000-0001-9748-2947",
+        "guard": {
+            "source": _person_guard(source),
+            "target": _person_guard(target),
+            "references": references,
+        },
+    }
+
+
+def test_reassign_person_references_moves_orcid_without_redirecting_source(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    source = Person.virtual(
+        family_name="Bennett",
+        initials="N.C.",
+        tags=(PersonTag.ORCID("0000-0001-9748-2947"),),
+        naming_convention=NamingConvention.unspecified,
+        type=PersonType.unchecked,
+    )
+    target = Person.virtual(
+        family_name="Bennett",
+        given_names="Nigel C.",
+        tags=(),
+        naming_convention=NamingConvention.general,
+        type=PersonType.unchecked,
+    )
+
+    class EmptyQuery:
+        def filter(self, *_args: object) -> tuple[()]:
+            return ()
+
+    monkeypatch.setattr(Person, "select", classmethod(lambda _cls: EmptyQuery()))
+    monkeypatch.setattr(
+        recommendations,
+        "_person_reassign_reference_snapshot",
+        lambda _person: {
+            field_name: []
+            for field_name in recommendations._PERSON_REASSIGN_REFERENCE_FIELDS
+        },
+    )
+    reassigned: list[Person] = []
+
+    def reassign_references(
+        self: Person, target: Person | None = None, *, respect_ignore_lint: bool = True
+    ) -> None:
+        assert self is source
+        assert target is not None
+        assert not respect_ignore_lint
+        reassigned.append(target)
+
+    monkeypatch.setattr(Person, "reassign_references", reassign_references)
+    row_data = _reassign_person_references_row(source, target)
+    row = recommendations.parse_recommendation(row_data, 1)
+    plan = recommendations.build_plan(
+        [row],
+        model_registry={"Person": Person},
+        get_object=lambda _model, object_id: source if object_id == 1 else target,
+    )
+
+    builder = ProposalBuilder()
+    recommendations.add_virtual_models(plan, builder)
+    proposed_people = [
+        proposal.model
+        for proposal in builder.build()
+        if isinstance(proposal.model, Person)
+    ]
+    proposed_source = next(person for person in proposed_people if person.initials)
+    proposed_target = next(person for person in proposed_people if person.given_names)
+    assert proposed_source.type is PersonType.unchecked
+    assert proposed_source.target is None
+    assert proposed_source.tags == ()
+    assert proposed_target.tags == (PersonTag.ORCID("0000-0001-9748-2947"),)
+
+    recommendations.execute_plan(plan, apply=False)
+    assert "WOULD_REASSIGN_PERSON_REFERENCES source=Person:1" in (
+        capsys.readouterr().out
+    )
+    recommendations.execute_plan(plan, apply=True)
+    assert reassigned == [target]
+    assert source.type is PersonType.unchecked
+    assert source.target is None
+    assert source.tags == ()
+    assert target.tags == (PersonTag.ORCID("0000-0001-9748-2947"),)
+
+    rebuilt = recommendations.build_plan(
+        [recommendations.parse_recommendation(row_data, 1)],
+        model_registry={"Person": Person},
+        get_object=lambda _model, object_id: source if object_id == 1 else target,
+    )
+    assert rebuilt.actions[0].already_applied
+
+
+def test_reassign_person_references_rejects_stale_reference_guard(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = Person.virtual(
+        family_name="Jones",
+        initials="C.",
+        tags=(PersonTag.ORCID("0000-0001-9748-2947"),),
+        naming_convention=NamingConvention.unspecified,
+        type=PersonType.unchecked,
+    )
+    target = Person.virtual(
+        family_name="Jones",
+        given_names="Craig M.",
+        tags=(),
+        naming_convention=NamingConvention.general,
+        type=PersonType.unchecked,
+    )
+    monkeypatch.setattr(
+        recommendations,
+        "_person_reassign_reference_snapshot",
+        lambda _person: {
+            **{
+                field_name: []
+                for field_name in recommendations._PERSON_REASSIGN_REFERENCE_FIELDS
+            },
+            "articles": [99],
+        },
+    )
+    row = recommendations.parse_recommendation(
+        _reassign_person_references_row(source, target), 1
+    )
+
+    with pytest.raises(recommendations.RecommendationError, match="references changed"):
+        recommendations.build_plan(
+            [row],
+            model_registry={"Person": Person},
+            get_object=lambda _model, object_id: source if object_id == 1 else target,
+        )
+
+
 def _merge_region_row(*, target_label: str = "Canonical Region") -> dict[str, object]:
     return {
         "schema_version": 2,

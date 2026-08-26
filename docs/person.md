@@ -61,6 +61,10 @@ Persons have the following fields:
     active in.
   - _Biography_: Reference to an [article](/docs/article) containing biographical
     details about the person, such as an obituary.
+  - _ORCID_: The person's public [ORCID](https://orcid.org/) identifier.
+  - _IgnoreORCIDWork_: A reviewed exception for one DOI that an ORCID profile claims but
+    whose deposited author list identifies different people. The tag records both the
+    ORCID and DOI so it does not suppress checks of the person's other works.
 
 ## Naming conventions
 
@@ -163,6 +167,12 @@ A catch-all:
 
 ## Which name to use
 
+Generally, use the most precise name possible, so "Jelle Sjoerd Zijlstra" instead of
+variants like "Jelle Zijlstra", "Jelle S. Zijlstra", "J.S. Zijlstra". Generally use full
+names over abbreviations ("Michael" instead of "Mike") and use diacritic marks if they
+are present in the person's native language, even if they are sometimes dropped in
+source material.
+
 Sometimes people use different names over the course of their career:
 
 - [Yang Zhong-jian](/h/47669), a Chinese paleontologist, started his long career before
@@ -191,6 +201,12 @@ In cases where using a single canonical name could lead to confusion, a _name al
 be used, which points to the canonical name but uses a different form. For example,
 Cranbrook's early work was published under the name [Lord Medway](/h/82298), so these
 articles are given under that alias.
+
+An initial-only or otherwise ambiguous Person is not automatically an alias of a fuller
+name. If publication evidence identifies the existing references to "C. Jones" with
+"Craig M. Jones", move those references to the fuller Person but leave "C. Jones" as a
+separate non-redirect Person. A future publication using the same abbreviation may refer
+to someone else.
 
 Names are currently written in the Latin alphabet in the database, except for a few
 Russian names written in Cyrillic. It would perhaps be more consistent with the general

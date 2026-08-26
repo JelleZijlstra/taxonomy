@@ -78,6 +78,7 @@ class OrcidWork:
     journal_title: str | None
     publication_year: int | None
     source_name: str | None
+    translated_title: str | None = None
 
 
 @dataclass(frozen=True)
@@ -146,7 +147,13 @@ def _get_json_text(
         timeout=REQUEST_TIMEOUT,
         follow_redirects=True,
     )
-    if response.status_code == 404:
+    if response.status_code == 404 or (
+        response.status_code == 409 and path.rstrip("/").endswith("/record")
+    ):
+        # ORCID returns 409/error 9044 for a deactivated iD. At the public
+        # evidence boundary this is equivalent to a missing record: there is no
+        # current identity or work list to parse. Restrict the special case to
+        # record endpoints so an unrelated 409 from search still fails loudly.
         return "null", False
     response.raise_for_status()
     try:
@@ -412,12 +419,14 @@ def parse_orcid_record(record: dict[str, Any]) -> OrcidProfile:
                         summary.get("publication-date")
                     ),
                     source_name=_parse_source_name(summary.get("source")),
+                    translated_title=_nested_value(title.get("translated-title")),
                 )
             )
     parsed_works.sort(
         key=lambda work: (
             work.doi,
             work.title or "",
+            work.translated_title or "",
             work.publication_year or 0,
             work.source_name or "",
         )
@@ -433,7 +442,7 @@ def parse_orcid_record(record: dict[str, Any]) -> OrcidProfile:
 
 
 def get_orcid_profile(orcid: str) -> OrcidProfile | None:
-    """Return parsed public evidence for an ORCID iD, or ``None`` for a 404."""
+    """Return public evidence, or ``None`` for a missing/deactivated record."""
     record = get_orcid_record(orcid)
     if record is None:
         return None

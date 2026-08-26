@@ -92,6 +92,33 @@ def test_get_json_text_authenticates_and_rate_limits(
     )
 
 
+def test_get_json_text_treats_deactivated_record_as_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orcid, "get_access_token", Mock(return_value="t"))
+    monkeypatch.setattr(orcid.rate_limiter, "wait", Mock())
+    response = Mock(status_code=409)
+    monkeypatch.setattr(httpx, "get", Mock(return_value=response))
+
+    assert orcid._get_json_text("0000-0001-9355-2389/record") == ("null", False)
+    response.raise_for_status.assert_not_called()
+
+
+def test_get_json_text_does_not_hide_other_conflicts(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(orcid, "get_access_token", Mock(return_value="t"))
+    monkeypatch.setattr(orcid.rate_limiter, "wait", Mock())
+    response = Mock(status_code=409)
+    response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "conflict", request=Mock(), response=Mock()
+    )
+    monkeypatch.setattr(httpx, "get", Mock(return_value=response))
+
+    with pytest.raises(httpx.HTTPStatusError):
+        orcid._get_json_text("expanded-search/")
+
+
 def test_search_orcids_by_doi_reads_expiring_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -245,7 +272,13 @@ def test_parse_orcid_record_reads_public_names_and_self_dois() -> None:
                     {
                         "work-summary": [
                             {
-                                "title": {"title": {"value": "A useful paper"}},
+                                "title": {
+                                    "title": {"value": "A useful paper"},
+                                    "translated-title": {
+                                        "value": "Un article utile",
+                                        "language-code": "fr",
+                                    },
+                                },
                                 "journal-title": {"value": "Journal of Examples"},
                                 "publication-date": {"year": {"value": "2024"}},
                                 "source": {"source-name": {"value": "Crossref"}},
@@ -286,6 +319,7 @@ def test_parse_orcid_record_reads_public_names_and_self_dois() -> None:
                 journal_title="Journal of Examples",
                 publication_year=2024,
                 source_name="Crossref",
+                translated_title="Un article utile",
             ),
         ),
     )

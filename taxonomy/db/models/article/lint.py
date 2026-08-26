@@ -136,6 +136,9 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         elif isinstance(tag, ArticleTag.KnownAlternativeYear):
             if not tag.year.isnumeric():
                 yield f"invalid alternative date {tag.year!r}"
+        elif isinstance(tag, ArticleTag.IgnoreORCIDProfile):
+            if not is_valid_orcid(tag.orcid):
+                yield f"invalid ignored ORCID {tag.orcid!r}"
         tags.append(tag)
     tags = sorted(set(tags))
     if tags != original_tags:
@@ -2892,13 +2895,55 @@ def _orcid_result_matches_person(
     )
 
 
-def _format_orcid_search_result(result: orcid.OrcidSearchResult) -> str:
+def _format_orcid_search_result(
+    result: orcid.OrcidSearchResult, *, include_name_fields: bool = False
+) -> str:
     name = format_external_identity(
         given_names=result.given_names,
         family_names=result.family_names,
         credit_name=result.credit_name,
     )
-    return f"{name} ({result.orcid})"
+    details = [result.orcid]
+    if include_name_fields:
+        if result.given_names is not None:
+            details.append(f"given names {result.given_names!r}")
+        if result.family_names is not None:
+            details.append(f"family name {result.family_names!r}")
+    return f"{name} ({'; '.join(details)})"
+
+
+def _orcid_name_similarity(result: orcid.OrcidSearchResult, person: Person) -> float:
+    external_name = format_external_identity(
+        given_names=result.given_names,
+        family_names=result.family_names,
+        credit_name=result.credit_name,
+    )
+    external = helpers.simplify_string(external_name, clean_words=False)
+    local = helpers.simplify_string(person.get_full_name(), clean_words=False)
+    if not external or not local:
+        return 0
+    return max(
+        Levenshtein.ratio(external, local),
+        Levenshtein.ratio(
+            " ".join(sorted(external.split())), " ".join(sorted(local.split()))
+        ),
+    )
+
+
+def _closest_article_author(
+    result: orcid.OrcidSearchResult, authors: Sequence[Person]
+) -> Person | None:
+    if not authors:
+        return None
+    return max(authors, key=lambda person: _orcid_name_similarity(result, person))
+
+
+def _format_person_for_orcid_comparison(person: Person) -> str:
+    given_names = person.given_names or person.initials
+    details = [f"family name {person.family_name!r}"]
+    if given_names is not None:
+        details.insert(0, f"given names {given_names!r}")
+    return f"{person.get_full_name()!r} ({'; '.join(details)})"
 
 
 @LINT.add("infer_author_orcids_from_orcid", requires_network=True)
@@ -2911,6 +2956,11 @@ def infer_author_orcids_from_orcid(
     results = orcid.search_orcids_by_doi(art.doi)
     if not results:
         return
+    ignored_orcids = {
+        normalize_orcid(tag.orcid)
+        for tag in art.tags or ()
+        if isinstance(tag, ArticleTag.IgnoreORCIDProfile)
+    }
     local_authors = list(
         dict.fromkeys(person.resolve_redirect() for person in art.get_authors())
     )
@@ -2918,11 +2968,27 @@ def infer_author_orcids_from_orcid(
         list
     )
     for result in results:
-        matches = [
+        if result.orcid in ignored_orcids:
+            continue
+        identifier_matches = [
+            person
+            for person in local_authors
+            if result.orcid
+            in {
+                normalize_orcid(tag.text)
+                for tag in person.get_tags(person.tags, models.tags.PersonTag.ORCID)
+            }
+        ]
+        name_matches = [
             person
             for person in local_authors
             if _orcid_result_matches_person(result, person)
         ]
+        # A stored identifier is stronger identity evidence than a fuzzy public-name
+        # match. This matters for papers containing similar names (for example Tomasz
+        # Szczygielski and Tomasz Sulej): once the identifier is assigned to exactly
+        # one author, do not keep reporting the other name match as ambiguous.
+        matches = identifier_matches or name_matches
         if len(matches) == 1:
             candidates_by_person[matches[0]].append(result)
         elif len(matches) > 1:
@@ -2939,22 +3005,37 @@ def infer_author_orcids_from_orcid(
                 result.other_names,
             )
         ):
+            closest = _closest_article_author(result, local_authors)
+            comparison = (
+                "article has no authors"
+                if closest is None
+                else "closest article author: "
+                f"{_format_person_for_orcid_comparison(closest)}"
+            )
             yield (
                 f"ORCID DOI author does not match an article author: "
-                f"{_format_orcid_search_result(result)}"
+                f"{_format_orcid_search_result(result, include_name_fields=True)}; "
+                f"{comparison}"
             )
 
     for person, candidates in candidates_by_person.items():
         candidate_orcids = {candidate.orcid for candidate in candidates}
+        existing_tags = list(person.get_tags(person.tags, models.tags.PersonTag.ORCID))
+        existing_orcids = {normalize_orcid(tag.text) for tag in existing_tags}
         if len(candidate_orcids) > 1:
+            # Multiple public profiles can legitimately belong to one researcher
+            # (usually because ORCID did not deduplicate two registrations). Once
+            # every identifier has been reviewed and stored on the Person, this
+            # Article has no remaining identity discrepancy to report. Person lint
+            # remains responsible for requiring an explicit multiple_orcids ignore.
+            if candidate_orcids <= existing_orcids:
+                continue
             yield (
                 f"multiple ORCID profiles claiming DOI {art.doi} match {person}: "
                 f"{sorted(candidate_orcids)}"
             )
             continue
         candidate_orcid = next(iter(candidate_orcids))
-        existing_tags = list(person.get_tags(person.tags, models.tags.PersonTag.ORCID))
-        existing_orcids = {normalize_orcid(tag.text) for tag in existing_tags}
         if candidate_orcid in existing_orcids:
             continue
         if existing_tags:
@@ -2973,7 +3054,9 @@ def infer_author_orcids_from_orcid(
 
 
 @LINT.add(
-    "data_from_orcid", required_resources={LintResource.NETWORK, LintResource.SLOW}
+    "data_from_orcid",
+    required_resources={LintResource.NETWORK, LintResource.SLOW},
+    disabled=True,
 )
 def data_from_orcid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
     """Compare title and year with consistent public ORCID work summaries.
@@ -3012,25 +3095,28 @@ def data_from_orcid(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
 
     titles_by_normalized: dict[str, set[str]] = defaultdict(set)
     for _, work in evidence:
-        if work.title:
-            normalized = helpers.simplify_string(work.title, clean_words=False).rstrip(
-                "*"
-            )
+        for title in (work.title, work.translated_title):
+            if title is None:
+                continue
+            normalized = helpers.simplify_string(title, clean_words=False).rstrip("*")
             if normalized:
-                titles_by_normalized[normalized].add(work.title)
+                titles_by_normalized[normalized].add(title)
     article_title = (
         helpers.simplify_string(art.title, clean_words=False).rstrip("*")
         if art.title is not None
         else None
     )
-    if article_title is not None and len(titles_by_normalized) == 1:
-        ((orcid_title, display_titles),) = titles_by_normalized.items()
-        if article_title != orcid_title:
-            yield (
-                f"title mismatch: {sorted(display_titles)!r} "
-                f"({evidence_description}) vs. "
-                f"{art.title} (article)"
-            )
+    if (
+        article_title is not None
+        and article_title not in titles_by_normalized
+        and len(titles_by_normalized) == 1
+    ):
+        ((_, display_titles),) = titles_by_normalized.items()
+        yield (
+            f"title mismatch: {sorted(display_titles)!r} "
+            f"({evidence_description}) vs. "
+            f"{art.title} (article)"
+        )
 
     years = {
         work.publication_year

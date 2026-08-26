@@ -10,7 +10,11 @@ from taxonomy.db.constants import PersonType
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import IgnoreLint, Lint
 
-from .name_matching import external_identity_matches_person, format_external_identity
+from .name_matching import (
+    external_identity_matches_person,
+    format_external_identity,
+    public_identity_matches_person,
+)
 from .person import Person, normalize_orcid
 
 
@@ -57,6 +61,39 @@ def _identity_person(person: Person) -> Person:
     return person
 
 
+def _person_orcids(person: Person) -> set[str]:
+    return {normalize_orcid(tag.text) for tag in get_orcid_tags(person)}
+
+
+def _format_author_suggestion(
+    profile: orcid.OrcidProfile, stored_orcid: str, authors: list[Person]
+) -> str:
+    same_orcid = [
+        author for author in authors if stored_orcid in _person_orcids(author)
+    ]
+    if same_orcid:
+        names = sorted({author.get_full_name() for author in same_orcid})
+        return f"; article author with the same ORCID: {', '.join(map(repr, names))}"
+
+    public_name_matches = [
+        author
+        for author in authors
+        if external_identity_matches_person(
+            given_names=profile.given_names,
+            family_names=profile.family_names,
+            credit_name=profile.credit_name,
+            other_names=profile.other_names,
+            person=author,
+        )
+    ]
+    if public_name_matches:
+        names = sorted({author.get_full_name() for author in public_name_matches})
+        return (
+            f"; ORCID public name matches article author: {', '.join(map(repr, names))}"
+        )
+    return ""
+
+
 @LINT.add("orcid_profile", required_resources={LintResource.NETWORK, LintResource.SLOW})
 def orcid_profile(person: Person, cfg: LintConfig) -> Iterable[str]:
     """Check stored identifiers against their public ORCID identity records."""
@@ -80,7 +117,7 @@ def orcid_profile(person: Person, cfg: LintConfig) -> Iterable[str]:
                 profile.other_names,
             )
         )
-        if has_public_name and not external_identity_matches_person(
+        if has_public_name and not public_identity_matches_person(
             given_names=profile.given_names,
             family_names=profile.family_names,
             credit_name=profile.credit_name,
@@ -117,6 +154,10 @@ def _articles_by_doi() -> dict[str, tuple[models.Article, ...]]:
 def orcid_works(person: Person, cfg: LintConfig) -> Iterable[str]:
     """Check known DOI works against the Article author list."""
     identity = _identity_person(person)
+    ignored_works = {
+        (normalize_orcid(tag.orcid), orcid.normalize_doi(tag.doi))
+        for tag in person.get_tags(person.tags, models.tags.PersonTag.IgnoreORCIDWork)
+    }
     checked_articles: set[int] = set()
     for tag in get_orcid_tags(person):
         stored_orcid = normalize_orcid(tag.text)
@@ -124,16 +165,23 @@ def orcid_works(person: Person, cfg: LintConfig) -> Iterable[str]:
         if profile is None:
             continue
         for work in profile.works:
+            if (stored_orcid, work.doi) in ignored_works:
+                continue
             for article in _articles_by_doi().get(work.doi, ()):
                 if article.id in checked_articles:
                     continue
                 checked_articles.add(article.id)
-                author_identities = {
-                    _identity_person(author) for author in article.get_authors()
-                }
+                author_identities = list(
+                    dict.fromkeys(
+                        _identity_person(author) for author in article.get_authors()
+                    )
+                )
                 if identity not in author_identities:
+                    suggestion = _format_author_suggestion(
+                        profile, stored_orcid, author_identities
+                    )
                     yield (
                         f"ORCID {stored_orcid} lists DOI {work.doi}, but "
                         f"{identity.get_full_name()!r} is not an author of "
-                        f"Article {article.name!r}"
+                        f"Article {article.name!r}{suggestion}"
                     )
