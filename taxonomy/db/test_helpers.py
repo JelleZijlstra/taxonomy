@@ -17,6 +17,7 @@ from .helpers import (
     make_roman_numeral,
     parse_roman_numeral,
     romanize_russian,
+    romanize_ukrainian,
     trimdoi,
 )
 
@@ -433,6 +434,31 @@ def test_romanize_russian() -> None:
     assert_romanizes("Брянск", "Bryansk")
     assert_romanizes("Вяртсиля", "Vyartsilya")
     assert_romanizes("Ташчишма", "Tashchishma")
+
+
+@pytest.mark.parametrize(
+    ("cyrillic", "latin"),
+    [
+        ("Андрій", "Andrii"),
+        ("Богдан", "Bohdan"),
+        ("Ґалаґан", "Galagan"),
+        ("Згурський", "Zghurskyi"),
+        ("Єнакієве", "Yenakiieve"),
+        ("Гаєвич", "Haievych"),
+        ("Їжакевич", "Yizhakevych"),
+        ("Мар'їне", "Marine"),
+        ("Йосипівка", "Yosypivka"),
+        ("Стрий", "Stryi"),
+        ("Олексій", "Oleksii"),
+        ("Юрій", "Yurii"),
+        ("Корюківка", "Koriukivka"),
+        ("Ярошенко", "Yaroshenko"),
+        ("Костянтин", "Kostiantyn"),
+        ("Знам'янка", "Znamianka"),
+    ],
+)
+def test_romanize_ukrainian(cyrillic: str, latin: str) -> None:
+    assert romanize_ukrainian(cyrillic) == latin
 
 
 def test_trimdoi() -> None:

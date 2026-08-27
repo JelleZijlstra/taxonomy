@@ -1049,7 +1049,7 @@ class NamingConvention(enum.IntEnum):
 class PersonType(enum.IntEnum):
     unchecked = 1
     checked = 2
-    soft_redirect = 3
+    soft_redirect = 3  # deprecated; Person lint converts this to hard_redirect
     hard_redirect = 4
     deleted = 5
     alias = 6

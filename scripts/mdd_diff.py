@@ -17,7 +17,7 @@ from typing import IO, TypedDict
 
 import unidecode
 
-from taxonomy.db import helpers, models
+from taxonomy.db import models
 from taxonomy.db.constants import (
     AgeClass,
     NamingConvention,
@@ -270,7 +270,7 @@ def get_need_initials_authors(nams: Iterable[Name]) -> set[str]:
             all_authors.update(nam.original_citation.get_authors())
     family_name_to_authors: Counter[str] = Counter()
     for author in all_authors:
-        family_name_to_authors[helpers.romanize_russian(author.family_name)] += 1
+        family_name_to_authors[author.get_transliterated_family_name()] += 1
     return {
         family_name
         for family_name, count in family_name_to_authors.items()
@@ -339,12 +339,11 @@ def get_mdd_style_authority_for_single_person(
                     family_name = f"{person.tussenvoegsel} {family_name}"
             if person.family_name not in need_initials:
                 return family_name
-            initials = person.get_initials()
+            initials = person.get_transliterated_initials()
             if initials is None:
                 if WARN_NO_INITIALS:
                     print(f"warning: no initials for {person} in {nam}")
                 return family_name
-            initials = helpers.romanize_russian(initials)
             initials = re.sub(r"\.(?=[A-Z])", ". ", initials)
             return f"{initials} {family_name}"
 
@@ -387,10 +386,9 @@ def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
         yield hesp_author.get_transliterated_family_name()
 
     for family_name in _possible_family_names(hesp_author):
-        family_name = helpers.romanize_russian(family_name)
+        family_name = hesp_author.romanize(family_name)
         yield family_name
-        if initials := hesp_author.get_initials():
-            initials = helpers.romanize_russian(initials)
+        if initials := hesp_author.get_transliterated_initials():
             for remove_infix in (False, True):
                 for splits in r" ", r"(?<=\.)(?!-)| ":
                     initials_list = re.split(splits, initials)
@@ -439,7 +437,7 @@ def compare_authors_to_name(
     mdd_authority, *_ = raw_mdd_authority.split(" in ")
     mdd_authors = re.split(r", (?:& )?| & ", mdd_authority)
     hesp_authors = nam.get_authors()
-    hesp_authority = helpers.romanize_russian(nam.taxonomic_authority())
+    hesp_authority = nam.romanized_taxonomic_authority()
     if len(mdd_authors) != len(hesp_authors):
         yield Difference(
             DifferenceKind.authority,

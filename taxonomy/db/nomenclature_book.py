@@ -26,7 +26,6 @@ import gspread
 
 from taxonomy import getinput
 from taxonomy.config import get_options
-from taxonomy.db import helpers
 from taxonomy.db.constants import (
     AgeClass,
     Group,
@@ -225,7 +224,7 @@ def get_names(taxa: Iterable[Taxon]) -> Iterable[Name]:
 
 
 def display_name(name: Name) -> str:
-    return f"_{name.corrected_original_name}_ {helpers.romanize_russian( name.taxonomic_authority())}, {name.numeric_year()}"
+    return f"_{name.corrected_original_name}_ {name.romanized_taxonomic_authority()}, {name.numeric_year()}"
 
 
 def get_type_locality_prefix(location: Location | None) -> str:
@@ -291,9 +290,7 @@ def get_past_treatments(taxon: Taxon, ces: set[tuple[str, ClassificationEntry]])
         ce.authority.strip("()").replace(" and ", " & ").replace(",", "")
         for _, ce in ces
         if ce.authority
-    } | {
-        helpers.romanize_russian(taxon.base_name.taxonomic_authority()).replace(",", "")
-    }
+    } | {taxon.base_name.romanized_taxonomic_authority().replace(",", "")}
     if len(authors) > 1:
         authors_grouped: dict[str, list[str]] = {}
         for label, ce in ces:
@@ -530,7 +527,7 @@ def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
             rank=taxon.rank,
             name=taxon.valid_name,
             original_combination=name.original_name,
-            authority=helpers.romanize_russian(name.taxonomic_authority()),
+            authority=name.romanized_taxonomic_authority(),
             year=str(name.year),
             should_parenthesize=bool(name.should_parenthesize_authority()),
             page=(

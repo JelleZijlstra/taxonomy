@@ -2,7 +2,7 @@
 
 import re
 
-from taxonomy.db import helpers, models
+from taxonomy.db import models
 from taxonomy.db.constants import ArticleType, NamingConvention
 from taxonomy.db.models.person import Person
 
@@ -49,7 +49,7 @@ def format_authors(
     separator: str = ";",  # Text between two authors
     last_separator: str | None = None,  # Text between last two authors
     separator_with_two_authors: (
-        None | str
+        str | None
     ) = None,  # Text between authors if there are only two
     capitalize_names: bool = False,  # Whether to capitalize names
     space_initials: bool = False,  # Whether to space initials
@@ -85,17 +85,22 @@ def format_authors(
         if capitalize_names:
             family_name = family_name.upper()
         if include_initials:
-            initials = author.get_initials()
+            initials = (
+                author.get_transliterated_initials()
+                if romanize
+                else author.get_initials()
+            )
         else:
             initials = None
         if initials:
             if not include_dots:
                 initials = initials.replace(".", "")
-            if romanize:
-                initials = helpers.romanize_russian(initials)
             if space_initials:
                 initials = re.sub(r"\.(?![- ]|$)", ". ", initials)
-            if author.tussenvoegsel:
+            if (
+                author.tussenvoegsel
+                and author.naming_convention is not NamingConvention.vietnamese
+            ):
                 initials += f" {author.tussenvoegsel}"
 
             if first_initials_before_name if i == 0 else initials_before_name:
@@ -437,7 +442,7 @@ def cite_vertpalasiat(article: Article) -> str:
         initials = p.get_initials() or ""
         # VertPala style: no dots, hyphens removed, spaced initials
         initials = initials.replace(".", "").replace("-", "").upper()
-        if p.tussenvoegsel:
+        if p.tussenvoegsel and p.naming_convention is not NamingConvention.vietnamese:
             # Tussenvoegsel after initials, matching other styles' placement
             initials = f"{initials} {p.tussenvoegsel}" if initials else p.tussenvoegsel
         if initials:

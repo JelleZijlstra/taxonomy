@@ -1666,6 +1666,9 @@ class Name(BaseModel):
     def taxonomic_authority(self) -> str:
         return Person.join_authors(self.get_authors())
 
+    def romanized_taxonomic_authority(self) -> str:
+        return Person.join_authors(self.get_authors(), romanize=True)
+
     def should_parenthesize_authority(self) -> bool | None:
         if self.group is not Group.species:
             return False

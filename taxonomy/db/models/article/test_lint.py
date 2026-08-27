@@ -640,12 +640,25 @@ def test_doi_author_match_accepts_suffix_in_family_name() -> None:
 
 def test_doi_author_match_accepts_vietnamese_field_partition() -> None:
     person = _person_with_orcids()
-    person.family_name = "Truong"
-    person.given_names = "Nguyen Quang"
+    person.family_name = "Nguyen"
+    person.given_names = "Truong"
+    person.tussenvoegsel = "Quang"
     person.naming_convention = NamingConvention.vietnamese
 
     assert lint._doi_author_matches_person(
         VirtualPerson(family_name="Nguyen", given_names="Truong Quang"), person
+    )
+
+
+def test_doi_author_match_accepts_native_order_vietnamese_partition() -> None:
+    person = _person_with_orcids()
+    person.family_name = "Nguyen"
+    person.given_names = "Son"
+    person.tussenvoegsel = "Truong"
+    person.naming_convention = NamingConvention.vietnamese
+
+    assert lint._doi_author_matches_person(
+        VirtualPerson(family_name="Son", given_names="Nguyen Truong"), person
     )
 
 

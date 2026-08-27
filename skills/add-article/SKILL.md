@@ -3,16 +3,17 @@ name: add-article
 description:
   Find and verify an Article file, choose its catalog filename and library folder,
   resolve bibliographic metadata, CitationGroup, and edited-volume parent dependencies,
-  and write reviewed create_article recommendations without changing the database. Use
-  when adding a new electronic Article, book, dissertation, book chapter, or parented
-  supplementary file to the taxonomy library.
+  and write reviewed create_article or create_item_file recommendations without changing
+  the database. Use when adding a new electronic Article, book, dissertation, book
+  chapter, or parented supplementary file to the taxonomy library, or retaining a whole
+  journal volume or issue as an ItemFile.
 ---
 
 # Add an Article
 
-Prepare source-faithful electronic files and executable `create_article`
-recommendations. Leave each file in the configured staging folder and leave application
-to the user.
+Prepare source-faithful electronic files and executable `create_article` or
+`create_item_file` recommendations. Leave each file in the configured staging folder and
+leave application to the user.
 
 ## Scope
 
@@ -28,6 +29,10 @@ supplementary Articles in their original electronic format. It supports:
 - supplementary PDFs, spreadsheets, documents, and other catalog-supported files whose
   parent is an existing or planned Article; and
 - unchecked Person creation from the Article's author list.
+
+Whole journal volumes and issues use the
+[ItemFile workflow](#whole-volume-and-issue-pdfs-itemfile) below, including source
+volumes downloaded to extract individual Articles.
 
 The only supported Article without an electronic file is a BOOK needed as the parent of
 a staged chapter. Non-PDF files must be parented `SUPPLEMENT` Articles. Stop and explain
@@ -87,8 +92,16 @@ Do not create or reconcile Persons during research. The action uses
 
 ### 4. Choose target and validate the Article name
 
-Create an Article object for PDFs with a single publication. For PDFs covering a whole
-volume of a journal, instead create an ItemFile object.
+Use `create_article` for a PDF containing a single publication. For a whole journal
+volume or issue, follow the ItemFile workflow below instead of Article-specific steps
+4–7. When extracting an Article from a whole-volume download (for example from Google
+Books or BHL), retain the complete downloaded PDF and prepare an ItemFile recommendation
+for it as well, unless an appropriate ItemFile already exists.
+
+If a paper appeared in separate installments, preserve the publication units as separate
+PDFs and verify each printed page range. Record source-PDF page indices in evidence;
+they are not necessarily the printed page numbers. Do not infer publication months from
+issue numbers alone.
 
 To name the Article, choose a concise content description under
 `docs/article-naming.md`. The source title is not the filename. Electronic Article names
@@ -247,16 +260,83 @@ issue.
 Do not use `--apply`. Tell the user where the staged file and manifest are, summarize
 CrossRef overrides and any new CitationGroup, and hand off the exact validation results.
 
+## Whole-volume and issue PDFs: ItemFile
+
+Inspect `taxonomy/db/models/item_file.py` and `taxonomy/applicator/item_file.py` for the
+current fields and action schema. Use `create_item_file`, not generic `create_object`
+plus a separate file move: the dedicated action guards the file size and SHA-256.
+
+- Preserve the complete downloaded PDF unchanged, including wrappers, contents,
+  separately paginated sections, plates, and blank leaves. Check its actual contents and
+  boundaries rather than trusting the host's volume label. Keep Article extracts as
+  separate staged files; do not substitute an extract for the source ItemFile.
+- Check existing ItemFiles by source URL/identifier, CitationGroup, series, volume,
+  issue, and filename. A matching title or volume number alone does not establish the
+  same source, particularly across series. Reuse an appropriate existing ItemFile; do
+  not overwrite a different file or create a duplicate under another name.
+- Stage the whole PDF under `config.get_options().new_path`. The destination is
+  `config.get_options().item_file_path`, which must already exist. Choose a plain PDF
+  filename with no directory components; Article filename grammar does not apply.
+- Snapshot an existing CitationGroup's ID and exact name. Inline CitationGroup creation
+  is not supported by this action. Follow its series/volume/issue conventions; propose
+  any necessary CitationGroup tag correction separately, with source evidence, and
+  validate the proposed objects together.
+- Put supported, verified metadata in `item_file.fields`: `title`, `series`, `volume`,
+  `issue`, `start_page`, `end_page`, and `url` (strings or null). Prefer a stable
+  volume/item URL over an expiring download URL. There are no `year`, `authors`, or
+  `pages` fields on ItemFile. Preserve the year, multiple pagination sequences, and
+  other bibliographic qualifications in evidence or an `ItemFileTag.IFComment`; do not
+  manufacture one continuous page range for separately paginated sections.
+- Serialize ItemFile tags with their `serialize()` method. Record the full source URL,
+  acquisition URL, verified extent, and extraction mapping in evidence so that each
+  extract remains traceable to its source. An ItemFile is not an Article `parent`.
+
+Write a new JSONL row with this shape (replace example values with verified data):
+
+```json
+{
+  "schema_version": 1,
+  "action": "create_item_file",
+  "confidence": "high",
+  "reason": "Retain the complete source volume used for Article extracts.",
+  "evidence": [
+    { "kind": "source", "text": "Verified source URL, title, year, and extent." }
+  ],
+  "item_file": {
+    "filename": "Journal volume 12 (1900).pdf",
+    "citation_group": { "id": 123, "name": "Journal name" },
+    "fields": { "volume": "12", "url": "https://example.com/volume/12" },
+    "tags": []
+  },
+  "file": {
+    "source_path": "downloaded-whole-volume.pdf",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "size": 123456
+  }
+}
+```
+
+`file.source_path` is relative to `new_path`; unlike `create_article`, this action has
+no `destination_folder`. Run the same review, virtual lint, and dry run as step 8,
+including any companion Article rows. Leave installation and database creation to the
+user; do not call interactive ItemFile creation/check methods during preparation.
+
 ## Application semantics
 
-On explicit human application, actions run in manifest order. A no-copy parent creates
-or reuses its CitationGroup, creates unchecked editor Persons and the BOOK, and records
-normal Article history without touching the filesystem. A child then creates unchecked
-author Persons, points to that exact parent, and installs the file through a verified
-temporary copy. PDFs are then extracted into the configured text store and indexed for
-search; all formats receive the normal Article history entries. Only after those steps
-succeed does it remove the staged source. An interrupted exact partial state can be
-rerun; any differing database value, parent, or file checksum blocks the action.
+On explicit human application, `create_item_file` installs a checksum-verified copy in
+`item_file_path`, creates the ItemFile, and only then removes the staged source. It
+retains the complete PDF when Articles are later extracted with `ItemFile.burst()`.
+Interrupted exact partial states can be retried; conflicting metadata or bytes are
+rejected.
+
+For Article actions, a no-copy parent creates or reuses its CitationGroup, creates
+unchecked editor Persons and the BOOK, and records normal Article history without
+touching the filesystem. A child then creates unchecked author Persons, points to that
+exact parent, and installs the file through a verified temporary copy. PDFs are then
+extracted into the configured text store and indexed for search; all formats receive the
+normal Article history entries. Only after those steps succeed does it remove the staged
+source. An interrupted exact partial state can be rerun; any differing database value,
+parent, or file checksum blocks the action.
 
 The action deliberately does not call the interactive `edittitle()`,
 `specify_authors()`, or `edit_until_clean()` loops used by the traditional shell flow.

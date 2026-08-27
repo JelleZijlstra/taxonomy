@@ -1084,6 +1084,102 @@ def romanize_russian(cyrillic: str) -> str:
     return "".join(out)
 
 
+_UKRAINIAN_ROMANIZATION = {
+    "а": "a",
+    "б": "b",
+    "в": "v",
+    "г": "h",
+    "ґ": "g",
+    "д": "d",
+    "е": "e",
+    "ж": "zh",
+    "з": "z",
+    "и": "y",
+    "і": "i",
+    "к": "k",
+    "л": "l",
+    "м": "m",
+    "н": "n",
+    "о": "o",
+    "п": "p",
+    "р": "r",
+    "с": "s",
+    "т": "t",
+    "у": "u",
+    "ф": "f",
+    "х": "kh",
+    "ц": "ts",
+    "ч": "ch",
+    "ш": "sh",
+    "щ": "shch",
+}
+_UKRAINIAN_WORD_INITIAL_ROMANIZATION = {
+    "є": "ye",
+    "ї": "yi",
+    "й": "y",
+    "ю": "yu",
+    "я": "ya",
+}
+_UKRAINIAN_NONINITIAL_ROMANIZATION = {
+    "є": "ie",
+    "ї": "i",
+    "й": "i",
+    "ю": "iu",
+    "я": "ia",
+}
+_UKRAINIAN_OMITTED_CHARACTERS = {"ь", "'", "’", "ʼ", "`"}
+
+
+def romanize_ukrainian(cyrillic: str) -> str:
+    """Romanize Ukrainian text using the official Ukrainian national system.
+
+    This implements the table in Cabinet of Ministers Resolution No. 55 of
+    January 27, 2010. In particular, it handles the position-dependent letters
+    and the special letter sequence romanized as Zgh.
+
+    """
+    out: list[str] = []
+    index = 0
+    at_word_start = True
+    while index < len(cyrillic):
+        character = cyrillic[index]
+        lower = character.lower()
+
+        if lower == "з" and index + 1 < len(cyrillic):
+            next_character = cyrillic[index + 1]
+            if next_character.lower() == "г":
+                replacement = "zgh"
+                index += 2
+            else:
+                replacement = _UKRAINIAN_ROMANIZATION[lower]
+                index += 1
+        elif lower in _UKRAINIAN_WORD_INITIAL_ROMANIZATION:
+            table = (
+                _UKRAINIAN_WORD_INITIAL_ROMANIZATION
+                if at_word_start
+                else _UKRAINIAN_NONINITIAL_ROMANIZATION
+            )
+            replacement = table[lower]
+            index += 1
+        elif lower in _UKRAINIAN_ROMANIZATION:
+            replacement = _UKRAINIAN_ROMANIZATION[lower]
+            index += 1
+        elif lower in _UKRAINIAN_OMITTED_CHARACTERS:
+            index += 1
+            continue
+        else:
+            out.append(character)
+            at_word_start = not character.isalpha()
+            index += 1
+            continue
+
+        if character.isupper():
+            replacement = replacement[0].upper() + replacement[1:]
+        out.append(replacement)
+        at_word_start = False
+    return "".join(out)
+
+
 def extract_sources(text: str) -> Iterable[str]:
     for source in re.findall(r"{[^{}]+}", text):
         yield source[1:-1]

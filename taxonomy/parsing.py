@@ -373,6 +373,7 @@ vietnamese_name = (latin_upper | C(["Đ"])) + OneOrMore(
 vietnamese_given_names = (
     vietnamese_name + ZeroOrMore(L(" ") + vietnamese_name) + Optional(L(" ") + initials)
 )
+vietnamese_family_name = vietnamese_name + ZeroOrMore(L(" ") + vietnamese_name)
 
 nickname = L('"') + name + L('"')
 given_names = (
@@ -492,7 +493,7 @@ chinese_given_names_pattern = chinese_given_names.compile()
 pinyin_family_name_lowercased_pattern = pinyin_family_name.compile()
 pinyin_given_names_pattern = pinyin_given_names_cased.compile()
 pinyin_given_names_lowercased_pattern = pinyin_given_names.compile()
-vietnamese_family_name_pattern = vietnamese_name.compile()
+vietnamese_family_name_pattern = vietnamese_family_name.compile()
 vietnamese_given_names_pattern = vietnamese_given_names.compile()
 
 special_collection = OneOf.from_strs(["in situ", "lost", "untraced", "multiple"])

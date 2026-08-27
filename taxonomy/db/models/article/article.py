@@ -1214,6 +1214,12 @@ class Article(BaseModel):
     def taxonomic_authority(self) -> tuple[str, str]:
         return (Person.join_authors(self.get_authors()), self.get_year_only() or "")
 
+    def romanized_taxonomic_authority(self) -> tuple[str, str]:
+        return (
+            Person.join_authors(self.get_authors(), romanize=True),
+            self.get_year_only() or "",
+        )
+
     def author_set(self) -> set[int]:
         return {pair[1] for pair in self.get_raw_tags_field("author_tags")}
 

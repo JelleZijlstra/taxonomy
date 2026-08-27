@@ -13,7 +13,11 @@ from taxonomy.db.models.person import (
     lint,
     normalize_orcid,
 )
-from taxonomy.db.models.person.lint import multiple_orcids, redirect_to_less_specific
+from taxonomy.db.models.person.lint import (
+    multiple_orcids,
+    redirect_to_less_specific,
+    soft_redirect,
+)
 
 
 def _person_with_tags(*tags: object) -> Mock:
@@ -367,6 +371,28 @@ def test_redirect_is_never_more_specific_than_canonical_person() -> None:
 
     assert not is_more_specific_than(redirect, canonical)
     assert is_more_specific_than(canonical, redirect)
+
+
+def test_soft_redirect_is_migrated_to_hard_redirect() -> None:
+    canonical = Person.virtual(
+        family_name="Esteban",
+        given_names="Graciela",
+        naming_convention=NamingConvention.unspecified,
+        tags=(),
+        type=PersonType.unchecked,
+    )
+    redirect = Person.virtual(
+        family_name="Esteban",
+        given_names="Graciela I.",
+        naming_convention=NamingConvention.unspecified,
+        tags=(),
+        type=PersonType.soft_redirect,
+        target=canonical,
+    )
+    cfg = LintConfig(autofix=False, structured_autofix=True, interactive=False)
+
+    assert list(soft_redirect(redirect, cfg)) == []
+    assert redirect.type is PersonType.hard_redirect
 
 
 def test_redirect_to_less_specific_name_is_diagnostic() -> None:

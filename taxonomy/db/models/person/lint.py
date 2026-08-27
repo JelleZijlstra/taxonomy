@@ -9,7 +9,8 @@ from taxonomy.apis import orcid
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import PersonType
 from taxonomy.db.models.base import LintConfig, LintResource
-from taxonomy.db.models.lint import IgnoreLint, Lint
+from taxonomy.db.models.lint import IgnoreLint, Lint, field_issue
+from taxonomy.db.models.lint_types import LintResult
 
 from .name_matching import (
     external_identity_matches_person,
@@ -46,6 +47,18 @@ def duplicate_orcid(person: Person) -> Iterable[str]:
     # Use every ORCID so a reviewed, legitimate multi-profile Person still
     # participates in duplicate detection for each identifier.
     return {normalize_orcid(tag.text) for tag in get_orcid_tags(person)}
+
+
+@LINT.add("soft_redirect")
+def soft_redirect(person: Person, cfg: LintConfig) -> Iterable[LintResult]:
+    """Replace the deprecated soft-redirect state with a hard redirect."""
+    if person.type is PersonType.soft_redirect:
+        yield field_issue(
+            "converting deprecated soft redirect to hard redirect",
+            person,
+            "type",
+            PersonType.hard_redirect,
+        )
 
 
 def _virtual_name(person: Person) -> VirtualPerson:

@@ -2,7 +2,7 @@ import argparse
 import re
 from dataclasses import dataclass
 
-from taxonomy.db import helpers, models
+from taxonomy.db import models
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank, RegionKind
 from taxonomy.db.models.article.article import Article
 from taxonomy.db.models.name.name import Name, NameTag, TypeTag
@@ -209,10 +209,8 @@ def get_year(year: str | None) -> str:
 
 def stringify_author_list(authors: list[Person]) -> str:
     if len(authors) <= 2:
-        return " and ".join(
-            helpers.romanize_russian(auth.family_name) for auth in authors
-        )
-    return f"{helpers.romanize_russian(authors[0].family_name)} et al."
+        return " and ".join(auth.get_transliterated_family_name() for auth in authors)
+    return f"{authors[0].get_transliterated_family_name()} et al."
 
 
 def stringify_synonymies(syns: list[tuple[Taxon, list[SynonymyEntry]]]) -> list[str]:

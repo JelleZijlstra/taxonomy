@@ -491,7 +491,7 @@ def person_author_aliases(person: Person) -> set[str]:
         NamingConvention.russian,
         NamingConvention.ukrainian,
     ):
-        aliases.add(compact_key(helpers.romanize_russian(family_name)))
+        aliases.add(compact_key(person.get_transliterated_family_name()))
     if person.naming_convention in (
         NamingConvention.pinyin,
         NamingConvention.chinese,

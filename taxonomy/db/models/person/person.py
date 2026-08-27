@@ -59,7 +59,9 @@ ALLOWS_SUFFIXES = {
     NamingConvention.french,
     NamingConvention.portuguese,
 }
-UNCHECKED_TYPES = (
+# A legacy soft redirect may still be returned by an exact-name lookup until Person
+# lint has migrated the database. No code path should create a new one.
+REUSABLE_NAME_TYPES = (
     PersonType.unchecked,
     PersonType.soft_redirect,
     PersonType.hard_redirect,
@@ -289,11 +291,30 @@ class Person(BaseModel):
         return "".join(parts)
 
     def get_full_name(self, *, family_first: bool = False) -> str:
+        uses_family_name_first_order = self.naming_convention in (
+            NamingConvention.pinyin,
+            NamingConvention.chinese,
+            NamingConvention.japanese,
+            NamingConvention.korean,
+            NamingConvention.hungarian,
+        )
         parts = []
         if family_first:
             parts.append(self.family_name)
             if self.given_names or self.initials or self.tussenvoegsel:
                 parts.append(", ")
+                if self.given_names:
+                    parts.append(self.given_names)
+                elif self.initials:
+                    parts.append(self.initials)
+                if self.tussenvoegsel and (self.given_names or self.initials):
+                    parts.append(" ")
+                if self.tussenvoegsel:
+                    parts.append(self.tussenvoegsel)
+        elif uses_family_name_first_order:
+            parts.append(self.family_name)
+            if self.given_names or self.initials or self.tussenvoegsel:
+                parts.append(" ")
                 if self.given_names:
                     parts.append(self.given_names)
                 elif self.initials:
@@ -329,14 +350,29 @@ class Person(BaseModel):
         return get_initials(self)
 
     @classmethod
-    def join_authors(cls, authors: Sequence[Person]) -> str:
+    def join_authors(cls, authors: Sequence[Person], *, romanize: bool = False) -> str:
+        def authority(author: Person) -> str:
+            if romanize and author.naming_convention in (
+                NamingConvention.russian,
+                NamingConvention.ukrainian,
+            ):
+                return author.get_transliterated_family_name()
+            return author.taxonomic_authority()
+
         if len(authors) <= 2:
-            return " & ".join(author.taxonomic_authority() for author in authors)
+            return " & ".join(authority(author) for author in authors)
         return (
-            ", ".join(author.taxonomic_authority() for author in authors[:-1])
+            ", ".join(authority(author) for author in authors[:-1])
             + " & "
-            + authors[-1].taxonomic_authority()
+            + authority(authors[-1])
         )
+
+    def romanize(self, text: str) -> str:
+        if self.naming_convention is NamingConvention.ukrainian:
+            return helpers.romanize_ukrainian(text)
+        if self.naming_convention is NamingConvention.russian:
+            return helpers.romanize_russian(text)
+        return text
 
     def get_transliterated_family_name(self) -> str:
         if self.naming_convention not in (
@@ -348,9 +384,20 @@ class Person(BaseModel):
             self.tags, models.tags.PersonTag.TransliteratedFamilyName
         ):
             return tag.text
-        return helpers.romanize_russian(self.family_name)
+        return self.romanize(self.family_name)
+
+    def get_transliterated_initials(self) -> str | None:
+        initials = self.get_initials()
+        if initials is None:
+            return None
+        return self.romanize(initials)
 
     def taxonomic_authority(self) -> str:
+        if (
+            self.naming_convention is NamingConvention.vietnamese
+            and self.given_names is not None
+        ):
+            return self.given_names
         if (
             self.tussenvoegsel is not None
             and self.naming_convention is NamingConvention.dutch
@@ -592,9 +639,22 @@ class Person(BaseModel):
         if self.naming_convention is NamingConvention.other:
             return
         if self.tussenvoegsel:
-            allowed = ALLOWED_TUSSENVOEGSELS.get(self.naming_convention, set())
-            if self.tussenvoegsel not in allowed:
-                yield f"{self}: disallowed tussenvoegsel {self.tussenvoegsel!r}"
+            if self.naming_convention is NamingConvention.vietnamese:
+                is_name = parsing.matches_grammar(
+                    self.tussenvoegsel, parsing.vietnamese_given_names_pattern
+                )
+                is_initials = parsing.matches_grammar(
+                    self.tussenvoegsel, parsing.initials_pattern
+                )
+                if not is_name and not is_initials:
+                    yield (
+                        f"{self}: invalid Vietnamese middle names: "
+                        f"{self.tussenvoegsel!r}"
+                    )
+            else:
+                allowed = ALLOWED_TUSSENVOEGSELS.get(self.naming_convention, set())
+                if self.tussenvoegsel not in allowed:
+                    yield f"{self}: disallowed tussenvoegsel {self.tussenvoegsel!r}"
         if self.suffix and self.naming_convention not in ALLOWS_SUFFIXES:
             yield (
                 f"{self}: suffix set for person with convention"
@@ -702,7 +762,7 @@ class Person(BaseModel):
     @classmethod
     def find_duplicates(cls, *, autofix: bool = False) -> list[list[Person]]:
         by_key: dict[tuple[str | None, ...], list[Person]] = defaultdict(list)
-        for person in cls.select_valid().filter(Person.type.is_in(UNCHECKED_TYPES)):
+        for person in cls.select_valid().filter(Person.type == PersonType.unchecked):
             key = (
                 person.family_name,
                 None if person.given_names is not None else person.initials,
@@ -776,29 +836,12 @@ class Person(BaseModel):
             return len({getattr(person, field) for person in group}) == 1
 
         if (
-            (
-                all(person.type is PersonType.unchecked for person in group)
-                and all_the_same(group, "naming_convention")
-            )
-            or (
-                group[0].get_level() is PersonLevel.has_convention
-                and all(
-                    person.get_level() < PersonLevel.has_convention
-                    for person in group[1:]
-                )
-            )
-            or (
-                all(person.type is PersonType.soft_redirect for person in group)
-                and all(
-                    all_the_same(group, field)
-                    for field in [
-                        "family_name",
-                        "given_names",
-                        "initials",
-                        "suffix",
-                        "tussenvoegsel",
-                    ]
-                )
+            all(person.type is PersonType.unchecked for person in group)
+            and all_the_same(group, "naming_convention")
+        ) or (
+            group[0].get_level() is PersonLevel.has_convention
+            and all(
+                person.get_level() < PersonLevel.has_convention for person in group[1:]
             )
         ):
             for person in group[1:]:
@@ -898,7 +941,6 @@ class Person(BaseModel):
             "reassign_initials_only": self.reassign_initials_only,
             "pinyinify": self.pinyinify,
             "move": self.move_all_references,
-            "soft": self.make_soft_redirect,
             "hard": self.make_hard_redirect,
             "print_character_names": self.print_character_names,
             "names_missing_field": self.names_missing_field,
@@ -939,23 +981,13 @@ class Person(BaseModel):
             command = getinput.get_line(
                 "command> ",
                 validate=lambda command: command
-                in (
-                    "s",
-                    "skip",
-                    "soft",
-                    "move",
-                    "soft_redirect",
-                    "",
-                    "h",
-                    "hard_redirect",
-                    "",
-                ),
+                in ("s", "skip", "move", "", "h", "hard_redirect", ""),
                 allow_none=True,
                 mouse_support=False,
                 history_key="reassign_references",
                 callbacks={
                     **self.get_wrapped_adt_callbacks(),
-                    "p": lambda: print("s = skip, r = soft redirect, d = display"),
+                    "p": lambda: print("s = skip, h = hard redirect, d = display"),
                     "e": self.edit,
                 },
                 should_stop=lambda _: self.total_references() == 0,
@@ -1017,7 +1049,7 @@ class Person(BaseModel):
             print(f"{person}: set naming convention to pinyin")
             person.naming_convention = NamingConvention.pinyin
         person.edit_until_clean()
-        self.make_soft_redirect(person)
+        self.make_hard_redirect(person)
 
     def move_all_references(self, target: Person | None = None) -> None:
         if target is None:
@@ -1027,18 +1059,6 @@ class Person(BaseModel):
         if target == self:
             print(f"Cannot move references of {self} to itself")
             return
-        self.reassign_references(target=target)
-
-    def make_soft_redirect(self, target: Person | None = None) -> None:
-        if target is None:
-            target = Person.getter(None).get_one("target > ")
-        if target is None:
-            return
-        if target == self:
-            print(f"Cannot redirect {self} to itself")
-            return
-        self.type = PersonType.soft_redirect
-        self.target = target
         self.reassign_references(target=target)
 
     def make_hard_redirect(self, target: Person | None = None) -> None:
@@ -1074,15 +1094,7 @@ class Person(BaseModel):
             refs = person.total_references()
             if refs > 0:
                 getinput.print_header(f"{person!r}: {refs} references")
-                if person.type is PersonType.hard_redirect:
-                    person.reassign_references(person.target)
-                else:
-                    person.display(full=True)
-                    if getinput.yes_no("Reassign references? "):
-                        target = person.target
-                    else:
-                        target = None
-                    person.reassign_references(target)
+                person.reassign_references(person.target)
 
     @classmethod
     def autodelete(cls, *, dry_run: bool = False) -> None:
@@ -1156,7 +1168,7 @@ class Person(BaseModel):
                     family_name=family_name,
                     given_names=given_names,
                     ol_id=ol_id,
-                    type=PersonType.soft_redirect,
+                    type=PersonType.hard_redirect,
                     target=person,
                 )
         return person
@@ -1187,7 +1199,7 @@ class Person(BaseModel):
                 Person.initials == initials,
                 Person.suffix == suffix,
                 Person.tussenvoegsel == tussenvoegsel,
-                Person.type.is_in(UNCHECKED_TYPES),
+                Person.type.is_in(REUSABLE_NAME_TYPES),
             )
         )
         if objs:
@@ -1332,6 +1344,11 @@ def get_initials(person: Person | VirtualPerson) -> str | None:
         return person.initials
     if person.given_names:
         names = person.given_names.split(" ")
+        if (
+            person.naming_convention is NamingConvention.vietnamese
+            and person.tussenvoegsel
+        ):
+            names.extend(person.tussenvoegsel.split(" "))
 
         def name_to_initial(name: str) -> str:
             if not name:

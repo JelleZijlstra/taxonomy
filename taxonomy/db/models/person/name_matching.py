@@ -48,11 +48,17 @@ _EXTERNAL_NAME_TITLES = {"dr", "mr", "mrs", "ms", "prof", "professor"}
 
 def _family_name_variants(person: Person) -> set[str]:
     names = {person.family_name}
-    if person.tussenvoegsel:
+    if (
+        person.tussenvoegsel
+        and person.naming_convention is not NamingConvention.vietnamese
+    ):
         names.add(f"{person.tussenvoegsel} {person.family_name}")
     if person.suffix:
         names.add(f"{person.family_name} {person.suffix}")
-        if person.tussenvoegsel:
+        if (
+            person.tussenvoegsel
+            and person.naming_convention is not NamingConvention.vietnamese
+        ):
             names.add(f"{person.tussenvoegsel} {person.family_name} {person.suffix}")
     names.update(
         tag.text

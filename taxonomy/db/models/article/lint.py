@@ -2567,11 +2567,17 @@ _GIVEN_NAME_PARTICLES = {
 
 def _family_name_variants(person: Person) -> set[str]:
     names = {person.family_name}
-    if person.tussenvoegsel:
+    if (
+        person.tussenvoegsel
+        and person.naming_convention is not NamingConvention.vietnamese
+    ):
         names.add(f"{person.tussenvoegsel} {person.family_name}")
     if person.suffix:
         names.add(f"{person.family_name} {person.suffix}")
-        if person.tussenvoegsel:
+        if (
+            person.tussenvoegsel
+            and person.naming_convention is not NamingConvention.vietnamese
+        ):
             names.add(f"{person.tussenvoegsel} {person.family_name} {person.suffix}")
     names.update(
         tag.text
@@ -2775,8 +2781,8 @@ def _doi_author_matches_person(doi_author: VirtualPerson, person: Person) -> boo
             if doi_initial_text == person_initial_text:
                 return True
     elif person.naming_convention is NamingConvention.vietnamese:
-        # The database stores the Vietnamese given name in family_name for citation,
-        # while Crossref usually calls the inherited family name the family name.
+        # Vietnamese names appear in both family-middle-given and
+        # given-middle-family order in bibliographic services.
         if sorted(_full_name_tokens(doi_author)) == sorted(_full_name_tokens(person)):
             return True
     if not _family_names_match(doi_author, person):

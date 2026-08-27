@@ -1,7 +1,7 @@
 # Person
 
-People are only interesting when they do something that affects the names in the
-database. They can currently do so in four ways:
+People are included in the database when they do something that affects the database's
+taxonomic and biological data. They can currently do so in four ways:
 
 - Writing [articles](/docs/article)
 - Introducing new [names](/docs/name)
@@ -24,12 +24,13 @@ Persons have the following fields:
 
 - _type_: By default this is set to _unchecked_, which means I have not manually
   reviewed the data associated with the person to verify all references are to the same
-  person. After I verify a name, I set the type to _checked_. I can also alias a name to
-  another name for the same person, making it either a _soft redirect_ (indicating that
-  references should still be verified before pointing them to the target person) or a
-  _hard redirect_ (all references should be updated to point to the target person).
-  Last, a person can be _deleted_. Unchecked persons that no longer have any references
-  to them are automatically marked as deleted.
+  person. After I verify a name, I set the type to _checked_. A _hard redirect_ marks an
+  obsolete duplicate whose references should all point to its canonical target. A _name
+  alias_ is a valid publication identity whose references intentionally retain the
+  alternate displayed name while also being aggregated under a canonical Person. The
+  former _soft redirect_ state is deprecated and automatically converted to a hard
+  redirect by Person lint. Last, a person can be _deleted_. Unchecked persons that no
+  longer have any references to them are automatically marked as deleted.
 - _naming convention_: Different cultures have different conventions for forming and
   treating personal names, and this field lets us indicate what convention to use. For
   example, this may be set to _chinese_ or _dutch_. Special cases include _organization_
@@ -42,7 +43,8 @@ Persons have the following fields:
 - _given names_: The person's given names, in full, like "Jelle Sjoerd".
 - _initials_: The person's initials, like "J.S.".
 - _suffix_: Suffixes like "Jr." and "III".
-- _tussenvoegsel_: In Dutch names, the
+- _tussenvoegsel_: This is a convention-dependent intermediate name component. In
+  Vietnamese names, it contains the middle name or names. In Dutch names, the
   [tussenvoegsel](https://en.wikipedia.org/wiki/Tussenvoegsel) consists of words like
   "de" or "van den" placed between the given and family names. The field is also used
   for some German and French names, like "von Meyer", that are not always included in
@@ -125,39 +127,65 @@ Languages written in the Latin alphabet:
   ("de la Torre").
 - _turkish_: Turkish names are separated because forms of the letter I are capitalized
   differently: I ı forms a separate pair from İ i.
-- _vietnamese_: Vietnamese names also write the family name first. Unlike most other
-  East Asian-style names, Vietnamese names usually also include a middle name. Written
-  Vietnamese uses a large set of unusual diacritics, but these seem to be usually
-  omitted when Vietnamese scientists are listed as authors. Modes of citation for
-  Vietnamese names vary; for example, [Nguyen Truong Son](/h/43537) is often cited as
-  "Son", but also as "S.T. Nguyen". However, the convention appears to be to cite people
-  by their given name, e.g. "Son". Therefore, the _family_name_ should contain the given
-  name, and the _given_names_ field should contain the family name and middle name.
+- _vietnamese_: A Vietnamese name commonly has the native order family name, middle name
+  or names, given name. International publications also commonly use the order given
+  name, middle name or names, family name. Store these components according to their
+  meaning: the inherited family name in _family_name_, the personal given name in
+  _given_names_, and the middle name or names in _tussenvoegsel_. For example, Nguyễn
+  Trường Sơn is stored with `family_name="Nguyễn"`, `tussenvoegsel="Trường"`, and
+  `given_names="Sơn"`; the ordinary Western-order display is "Sơn Trường Nguyễn", and
+  the family-first bibliographic display is "Nguyễn, Sơn Trường". Taxonomic authors are
+  commonly cited by their given name, so this person's taxonomic authority is "Sơn" and
+  a citation with initials uses "Nguyễn, S.T.". A compound inherited family name stays
+  together in _family_name_; it is not split merely because it contains a space.
+  Preserve a different native-order or publication form as a name alias when references
+  need to retain that exact displayed identity. Do not infer omitted diacritics or the
+  boundary between middle and given names without evidence from the person's
+  publications, ORCID profile, institutional page, or another reliable source.
 
 Non-Latin writing systems:
 
 - _pinyin_: Chinese names transliterated using Hanyu Pinyin. If the given name consists
   of two syllables, a hyphen is used to join them and the second syllable is written in
-  lowercase (example [Yang Zhong-jian](/h/47669)). It is more common to join the two
-  syllables together without a hyphen, but this can occasionally lead to ambiguity (as
-  with [Ji Shu-an](/h/48904)), and it is easier to remove the hyphen when it is not
-  desired than to add it when it is. The Chinese surname 吕 Lü is sometimes
-  transliterated as "Lv" or "Lyu" when it is difficult to use the umlaut. These names
-  should be normalized to the standard pinyin "Lü".
+  lowercase (example [Yang Zhong-jian](/h/47669)). The hyphen is the canonical stored
+  form because it preserves the syllable boundary: a renderer can always produce
+  "Zhongjian" or the initials "Z.-j." from "Zhong-jian", but it cannot reliably recover
+  the boundary from "Zhongjian". The joined form is more common in general-purpose
+  display and may be used there without changing the stored name. This distinction can
+  occasionally matter (as with [Ji Shu-an](/h/48904)). The Chinese surname 吕 Lü is
+  sometimes transliterated as "Lv" or "Lyu" when it is difficult to use the umlaut.
+  These names should be normalized to the standard pinyin "Lü". Pinyin names are
+  displayed in family-name-first order, without a comma; the explicit bibliographic
+  family-first form uses a comma.
 - _chinese_: Chinese name transliterated using a system other than Pinyin. This usually
   involves people from places like Taiwan, Hongkong, or Malaysia. In these names, the
   second part of a compound name following a hyphen is capitalized.
 - _korean_.
 - _japanese_.
-- _burmese_: Burmese names appear to consist of two to four single-syllable portions,
-  which are either written as separate words or joined with hyphens. For Burmese names,
-  I currently put the whole name in the family name, written as separate words and not
-  with hyphens.
+- _burmese_: A Burmese personal name generally does not contain an inherited family
+  name, so store the complete attested personal name as one atomic value in
+  _family_name_ and leave _given_names_, _initials_, _tussenvoegsel_, and _suffix_
+  empty. Preserve its attested word order, capitalization, and use of spaces or hyphens;
+  do not treat the final word as a Western surname or normalize hyphens to spaces.
+  Honorifics such as "U" and "Daw" are not part of the canonical personal name. Remove
+  them when the evidence establishes that they are titles, retaining the exact
+  publication form as an alias when useful. Do not mechanically remove elements such as
+  "Sai", "Saw", or "Naw", which may be integral to a person's name or identity.
+  Bibliographic matching should tolerate external services splitting the final word into
+  a family-name field, but that service-side split is not evidence for changing the
+  Person record.
 - _russian_: Russian names may be entered in the database in either Cyrillic or the
-  Latin alphabet. If written in the Latin alphabet, initials may contain multiple
-  letters if they reflect Cyrillic letters that cannot be transliterated to Latin
-  one-to-one (e.g., "Yu" for Ю).
-- _ukrainian_: The Ukrainian language uses a slightly different alphabet than Russian.
+  Latin alphabet, but Cyrillic is preferred. If written in the Latin alphabet, initials
+  may contain multiple letters if they reflect Cyrillic letters that cannot be
+  transliterated to Latin one-to-one (e.g., "Yu" for Ю).
+- _ukrainian_: Ukrainian names may be entered in Cyrillic or the Latin alphabet, but
+  Cyrillic is preferred. Derived Latin forms use
+  [Ukraine's official national romanization system](https://zakon.rada.gov.ua/laws/show/55-2010-%D0%BF?lang=en#Text)
+  (Cabinet of Ministers Resolution No. 55), not Russian BGN/PCGN romanization. In
+  particular, Ukrainian Г becomes _H_, Ґ becomes _G_, and И becomes _Y_; several letters
+  have different forms at the beginning of a word. A `TransliteratedFamilyName` tag
+  records an attested or preferred Latin family name and overrides the mechanically
+  derived form.
 
 A catch-all:
 
@@ -171,7 +199,8 @@ Generally, use the most precise name possible, so "Jelle Sjoerd Zijlstra" instea
 variants like "Jelle Zijlstra", "Jelle S. Zijlstra", "J.S. Zijlstra". Generally use full
 names over abbreviations ("Michael" instead of "Mike") and use diacritic marks if they
 are present in the person's native language, even if they are sometimes dropped in
-source material.
+source material. However, if the person normally uses an abbreviated or simplified name,
+use it.
 
 Sometimes people use different names over the course of their career:
 

@@ -2,7 +2,6 @@ import json
 import re
 from collections import Counter
 
-from taxonomy.db import helpers
 from taxonomy.db.constants import CommentKind
 from taxonomy.db.models import Article, NameComment
 
@@ -30,7 +29,7 @@ def main() -> None:
         if msw3_data["ActualDate"] and msw3_data["ActualDate"] != actual_year:
             print(f"{name}: actual year: {msw3_data['ActualDate']} != {actual_year}")
             actual_year_diffs += 1
-        authority = helpers.romanize_russian(name.taxonomic_authority())
+        authority = name.romanized_taxonomic_authority()
         msw3_author = (
             msw3_data["Author"]
             .replace(", and ", " & ")
