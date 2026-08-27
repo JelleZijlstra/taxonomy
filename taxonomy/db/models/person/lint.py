@@ -1,11 +1,12 @@
 """Named lint steps for Persons."""
 
 import functools
+import re
 from collections.abc import Iterable
 from typing import Any
 
 from taxonomy.apis import orcid
-from taxonomy.db import models
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import PersonType
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import IgnoreLint, Lint
@@ -15,7 +16,7 @@ from .name_matching import (
     format_external_identity,
     public_identity_matches_person,
 )
-from .person import Person, normalize_orcid
+from .person import Person, VirtualPerson, is_more_specific_than, normalize_orcid
 
 
 def get_ignores(person: Person) -> Iterable[IgnoreLint]:
@@ -45,6 +46,43 @@ def duplicate_orcid(person: Person) -> Iterable[str]:
     # Use every ORCID so a reviewed, legitimate multi-profile Person still
     # participates in duplicate detection for each identifier.
     return {normalize_orcid(tag.text) for tag in get_orcid_tags(person)}
+
+
+def _virtual_name(person: Person) -> VirtualPerson:
+    return VirtualPerson(
+        family_name=person.family_name,
+        given_names=person.given_names,
+        initials=person.initials,
+        tussenvoegsel=person.tussenvoegsel,
+        suffix=person.suffix,
+        naming_convention=person.naming_convention,
+    )
+
+
+def _normalized_display_name(person: Person) -> str:
+    simplified = helpers.simplify_string(person.get_full_name(), clean_words=False)
+    return re.sub(r"\W+", "", simplified)
+
+
+@LINT.add("redirect_to_less_specific")
+def redirect_to_less_specific(person: Person, cfg: LintConfig) -> Iterable[str]:
+    """Warn when a redirect discards compatible name detail.
+
+    This is deliberately diagnostic rather than an autofix: the canonical row may
+    need a fuller name, but a title, nickname, duplicated mononym, or malformed
+    source spelling may instead be a legitimate less-canonical redirect.
+    """
+    if person.type not in (PersonType.hard_redirect, PersonType.soft_redirect):
+        return
+    if person.target is None:
+        return
+    if _normalized_display_name(person) == _normalized_display_name(person.target):
+        return
+    if is_more_specific_than(_virtual_name(person), _virtual_name(person.target)):
+        yield (
+            f"redirect name {person.get_full_name()!r} is more specific than "
+            f"target {person.target.get_full_name()!r}"
+        )
 
 
 def _identity_person(person: Person) -> Person:

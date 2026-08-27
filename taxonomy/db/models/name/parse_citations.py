@@ -15,6 +15,7 @@ class ParsedCitation:
 
 
 _DASH = r"[-\u2012-\u2015\u2212]"  # hyphen and common dash ranges
+_PAGE = r"(?:\d{1,4}|[ivxlcdm]{1,12})"
 
 
 def _norm(s: str) -> str:
@@ -43,9 +44,17 @@ def _to_roman_or_int(token: str) -> str:
 
 def _extract_pages(text: str) -> tuple[str | None, str | None]:
     # pattern 1: volume: start-end or : start only
-    m = re.search(r":\s*(\d{1,4})(?:\s*" + _DASH + r"\s*(\d{1,4}))?\b", text)
+    m = re.search(
+        rf"\b\d{{1,4}}\s*:\s*({_PAGE})(?:\s*{_DASH}\s*({_PAGE}))?\b(?!\s*\+)",
+        text,
+        flags=re.IGNORECASE,
+    )
     if m:
-        return m.group(1), m.group(2)
+        return m.group(1).lower(), m.group(2).lower() if m.group(2) else None
+    # pattern 1b: a labeled appendix page after the volume colon
+    m = re.search(rf":\s*appendix,?\s*({_PAGE})\b", text, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).lower(), None
     # pattern 2: pp. 12-34; p. 12; S. 123; Seiten 11–12
     m = re.search(
         r"\b(?:pp?\.|S\.|Seiten?|pages?)\s*(\d{1,4})(?:\s*"
@@ -56,10 +65,24 @@ def _extract_pages(text: str) -> tuple[str | None, str | None]:
     )
     if m:
         return m.group(1), m.group(2)
+    # pattern 2b: Russian bibliographic labels: "T.18. C.5-43"
+    m = re.search(
+        rf"\b[СC]\.\s*({_PAGE})(?:\s*{_DASH}\s*({_PAGE}))?\b", text, flags=re.IGNORECASE
+    )
+    if m:
+        return m.group(1).lower(), m.group(2).lower() if m.group(2) else None
     # pattern 3: trailing , 12-34
     m = re.search(r"[,;] *([0-9]{1,4})\s*" + _DASH + r"\s*([0-9]{1,4})\b", text)
     if m:
         return m.group(1), m.group(2)
+    # pattern 3b: volume followed by a semicolon/comma and a Roman page.
+    m = re.search(
+        rf"\b\d{{1,4}}\s*[,;]\s*({_PAGE})(?:\s*{_DASH}\s*({_PAGE}))?\b",
+        text,
+        flags=re.IGNORECASE,
+    )
+    if m:
+        return m.group(1).lower(), m.group(2).lower() if m.group(2) else None
     # pattern 4: explicit p. N following volume patterns
     m = re.search(r"\bp\.?\s*(\d{1,4})\b", text, flags=re.IGNORECASE)
     if m:
@@ -109,7 +132,11 @@ def parse_citation(citation: str) -> ParsedCitation:
 
     # 5) Generic volume: "... 9: 186–265" (avoid picking up the year if present)
     if volume is None:
-        m = re.search(r"\b(\d{1,4})\s*:\s*\d", text)
+        m = re.search(
+            rf"\b(\d{{1,4}})\s*:\s*(?:[^,;]{{0,30}},\s*)?{_PAGE}\b",
+            text,
+            flags=re.IGNORECASE,
+        )
         if m:
             candidate = m.group(1)
             # Disallow clearly non-volume small numbers attached to months, also allow a 4-digit year
@@ -131,7 +158,7 @@ def parse_citation(citation: str) -> ParsedCitation:
     # 8) Volume via labels: vol., Bd., t., v. etc. (allow punctuation after label)
     if volume is None:
         m = re.search(
-            r"\b(?:vol|bd|t|tom|tome|v)\.?\s*[,;:]?\s*([0-9IVXLCDM]{1,8})\b",
+            r"\b(?:vol(?:ume)?|bd|t|т|tom|tome|v)\.?\s*[,;:]?\s*([0-9IVXLCDM]{1,8})\b",
             text,
             flags=re.IGNORECASE,
         )
@@ -140,7 +167,7 @@ def parse_citation(citation: str) -> ParsedCitation:
 
     # 9) Volume before comma followed by pages: "... 43, 417–435"
     if volume is None:
-        m = re.search(r"\b(\d{1,4})\s*,\s*\d{1,4}\b", text)
+        m = re.search(rf"\b(\d{{1,4}})\s*[,;]\s*{_PAGE}\b", text, flags=re.IGNORECASE)
         if m:
             cand = m.group(1)
             # Avoid taking a year as volume in this comma form

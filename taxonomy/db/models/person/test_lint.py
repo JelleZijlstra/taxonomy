@@ -13,7 +13,7 @@ from taxonomy.db.models.person import (
     lint,
     normalize_orcid,
 )
-from taxonomy.db.models.person.lint import multiple_orcids
+from taxonomy.db.models.person.lint import multiple_orcids, redirect_to_less_specific
 
 
 def _person_with_tags(*tags: object) -> Mock:
@@ -352,17 +352,73 @@ def test_orcid_works_suggests_article_author_matching_public_name(
 
 def test_redirect_is_never_more_specific_than_canonical_person() -> None:
     canonical = Person.virtual(
-        family_name="Esteban", given_names="Graciela", type=PersonType.unchecked
+        family_name="Esteban",
+        given_names="Graciela",
+        naming_convention=NamingConvention.unspecified,
+        type=PersonType.unchecked,
     )
     redirect = Person.virtual(
         family_name="Esteban",
         given_names="Graciela I.",
+        naming_convention=NamingConvention.unspecified,
         type=PersonType.hard_redirect,
         target=canonical,
     )
 
     assert not is_more_specific_than(redirect, canonical)
     assert is_more_specific_than(canonical, redirect)
+
+
+def test_redirect_to_less_specific_name_is_diagnostic() -> None:
+    canonical = Person.virtual(
+        family_name="Esteban",
+        given_names="Graciela",
+        naming_convention=NamingConvention.unspecified,
+        type=PersonType.unchecked,
+    )
+    redirect = Person.virtual(
+        family_name="Esteban",
+        given_names="Graciela I.",
+        naming_convention=NamingConvention.unspecified,
+        type=PersonType.hard_redirect,
+        target=canonical,
+    )
+
+    expected = (
+        "redirect name 'Graciela I. Esteban' is more specific than target "
+        "'Graciela Esteban'"
+    )
+    assert list(
+        redirect_to_less_specific.linter(
+            redirect, LintConfig(autofix=True, interactive=False)
+        )
+    ) == [expected]
+    assert redirect.target is canonical
+
+
+@pytest.mark.parametrize(
+    "person_type", [PersonType.hard_redirect, PersonType.soft_redirect]
+)
+def test_redirect_to_equivalent_form_is_not_reported(person_type: PersonType) -> None:
+    canonical = Person.virtual(
+        family_name="Dasmahapatra",
+        initials="K.K.",
+        naming_convention=NamingConvention.unspecified,
+        type=PersonType.unchecked,
+    )
+    redirect = Person.virtual(
+        family_name="Dasmahapatra",
+        initials="K K.",
+        naming_convention=NamingConvention.unspecified,
+        type=person_type,
+        target=canonical,
+    )
+
+    assert not list(
+        redirect_to_less_specific.linter(
+            redirect, LintConfig(autofix=False, interactive=False)
+        )
+    )
 
 
 def test_redirect_cycle_is_renderable_and_not_autofixed() -> None:
