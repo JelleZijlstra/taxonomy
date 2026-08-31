@@ -1,7 +1,7 @@
 import json
 import sys
 from collections import Counter
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Literal, Self, cast
@@ -16,8 +16,8 @@ from taxonomy.applicator import item_file as item_file_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
 from taxonomy.applicator.proposals import ProposedModel
-from taxonomy.db.constants import RegionKind
-from taxonomy.db.models import Location, Region
+from taxonomy.db.constants import Rank, RegionKind
+from taxonomy.db.models import Article, ClassificationEntry, Location, Region
 
 
 def _location_row() -> dict[str, object]:
@@ -117,6 +117,38 @@ def _item_file_row() -> dict[str, object]:
     }
 
 
+def _classification_entry_row(
+    *,
+    ref: str,
+    name: str,
+    rank: str,
+    page: str,
+    article: Mapping[str, object] | None = None,
+    parent: Mapping[str, object] | None = None,
+    authority: str | None = None,
+    year: str | None = None,
+) -> dict[str, object]:
+    if article is None:
+        article = {"model": "Article", "id": 10, "label": "Example article"}
+    return {
+        "schema_version": 1,
+        "action": "create_object",
+        "confidence": "high",
+        "reason": "Transcribed from the source classification.",
+        "evidence": [{"kind": "source", "text": f"Source entry {name}."}],
+        "object": {"model": "ClassificationEntry", "ref": ref, "label": name},
+        "values": {
+            "article": article,
+            "name": name,
+            "rank": rank,
+            "page": page,
+            "parent": parent,
+            "authority": authority,
+            "year": year,
+        },
+    }
+
+
 def _write(path: Path, rows: list[dict[str, object]]) -> None:
     path.write_text("".join(json.dumps(row) + "\n" for row in rows))
 
@@ -169,6 +201,179 @@ def test_item_file_static_review_does_not_plan_or_access_files(
     output = capsys.readouterr().out
     assert "ITEM FILE RECOMMENDATIONS" in output
     assert "raw volume.pdf" in output
+
+
+def test_classification_review_overlays_plan_on_existing_hierarchy(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    article = Article.virtual(name="Example article")
+    existing_order = ClassificationEntry.virtual(
+        article=article, name="Carnivora", rank=Rank.order, parent=None, page="1"
+    )
+    existing_genus = ClassificationEntry.virtual(
+        article=article, name="Existingus", rank=Rank.genus, parent=None, page="2"
+    )
+    existing_species = ClassificationEntry.virtual(
+        article=article,
+        name="Existingus oldus",
+        rank=Rank.species,
+        parent=existing_genus,
+        page="3",
+    )
+    family_ref = {"model": "ClassificationEntry", "ref": "ce:family"}
+    order_id = {"model": "ClassificationEntry", "id": 98, "label": "Carnivora"}
+    genus_id = {"model": "ClassificationEntry", "id": 99, "label": "Existingus"}
+    family = ClassificationEntry.virtual(
+        article=article,
+        name="Exampleidae",
+        rank=Rank.family,
+        parent=existing_order,
+        page="1",
+    )
+    new_species = ClassificationEntry.virtual(
+        article=article,
+        name="Existingus novus",
+        rank=Rank.species,
+        parent=existing_genus,
+        page="4",
+    )
+    create_family = generic_recommendations.parse_recommendation(
+        _classification_entry_row(
+            ref="ce:family",
+            name="Exampleidae",
+            rank="family",
+            page="1",
+            parent=order_id,
+        ),
+        1,
+    )
+    update_genus = generic_recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": "update_object",
+            "confidence": "high",
+            "reason": "Attach the existing source heading to its source parent.",
+            "evidence": [{"kind": "source", "text": "Nested under Exampleidae."}],
+            "object": genus_id,
+            "changes": [
+                {
+                    "operation": "set",
+                    "field": "parent",
+                    "old_value": None,
+                    "new_value": family_ref,
+                }
+            ],
+        },
+        2,
+    )
+    create_species = generic_recommendations.parse_recommendation(
+        _classification_entry_row(
+            ref="ce:new-species",
+            name="Existingus novus",
+            rank="species",
+            page="4",
+            parent=genus_id,
+        ),
+        3,
+    )
+    plan = generic_recommendations.RecommendationPlan(
+        (
+            generic_recommendations.PlannedAction(
+                create_family,
+                family,
+                None,
+                {
+                    "article": article,
+                    "name": "Exampleidae",
+                    "rank": Rank.family,
+                    "parent": existing_order,
+                    "page": "1",
+                    "authority": None,
+                    "year": None,
+                },
+                already_applied=False,
+            ),
+            generic_recommendations.PlannedAction(
+                update_genus,
+                existing_genus,
+                None,
+                None,
+                already_applied=False,
+                changes=(("set", "parent", None, family),),
+            ),
+            generic_recommendations.PlannedAction(
+                create_species,
+                new_species,
+                None,
+                {
+                    "article": article,
+                    "name": "Existingus novus",
+                    "rank": Rank.species,
+                    "parent": existing_genus,
+                    "page": "4",
+                    "authority": None,
+                    "year": None,
+                },
+                already_applied=False,
+            ),
+        ),
+        Counter({"create_object": 2, "update_object": 1}),
+        {"ce:family": family, "ce:new-species": new_species},
+    )
+    apply_recommendations.print_classification_review(
+        plan,
+        get_existing_entries=lambda _article: [
+            existing_order,
+            existing_genus,
+            existing_species,
+        ],
+    )
+
+    output = capsys.readouterr().out
+    assert "Legend: + new, ~ updated, = existing" in output
+    assert "  = Carnivora (order) [page 1]" in output
+    assert "    + Exampleidae (family) [page 1]" in output
+    assert "      ~ Existingus (genus) [page 2]" in output
+    assert "        + Existingus novus (species) [page 4]" in output
+    assert "Existingus oldus" not in output
+
+
+def test_review_classification_cli_builds_database_plan(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(
+        path,
+        [
+            _classification_entry_row(
+                ref="ce:root", name="Exampleidae", rank="family", page="2"
+            )
+        ],
+    )
+    generic_plan = generic_recommendations.RecommendationPlan((), Counter(), {})
+    built = False
+
+    def build_plans(_recommendations: object) -> tuple[object, object, object, object]:
+        nonlocal built
+        built = True
+        return object(), generic_plan, object(), object()
+
+    reviewed: list[generic_recommendations.RecommendationPlan] = []
+    monkeypatch.setattr(apply_recommendations, "build_plans", build_plans)
+    monkeypatch.setattr(
+        apply_recommendations,
+        "print_classification_review",
+        lambda plan: reviewed.append(plan),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--review-classification"]
+    )
+
+    apply_recommendations.main()
+
+    assert built
+    assert reviewed == [generic_plan]
+    assert capsys.readouterr().out == ""
 
 
 def test_dispatcher_allows_rename_of_location_merge_target() -> None:
@@ -1193,6 +1398,118 @@ def test_apply_mode_does_not_enter_read_only_context(
     )
 
     apply_recommendations.main()
+
+
+def test_build_plans_skipping_invalid_retries_line_attributable_rows(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    rows = [_generic_manual_row() for _ in range(3)]
+    _write(path, rows)
+    recommendations = apply_recommendations.read_recommendations(path)
+    calls: list[list[int]] = []
+    fake_plans = object()
+
+    def build_plans(selected: apply_recommendations.Recommendations) -> object:
+        lines = [
+            row.line_number
+            for _, row in apply_recommendations._all_recommendation_rows(selected)
+        ]
+        calls.append(lines)
+        if 2 in lines:
+            raise apply_recommendations.RecommendationError(
+                "database validation failed:\n- line 2: stale second row"
+            )
+        if 3 in lines:
+            raise apply_recommendations.RecommendationError(
+                "database validation failed:\n- line 3: stale third row"
+            )
+        return fake_plans
+
+    monkeypatch.setattr(apply_recommendations, "build_plans", build_plans)
+
+    filtered, plans, skipped = apply_recommendations.build_plans_skipping_invalid(
+        recommendations
+    )
+
+    assert calls == [[1, 2, 3], [1, 3], [1]]
+    assert plans is fake_plans
+    assert [row.line_number for row in filtered.generic_rows] == [1]
+    assert [(item.line_number, item.reason) for item in skipped] == [
+        (2, "stale second row"),
+        (3, "stale third row"),
+    ]
+
+
+def test_build_plans_skipping_invalid_rejects_unattributed_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row()])
+    recommendations = apply_recommendations.read_recommendations(path)
+    monkeypatch.setattr(
+        apply_recommendations,
+        "build_plans",
+        lambda _recommendations: (_ for _ in ()).throw(
+            apply_recommendations.RecommendationError("global reference conflict")
+        ),
+    )
+
+    with pytest.raises(
+        apply_recommendations.RecommendationError,
+        match=r"could not attribute.*refusing to guess",
+    ):
+        apply_recommendations.build_plans_skipping_invalid(recommendations)
+
+
+def test_skip_invalid_cli_applies_only_revalidated_rows(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(path, [_generic_manual_row(), _generic_manual_row()])
+    fake_plans = object()
+    build_calls: list[list[int]] = []
+    applied: list[object] = []
+
+    def build_plans(selected: apply_recommendations.Recommendations) -> object:
+        lines = [
+            row.line_number
+            for _, row in apply_recommendations._all_recommendation_rows(selected)
+        ]
+        build_calls.append(lines)
+        if 2 in lines:
+            raise apply_recommendations.RecommendationError(
+                "database validation failed:\n- line 2: stale row"
+            )
+        return fake_plans
+
+    def execute_plans(plans: object, *, apply: bool) -> object:
+        assert apply is True
+        applied.append(plans)
+        return apply_recommendations.ExecutionResult(())
+
+    monkeypatch.setattr(apply_recommendations, "build_plans", build_plans)
+    monkeypatch.setattr(apply_recommendations, "execute_plans", execute_plans)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "apply_recommendations.py",
+            str(path),
+            "--apply",
+            "--skip-invalid",
+            "--no-edit-applied",
+            "--no-edit-manual",
+        ],
+    )
+
+    apply_recommendations.main()
+
+    assert build_calls == [[1, 2], [1]]
+    assert applied == [fake_plans]
+    output = capsys.readouterr().out
+    assert "SKIP_INVALID line=2 family=generic action=manual_review" in output
+    assert "1 recommendation(s) remain eligible" in output
 
 
 def test_virtual_lint_combines_with_review_mode(

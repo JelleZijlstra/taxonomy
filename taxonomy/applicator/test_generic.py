@@ -6,8 +6,10 @@ from taxonomy.applicator import generic as recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db.constants import AltitudeUnit, NamingConvention, PersonType, RegionKind
 from taxonomy.db.models import (
+    Article,
     BaseModel,
     CitationGroup,
+    ClassificationEntry,
     Collection,
     IssueDate,
     Location,
@@ -53,6 +55,29 @@ def _create_location_row() -> dict[str, object]:
         "object": {"model": "Location", "ref": "precise_site", "label": "Precise site"},
         "values": {"name": "Precise site"},
     }
+
+
+def test_classification_entry_create_allows_comma_separated_pages() -> None:
+    article = Article.virtual(name="Test classification.pdf")
+
+    recommendations._validate_create_invariants(
+        ClassificationEntry,
+        {"article": article, "page": "12, 188", "parent": None},
+        context="line 1",
+    )
+
+
+def test_classification_entry_create_rejects_page_ranges() -> None:
+    article = Article.virtual(name="Test classification.pdf")
+
+    with pytest.raises(
+        recommendations.RecommendationError, match="comma-separated page numbers"
+    ):
+        recommendations._validate_create_invariants(
+            ClassificationEntry,
+            {"article": article, "page": "12-13", "parent": None},
+            context="line 1",
+        )
 
 
 def test_create_object_and_reference_it_from_later_action() -> None:

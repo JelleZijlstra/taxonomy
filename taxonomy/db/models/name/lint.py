@@ -5410,6 +5410,7 @@ def add_structured_verbatim_citation(
             issue=existing.issue or new_tag.issue,
             start_page=existing.start_page or new_tag.start_page,
             end_page=existing.end_page or new_tag.end_page,
+            url=existing.url,
         )
         if merged != existing:
             msg = f"update StructuredVerbatimCitation from {existing} to {merged}"
@@ -5456,6 +5457,7 @@ def check_structured_verbatim_citation_fields(
                     start_page=tag.start_page,
                     end_page=tag.end_page,
                     series=tag.series,
+                    url=tag.url,
                 )
                 yield replace_tag_issue(msg, nam, tag, new_tag, field="type_tags")
                 tag = new_tag
@@ -5477,6 +5479,7 @@ def check_structured_verbatim_citation_fields(
                     start_page=tag.start_page,
                     end_page=tag.end_page,
                     series=tag.series,
+                    url=tag.url,
                 )
                 yield replace_tag_issue(msg, nam, tag, new_tag, field="type_tags")
                 tag = new_tag
@@ -5508,6 +5511,7 @@ def check_structured_verbatim_citation_fields(
                             start_page=start_page,
                             end_page=candidate,
                             series=tag.series,
+                            url=tag.url,
                         )
                         yield replace_tag_issue(
                             msg, nam, tag, new_tag, field="type_tags"

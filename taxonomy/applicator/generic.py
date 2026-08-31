@@ -1118,9 +1118,13 @@ def _validate_create_invariants(
 ) -> None:
     if model.__name__ == "ClassificationEntry":
         page = values.get("page")
-        if not isinstance(page, str) or re.fullmatch(r"[1-9][0-9]*", page) is None:
+        if (
+            not isinstance(page, str)
+            or re.fullmatch(r"[1-9][0-9]*(?:, [1-9][0-9]*)*", page) is None
+        ):
             raise RecommendationError(
-                f"{context}: ClassificationEntry.page must be one page number"
+                f"{context}: ClassificationEntry.page must be one or more "
+                "comma-separated page numbers"
             )
         parent = values.get("parent")
         article = values.get("article")

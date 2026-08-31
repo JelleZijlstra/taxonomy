@@ -3282,6 +3282,7 @@ class TypeTag(adt.ADT):
         start_page=NotRequired[Managed],
         end_page=NotRequired[Managed],
         series=NotRequired[Managed],
+        url=NotRequired[Managed],
         tag=75,
     )
 

@@ -6,7 +6,10 @@ changes, Locations, type localities, Taxon/base-Name pairs, and coverage asserti
 for a database-independent summary, ``--review-manual`` for the complete text of
 manual-review rows and actionable rows carrying ``review_note``, and ``--edit-manual``
 to open every manual-review object in the database editor after printing its complete
-note. ``--apply`` performs both post-apply cleanup and manual-review editing by default;
+note. ``--review-classification`` validates the manifest against the database and
+prints the affected ClassificationEntry hierarchy, including existing ancestor entries
+and proposed creations and updates, grouped by Article. ``--apply`` performs both
+post-apply cleanup and manual-review editing by default;
 use ``--no-edit-applied`` or ``--no-edit-manual`` to skip either phase. Use
 ``--review-each`` to review every
 row in file order and choose yes (apply it immediately), no (skip it), or edit
@@ -16,14 +19,18 @@ so manifest-local references and dependencies remain available. Add
 ``--virtual-lint`` to construct the final proposed model states in memory and run
 advisory lint before the dry run or apply step. Use ``--virtual-lint-issues-only`` to
 run the same lint while printing only unresolved ``VIRTUAL_LINT_ISSUES``. Flags
-compose: static and classification review views run
-first, followed by requested lint and dry-run output, application or per-row review,
+compose: static review views run first, followed by the validated classification view,
+requested lint and dry-run output, application or per-row review,
 affected-object cleanup, and finally manual editing. The only incompatible pair is ``--apply`` with
 ``--review-each``, because one applies every row while the other selects a subset.
+Use ``--skip-invalid`` to omit whole manifest rows whose validation errors identify
+their line numbers, then rebuild and validate the remaining rows together before any
+write. Validation failures that cannot be attributed to specific lines still abort.
 """
 
 import argparse
 import json
+import re
 import traceback
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
@@ -43,7 +50,7 @@ from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import proposals as virtual_proposals
 from taxonomy.applicator import taxon as taxon_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
-from taxonomy.db.models import Location, Name
+from taxonomy.db.models import Article, ClassificationEntry, Location, Name
 from taxonomy.db.models.base import BaseModel, LintConfig
 
 
@@ -166,6 +173,14 @@ class IndividualReviewResult:
     applied_lines: frozenset[int]
     execution_result: ExecutionResult
     aborted: bool
+
+
+@dataclass(frozen=True, slots=True)
+class SkippedInvalidRecommendation:
+    line_number: int
+    family: str
+    action: str
+    reason: str
 
 
 def _persistent_identity(obj: BaseModel) -> tuple[type[BaseModel], object]:
@@ -716,56 +731,278 @@ def print_manual_reviews(recommendations: Recommendations) -> None:
         type_recommendations.print_full_manual_reviews(type_rows)
 
 
-def print_classification_review(recommendations: Recommendations) -> None:
-    """Render the source-local CE trees directly from native object rows."""
-    rows = [
-        row
-        for row in recommendations.generic_rows
-        if row.action == generic_recommendations.CREATE_OBJECT
-        and row.object.model == "ClassificationEntry"
+@dataclass(slots=True)
+class _ClassificationReviewEntry:
+    object: ClassificationEntry
+    article: Article
+    name: str
+    rank: Any
+    parent: ClassificationEntry | None
+    page: str | None
+    authority: str | None
+    year: str | None
+    status_value: Any
+    disposition: Literal["new", "updated", "existing"]
+
+
+_CLASSIFICATION_REVIEW_FIELDS = frozenset(
+    {"article", "name", "rank", "parent", "page", "authority", "year", "status"}
+)
+
+
+def _get_existing_classification_entries(
+    article: Article,
+) -> Iterable[ClassificationEntry]:
+    if getattr(article, "is_virtual", False):
+        return ()
+    return article.get_classification_entries()
+
+
+def print_classification_review(
+    plan: generic_recommendations.RecommendationPlan,
+    *,
+    get_existing_entries: Callable[[Article], Iterable[ClassificationEntry]] = (
+        _get_existing_classification_entries
+    ),
+) -> None:
+    """Render affected CE trees after overlaying a validated plan on existing entries."""
+    actions = [
+        action
+        for action in plan.actions
+        if action.recommendation.object.model == "ClassificationEntry"
+        and (
+            action.recommendation.action == generic_recommendations.CREATE_OBJECT
+            or (
+                action.recommendation.action == generic_recommendations.UPDATE_OBJECT
+                and any(
+                    field_name in _CLASSIFICATION_REVIEW_FIELDS
+                    for _, field_name, _, _ in action.changes
+                )
+            )
+            or (
+                action.recommendation.action == generic_recommendations.SET_FIELD
+                and action.recommendation.field in _CLASSIFICATION_REVIEW_FIELDS
+            )
+        )
     ]
-    if not rows:
-        print("No native ClassificationEntry creation recommendations.")
+    if not actions:
+        print("No ClassificationEntry creation or hierarchy-update recommendations.")
         return
-    by_ref = {row.object.ref: row for row in rows}
-    children: dict[str | None, list[generic_recommendations.Recommendation]] = {}
-    for row in rows:
-        assert row.values is not None
-        parent = row.values.get("parent")
-        parent_ref = parent.get("ref") if isinstance(parent, dict) else None
-        children.setdefault(parent_ref, []).append(row)
 
-    def display(row: generic_recommendations.Recommendation, depth: int) -> None:
-        assert row.values is not None and row.object.ref is not None
-        article = row.values.get("article")
-        article_ref = article.get("ref") if isinstance(article, dict) else article
-        occurrences = sum(
-            1
-            for candidate in recommendations.generic_rows
-            if candidate.action == generic_recommendations.CREATE_OBJECT
-            and candidate.object.model == "OccurrenceRecord"
-            and candidate.values is not None
-            and isinstance(candidate.values.get("classification_entry"), dict)
-            and candidate.values["classification_entry"].get("ref") == row.object.ref
-        )
-        print(
-            f"{'  ' * depth}{row.object.label} [{row.values.get('rank')}; page {row.values.get('page')}; article={article_ref}; occurrences={occurrences}]"
-        )
-        for child in children.get(row.object.ref, ()):
-            display(child, depth + 1)
+    article_by_key: dict[tuple[type[BaseModel], object], Article] = {}
 
-    roots = [
-        row
-        for row in rows
-        if not (
-            isinstance((row.values or {}).get("parent"), dict)
-            and (row.values or {})["parent"].get("ref") in by_ref
+    def add_article(article: Article | None) -> None:
+        if article is not None:
+            article_by_key.setdefault(_persistent_identity(article), article)
+
+    for action in actions:
+        if action.recommendation.action == generic_recommendations.CREATE_OBJECT:
+            add_article(action.new_value["article"])
+            continue
+        add_article(action.object.article)
+        if action.recommendation.action == generic_recommendations.UPDATE_OBJECT:
+            for _, field_name, _, new_value in action.changes:
+                if field_name == "article":
+                    add_article(new_value)
+        elif action.recommendation.field == "article":
+            add_article(action.new_value)
+
+    entries: dict[tuple[type[BaseModel], object], _ClassificationReviewEntry] = {}
+
+    def ensure_entry(
+        obj: ClassificationEntry, disposition: Literal["new", "updated", "existing"]
+    ) -> _ClassificationReviewEntry:
+        key = _persistent_identity(obj)
+        entry = entries.get(key)
+        if entry is None:
+            entry = _ClassificationReviewEntry(
+                object=obj,
+                article=obj.article,
+                name=obj.name,
+                rank=obj.rank,
+                parent=obj.parent,
+                page=obj.page,
+                authority=obj.authority,
+                year=obj.year,
+                status_value=obj.status,
+                disposition=disposition,
+            )
+            entries[key] = entry
+        elif disposition == "new" or (
+            disposition == "updated" and entry.disposition == "existing"
+        ):
+            entry.disposition = disposition
+        return entry
+
+    for article in article_by_key.values():
+        for ce in get_existing_entries(article):
+            ensure_entry(ce, "existing")
+
+    for action in actions:
+        row = action.recommendation
+        if row.action == generic_recommendations.CREATE_OBJECT:
+            disposition: Literal["new", "updated", "existing"] = (
+                "existing" if action.already_applied else "new"
+            )
+            entry = ensure_entry(action.object, disposition)
+            for field_name in _CLASSIFICATION_REVIEW_FIELDS:
+                if field_name in action.new_value:
+                    attribute = "status_value" if field_name == "status" else field_name
+                    setattr(entry, attribute, action.new_value[field_name])
+        elif row.action == generic_recommendations.UPDATE_OBJECT:
+            entry = ensure_entry(
+                action.object, "existing" if action.already_applied else "updated"
+            )
+            for _, field_name, _, new_value in action.changes:
+                if field_name in _CLASSIFICATION_REVIEW_FIELDS:
+                    attribute = "status_value" if field_name == "status" else field_name
+                    setattr(entry, attribute, new_value)
+        else:
+            entry = ensure_entry(
+                action.object, "existing" if action.already_applied else "updated"
+            )
+            assert row.field is not None
+            attribute = "status_value" if row.field == "status" else row.field
+            setattr(entry, attribute, action.new_value)
+
+    def is_visible(entry: _ClassificationReviewEntry) -> bool:
+        return getattr(entry.status_value, "name", None) not in {"removed", "redirect"}
+
+    visible_entries = {
+        key: entry for key, entry in entries.items() if is_visible(entry)
+    }
+    relevant_keys: set[tuple[type[BaseModel], object]] = set()
+    for action in actions:
+        key = _persistent_identity(action.object)
+        while key in visible_entries and key not in relevant_keys:
+            relevant_keys.add(key)
+            parent = visible_entries[key].parent
+            if parent is None:
+                break
+            parent_key = _persistent_identity(parent)
+            parent_entry = visible_entries.get(parent_key)
+            if parent_entry is None or _persistent_identity(
+                parent_entry.article
+            ) != _persistent_identity(visible_entries[key].article):
+                break
+            key = parent_key
+    visible_entries = {
+        key: entry for key, entry in visible_entries.items() if key in relevant_keys
+    }
+    entries_by_article: dict[
+        tuple[type[BaseModel], object], list[_ClassificationReviewEntry]
+    ] = {}
+    for entry in visible_entries.values():
+        entries_by_article.setdefault(_persistent_identity(entry.article), []).append(
+            entry
         )
-    ]
-    for index, root in enumerate(roots):
-        if index:
+
+    def article_label(article: Article) -> str:
+        object_id = getattr(article, "id", None)
+        identity = (
+            "Article (new)"
+            if getattr(article, "is_virtual", False)
+            else f"Article {object_id}"
+        )
+        label = getattr(article, "name", None)
+        return f"{identity}: {label}" if label is not None else identity
+
+    def rank_label(rank: Any) -> str:
+        name = getattr(rank, "name", None)
+        return name.removesuffix("_") if isinstance(name, str) else str(rank)
+
+    def page_sort_key(entry: _ClassificationReviewEntry) -> tuple[int, str, str]:
+        match = re.match(r"^(\d+)", entry.page or "")
+        page = int(match.group(1)) if match is not None else 0
+        return page, entry.page or "", entry.name
+
+    marker = {"new": "+", "updated": "~", "existing": "="}
+
+    def display(
+        entry: _ClassificationReviewEntry,
+        depth: int,
+        *,
+        grouped_keys: set[tuple[type[BaseModel], object]],
+        children: Mapping[
+            tuple[type[BaseModel], object], list[_ClassificationReviewEntry]
+        ],
+        visited: set[tuple[type[BaseModel], object]],
+    ) -> None:
+        key = _persistent_identity(entry.object)
+        if key in visited:
+            return
+        visited.add(key)
+        line = (
+            f"{'  ' * depth}{marker[entry.disposition]} {entry.name} "
+            f"({rank_label(entry.rank)})"
+        )
+        if entry.authority is not None:
+            line += f" {entry.authority}"
+            if entry.year is not None:
+                line += f", {entry.year}"
+        if entry.page is not None:
+            line += f" [page {entry.page}]"
+        parent_key = (
+            _persistent_identity(entry.parent) if entry.parent is not None else None
+        )
+        if entry.parent is not None and parent_key not in grouped_keys:
+            parent_id = getattr(entry.parent, "id", None)
+            parent_name = getattr(entry.parent, "name", None)
+            line += f" [parent CE {parent_id}: {parent_name}, outside Article]"
+        print(line)
+        for child in sorted(children.get(key, ()), key=page_sort_key):
+            display(
+                child,
+                depth + 1,
+                grouped_keys=grouped_keys,
+                children=children,
+                visited=visited,
+            )
+
+    print("Legend: + new, ~ updated, = existing")
+    for article_index, (article_key, article) in enumerate(article_by_key.items()):
+        grouped_entries = entries_by_article.get(article_key, [])
+        if article_index:
             print()
-        display(root, 0)
+        print(article_label(article))
+        if not grouped_entries:
+            print("  (no entries in final state)")
+            continue
+        grouped_keys = {_persistent_identity(entry.object) for entry in grouped_entries}
+        children: dict[
+            tuple[type[BaseModel], object], list[_ClassificationReviewEntry]
+        ] = {}
+        roots: list[_ClassificationReviewEntry] = []
+        for entry in grouped_entries:
+            group_parent_key = (
+                _persistent_identity(entry.parent) if entry.parent is not None else None
+            )
+            if group_parent_key is None or group_parent_key not in grouped_keys:
+                roots.append(entry)
+            else:
+                children.setdefault(group_parent_key, []).append(entry)
+
+        visited: set[tuple[type[BaseModel], object]] = set()
+
+        for root in sorted(roots, key=page_sort_key):
+            display(
+                root, 1, grouped_keys=grouped_keys, children=children, visited=visited
+            )
+        remaining = [
+            entry
+            for entry in grouped_entries
+            if _persistent_identity(entry.object) not in visited
+        ]
+        if remaining:
+            print("  Unattached or cyclic entries:")
+            for entry in sorted(remaining, key=page_sort_key):
+                display(
+                    entry,
+                    2,
+                    grouped_keys=grouped_keys,
+                    children=children,
+                    visited=visited,
+                )
 
 
 def print_reconciliation_review(plans: AnyRecommendationPlans) -> None:
@@ -1394,6 +1631,77 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
     return article_plan, generic_plan, location_plan, type_plan
 
 
+_LINE_VALIDATION_ERROR = re.compile(r"^(?:-\s*)?line (\d+):\s*(.+)$")
+
+
+def _line_validation_errors(exc: RecommendationError) -> dict[int, str]:
+    """Extract line-attributable failures from a plan-validation exception."""
+    reasons: dict[int, list[str]] = {}
+    for raw_line in str(exc).splitlines():
+        match = _LINE_VALIDATION_ERROR.fullmatch(raw_line.strip())
+        if match is None:
+            continue
+        line_number = int(match.group(1))
+        reasons.setdefault(line_number, []).append(match.group(2))
+    return {line: " | ".join(messages) for line, messages in reasons.items()}
+
+
+def build_plans_skipping_invalid(
+    recommendations: Recommendations,
+) -> tuple[
+    Recommendations, AnyRecommendationPlans, tuple[SkippedInvalidRecommendation, ...]
+]:
+    """Skip whole rows with line-attributable failures, then validate the remainder.
+
+    Each retry starts from the original parsed manifest and filters out all rows that
+    a prior validation pass identified as stale. No executor is called here. A global
+    or otherwise unattributed failure remains fatal rather than guessing which row to
+    omit.
+    """
+    rows_by_line = {
+        row.line_number: (family, row)
+        for family, row in _all_recommendation_rows(recommendations)
+    }
+    remaining_lines = set(rows_by_line)
+    skipped: list[SkippedInvalidRecommendation] = []
+    while True:
+        filtered = _filter_recommendations(recommendations, remaining_lines)
+        try:
+            return filtered, build_plans(filtered), tuple(skipped)
+        except RecommendationError as exc:
+            reasons = _line_validation_errors(exc)
+            failed_lines = sorted(remaining_lines & reasons.keys())
+            if not failed_lines:
+                raise RecommendationError(
+                    "--skip-invalid could not attribute the validation failure to "
+                    "specific remaining manifest lines; refusing to guess which rows "
+                    f"to omit:\n{exc}"
+                ) from exc
+            for line_number in failed_lines:
+                family, row = rows_by_line[line_number]
+                skipped.append(
+                    SkippedInvalidRecommendation(
+                        line_number, family, row.action, reasons[line_number]
+                    )
+                )
+            remaining_lines.difference_update(failed_lines)
+
+
+def print_skipped_invalid(
+    skipped: tuple[SkippedInvalidRecommendation, ...], *, remaining_count: int
+) -> None:
+    print("SKIPPED INVALID RECOMMENDATIONS")
+    for item in skipped:
+        print(
+            f"SKIP_INVALID line={item.line_number} family={item.family} "
+            f"action={item.action} reason={item.reason}"
+        )
+    print(
+        f"Skipped {len(skipped)} invalid recommendation(s); "
+        f"{remaining_count} recommendation(s) remain eligible."
+    )
+
+
 def build_generic_manual_review_plan(
     recommendations: Recommendations,
 ) -> generic_recommendations.RecommendationPlan:
@@ -1561,9 +1869,6 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if args.review_manual:
         begin_output()
         print_manual_reviews(recommendations)
-    if args.review_classification:
-        begin_output()
-        print_classification_review(recommendations)
 
     run_dry_run = args.dry_run or not any(
         (
@@ -1581,15 +1886,27 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
         run_dry_run
         or args.apply
         or args.review_each
+        or args.review_classification
         or args.review_reconciliation
         or run_virtual_lint_requested
+        or args.skip_invalid
     )
     if not needs_complete_plan and not args.edit_manual:
         return
 
     try:
         if needs_complete_plan:
-            plans = build_plans(recommendations)
+            if args.skip_invalid:
+                recommendations, plans, skipped = build_plans_skipping_invalid(
+                    recommendations
+                )
+                if skipped:
+                    begin_output()
+                    print_skipped_invalid(
+                        skipped, remaining_count=recommendations.count
+                    )
+            else:
+                plans = build_plans(recommendations)
         else:
             assert args.edit_manual
             try:
@@ -1632,6 +1949,14 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                 )
     except RecommendationError as exc:
         parser.error(str(exc))
+
+    if args.review_classification:
+        assert plans is not None
+        generic_plan = (
+            plans.generic if isinstance(plans, UnifiedRecommendationPlan) else plans[1]
+        )
+        begin_output()
+        print_classification_review(generic_plan)
 
     if run_virtual_lint_requested:
         assert plans is not None
@@ -1753,7 +2078,10 @@ def main() -> None:
     parser.add_argument(
         "--review-classification",
         action="store_true",
-        help="print source-local ClassificationEntry trees without database access",
+        help=(
+            "validate and print affected ClassificationEntry trees grouped by Article, "
+            "including existing ancestors and proposed creations and updates"
+        ),
     )
     parser.add_argument(
         "--review-reconciliation",
@@ -1795,6 +2123,16 @@ def main() -> None:
         action="store_true",
         help=(
             "run advisory virtual lint but print only unresolved VIRTUAL_LINT_ISSUES, omitting autofixable findings, summaries, and the implicit default dry run"
+        ),
+    )
+    parser.add_argument(
+        "--skip-invalid",
+        action="store_true",
+        help=(
+            "skip each entire manifest row whose validation failure identifies its "
+            "line number, report every skipped row, and rebuild and validate all "
+            "remaining rows together before dry-run or application; unattributed "
+            "validation failures still abort"
         ),
     )
     args = parser.parse_args()
