@@ -77,6 +77,9 @@ class OptionsLike(Protocol):
     @property
     def library_path(self) -> Path: ...
 
+    @property
+    def downloads_path(self) -> Path: ...
+
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
@@ -138,6 +141,7 @@ class FileSpec:
     destination_folder: str
     sha256: str
     size: int
+    source_root: str = "new_path"
 
 
 @dataclass(frozen=True, slots=True)
@@ -425,11 +429,22 @@ def _parse_file(value: Any, line: int) -> FileSpec:
     size = _required_int(file_data, "size", line)
     if size <= 0:
         raise RecommendationError(f"line {line}: file.size must be positive")
-    if set(file_data) != {"source_path", "destination_folder", "sha256", "size"}:
+    source_root = file_data.get("source_root", "new_path")
+    if source_root not in {"new_path", "downloads"}:
         raise RecommendationError(
-            f"line {line}: file accepts source_path, destination_folder, sha256, and size"
+            f"line {line}: file.source_root must be 'new_path' or 'downloads'"
         )
-    return FileSpec(source_path, destination_folder, sha256, size)
+    if set(file_data) - {
+        "source_path",
+        "destination_folder",
+        "sha256",
+        "size",
+        "source_root",
+    }:
+        raise RecommendationError(
+            f"line {line}: file accepts source_path, destination_folder, sha256, size, and source_root"
+        )
+    return FileSpec(source_path, destination_folder, sha256, size, source_root)
 
 
 def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendation:
@@ -785,14 +800,20 @@ def build_plan(
                 label="file.destination_folder",
                 line=line,
             )
-            source = resolved_options.new_path / source_rel
+            source_root = (
+                resolved_options.new_path
+                if recommendation.file.source_root == "new_path"
+                else resolved_options.downloads_path
+            )
+            source = source_root / source_rel
             destination_dir = resolved_options.library_path / folder_rel
             destination = destination_dir / recommendation.name
-            new_root = resolved_options.new_path.resolve()
+            resolved_source_root = source_root.resolve()
             library_root = resolved_options.library_path.resolve()
-            if not source.resolve(strict=False).is_relative_to(new_root):
+            if not source.resolve(strict=False).is_relative_to(resolved_source_root):
                 raise RecommendationError(
-                    f"line {line}: staged file resolves outside new_path: {source}"
+                    f"line {line}: staged file resolves outside "
+                    f"{recommendation.file.source_root}: {source}"
                 )
             resolved_source = source.resolve(strict=False)
             if resolved_source in seen_sources:

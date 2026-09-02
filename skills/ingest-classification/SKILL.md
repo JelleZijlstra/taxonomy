@@ -42,6 +42,10 @@ corresponding arguments are deliberately named `type_locality_quote`,
 `type_specimen_data_quote`, and `etymology_detail_quote`. Put paraphrase or inference in
 recommendation evidence, structured data, or a non-Detail comment instead.
 
+Give the full classification used in the article, including higher taxa used in headers.
+If a species is given, create an entry for the genus even if there is no explicit
+header, and if a subspecies is given, create an entry for the species too.
+
 Use `normalized_name` concepts only for abbreviations or nonstandard presentation, not
 to correct spelling, modernize a combination, or choose synonymy. Database
 reconciliation belongs in `mapped_name`, not the source snapshot.

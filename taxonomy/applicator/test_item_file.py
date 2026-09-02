@@ -277,6 +277,51 @@ def test_existing_object_and_destination_are_idempotent(tmp_path: Path) -> None:
     assert plan.actions[0].already_applied
 
 
+def test_existing_item_file_removes_downloads_source_on_apply(tmp_path: Path) -> None:
+    pdf = _pdf_bytes()
+    options = _options(tmp_path)
+    downloads_path = tmp_path / "downloads"
+    downloads_path.mkdir()
+    source = downloads_path / "source item.pdf"
+    source.write_bytes(pdf)
+    destination = options.item_file_path / "source item.pdf"
+    destination.write_bytes(pdf)
+    tag = ItemFileTag.IFComment("Complete source item.")
+    existing = cast(
+        ItemFile,
+        SimpleNamespace(
+            filename="source item.pdf",
+            citation_group=_citation_group(),
+            tags=(tag,),
+            title="Reviewed item",
+            series=None,
+            volume="12",
+            issue=None,
+            start_page=None,
+            end_page=None,
+            url="https://example.com/item/12",
+        ),
+    )
+    row_data = _row(pdf)
+    row_data["file"]["source_root"] = "downloads"
+    row_data["file"]["source_path"] = "source item.pdf"
+    plan = recommendations.build_plan(
+        (recommendations.parse_recommendation(row_data, 1),),
+        options=SimpleNamespace(
+            new_path=options.new_path,
+            downloads_path=downloads_path,
+            item_file_path=options.item_file_path,
+        ),
+        get_citation_group=lambda _id: _citation_group(),
+        get_item_file=lambda _filename: existing,
+    )
+
+    recommendations.execute_plan(plan, apply=True)
+
+    assert plan.actions[0].already_applied
+    assert not source.exists()
+
+
 def test_detect_url_lint_skips_new_virtual_item_file() -> None:
     item_file = ItemFile.virtual(
         filename="future.pdf",

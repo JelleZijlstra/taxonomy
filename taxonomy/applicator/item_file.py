@@ -41,6 +41,9 @@ class OptionsLike(Protocol):
     @property
     def item_file_path(self) -> Path: ...
 
+    @property
+    def downloads_path(self) -> Path: ...
+
 
 @dataclass(frozen=True, slots=True)
 class Evidence:
@@ -59,6 +62,7 @@ class FileSpec:
     source_path: str
     sha256: str
     size: int
+    source_root: str = "new_path"
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,9 +154,9 @@ def _parse_citation_group(value: Any, line: int) -> CitationGroupSpec:
 
 def _parse_file(value: Any, line: int) -> FileSpec:
     data = _object(value, "file", line)
-    if set(data) != {"source_path", "sha256", "size"}:
+    if set(data) - {"source_path", "sha256", "size", "source_root"}:
         raise RecommendationError(
-            f"line {line}: file accepts source_path, sha256, and size"
+            f"line {line}: file accepts source_path, sha256, size, and source_root"
         )
     sha256 = _required_str(data, "sha256", line).lower()
     if len(sha256) != 64 or any(char not in "0123456789abcdef" for char in sha256):
@@ -162,7 +166,12 @@ def _parse_file(value: Any, line: int) -> FileSpec:
     size = _required_int(data, "size", line)
     if size <= 0:
         raise RecommendationError(f"line {line}: file.size must be positive")
-    return FileSpec(_required_str(data, "source_path", line), sha256, size)
+    source_root = data.get("source_root", "new_path")
+    if source_root not in {"new_path", "downloads"}:
+        raise RecommendationError(
+            f"line {line}: file.source_root must be 'new_path' or 'downloads'"
+        )
+    return FileSpec(_required_str(data, "source_path", line), sha256, size, source_root)
 
 
 def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendation:
@@ -359,7 +368,6 @@ def build_plan(
             f"ItemFile destination directory does not exist: {item_file_root}"
         )
     destination_root = item_file_root.resolve()
-    new_root = resolved_options.new_path.resolve()
     actions: list[PlannedAction] = []
     seen_filenames: set[str] = set()
     seen_sources: set[Path] = set()
@@ -372,11 +380,17 @@ def build_plan(
             )
         seen_filenames.add(recommendation.filename)
         source_rel = _safe_relative_path(recommendation.file.source_path, line=line)
-        source = resolved_options.new_path / source_rel
+        source_root = (
+            resolved_options.new_path
+            if recommendation.file.source_root == "new_path"
+            else resolved_options.downloads_path
+        )
+        source = source_root / source_rel
         resolved_source = source.resolve(strict=False)
-        if not resolved_source.is_relative_to(new_root):
+        if not resolved_source.is_relative_to(source_root.resolve()):
             raise RecommendationError(
-                f"line {line}: staged file resolves outside new_path: {source}"
+                f"line {line}: staged file resolves outside "
+                f"{recommendation.file.source_root}: {source}"
             )
         if resolved_source in seen_sources:
             raise RecommendationError(

@@ -618,6 +618,72 @@ def test_completed_exact_state_is_idempotent(tmp_path: Path) -> None:
     assert plan.actions[0].already_applied
 
 
+def test_completed_exact_state_removes_downloads_source_on_apply(
+    tmp_path: Path,
+) -> None:
+    pdf = _pdf_bytes()
+    new_path = tmp_path / "new"
+    downloads_path = tmp_path / "downloads"
+    library_path = tmp_path / "library"
+    new_path.mkdir()
+    downloads_path.mkdir()
+    source = downloads_path / "download.pdf"
+    source.write_bytes(pdf)
+    destination_dir = library_path / "Mollusca"
+    destination_dir.mkdir(parents=True)
+    (destination_dir / "Endodontidae.pdf").write_bytes(pdf)
+    row_data = _row(pdf)
+    row_data["file"]["source_root"] = "downloads"
+    cg = _citation_group()
+    person = SimpleNamespace(
+        family_name="Solem",
+        given_names="Alan",
+        initials=None,
+        tussenvoegsel=None,
+        suffix=None,
+    )
+    tag = ArticleTag.PublicationDate(source=DateSource.doi_published, date="1976")
+    existing = cast(
+        Article,
+        SimpleNamespace(
+            id=99,
+            name="Endodontidae.pdf",
+            kind=ArticleKind.electronic,
+            path="Mollusca",
+            doi="10.1234/example",
+            type=ArticleType.JOURNAL,
+            title="Reviewed title",
+            citation_group=cg,
+            parent=None,
+            tags=(tag,),
+            get_authors=lambda: [person],
+        ),
+    )
+    plan = recommendations.build_plan(
+        (recommendations.parse_recommendation(row_data, 1),),
+        options=SimpleNamespace(
+            new_path=new_path, downloads_path=downloads_path, library_path=library_path
+        ),
+        get_article=lambda _name: existing,
+        articles_with_doi=lambda _doi: (existing,),
+        is_catalog_folder=lambda _path: True,
+        get_citation_group=lambda _id: cg,
+        expand_doi=lambda _doi: {
+            "type": ArticleType.JOURNAL,
+            "title": "CrossRef title",
+            "author_tags": [VirtualPerson(family_name="Solem", given_names="Alan")],
+            "tags": [tag],
+        },
+    )
+
+    recommendations.execute_plan(
+        plan, apply=True, run_auxiliary=lambda _article, *, add_history: None
+    )
+
+    assert plan.actions[0].already_applied
+    assert not source.exists()
+
+
 def test_build_plan_supports_no_copy_volume_and_parented_chapter(
     tmp_path: Path,
 ) -> None:

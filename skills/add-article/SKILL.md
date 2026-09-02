@@ -11,9 +11,9 @@ description:
 
 # Add an Article
 
-Prepare source-faithful electronic files and executable `create_article` or
-`create_item_file` recommendations. Leave each file in the configured staging folder and
-leave application to the user.
+Prepare source-faithful electronic files and executable `create_article`,
+`create_item_file`, or `move_to_not_cataloged` recommendations. Leave each input file in
+its current configured intake folder and leave application to the user.
 
 ## Scope
 
@@ -62,10 +62,13 @@ publisher, institutional repository, Biodiversity Heritage Library, or another s
 primary host. Record both the landing-page URL and the actual acquisition URL in
 evidence.
 
-Download into `config.get_options().new_path`, never directly into the catalog library.
-Use a temporary descriptive staging name; it does not have to equal the final Article
-name. If the file is already present, inspect that exact file rather than substituting a
-similarly titled source.
+Download into `config.get_options().new_path` or leave a file already present directly
+under `config.get_options().downloads_path`; never download directly into the catalog
+library. Use a temporary descriptive intake name; it does not have to equal the final
+Article name. If the file is already present, inspect that exact file rather than
+substituting a similarly titled source. Do not copy a Downloads file into `new_path`:
+set `file.source_root` to `"downloads"` so successful application can remove the one
+intake copy that `check_new()` sees.
 
 For PDFs, open or render the first page and inspect extracted text. For supplements,
 inspect the native file and its internal title or table caption. Confirm the title,
@@ -193,6 +196,7 @@ Existing CitationGroup example:
     "citation_group": { "id": 123, "name": "Journal name" }
   },
   "file": {
+    "source_root": "new_path",
     "source_path": "downloaded-source.pdf",
     "destination_folder": "Mollusca/Gastropoda",
     "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -200,6 +204,12 @@ Existing CitationGroup example:
   }
 }
 ```
+
+`file.source_root` may be `"new_path"` (the default when omitted) or `"downloads"`.
+`file.source_path` is always relative to that configured root. On an exact retry where
+the catalog database row and destination bytes already exist, application verifies all
+guards and removes a still-present source from either root. Dry run and review never
+remove it.
 
 Inline CitationGroup creation replaces `article.citation_group` with:
 
@@ -227,7 +237,8 @@ Optional Article keys are:
   `article_number`;
 - `authors`: ordered objects with `family_name` and optional `given_names`, `initials`,
   `tussenvoegsel`, and `suffix`, or a guarded existing Person as
-  `{"person": {"id": 123, "name": "Exact family name"}}`; and
+  `{"person": {"id": 123, "name": "Exact family name"}}` (if the reference provides
+  given names for the authors, use those rather than just the initials); and
 - `tags`: serialized `ArticleTag` values; and
 - `ref`: a stable bundle-local Article key when another row depends on this Article; and
 - `parent`: an existing `{id, name}` snapshot, a typed `{model: "Article", ref, label}`
@@ -309,6 +320,7 @@ Write a new JSONL row with this shape (replace example values with verified data
     "tags": []
   },
   "file": {
+    "source_root": "new_path",
     "source_path": "downloaded-whole-volume.pdf",
     "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
     "size": 123456
@@ -316,15 +328,47 @@ Write a new JSONL row with this shape (replace example values with verified data
 }
 ```
 
-`file.source_path` is relative to `new_path`; unlike `create_article`, this action has
-no `destination_folder`. Run the same review, virtual lint, and dry run as step 8,
-including any companion Article rows. Leave installation and database creation to the
-user; do not call interactive ItemFile creation/check methods during preparation.
+`file.source_path` is relative to the selected `source_root`, which defaults to
+`new_path`; unlike `create_article`, this action has no `destination_folder`. Run the
+same review, virtual lint, and dry run as step 8, including any companion Article rows.
+Leave installation and database creation to the user; do not call interactive ItemFile
+creation/check methods during preparation.
+
+## Files that should not be cataloged
+
+When a reviewed intake file is a duplicate, an unneeded whole source after its useful
+extract has been cataloged, or otherwise should leave the `check_new()` queue, add a
+checksum-guarded `move_to_not_cataloged` row. Do not move it while preparing the
+manifest. The destination is always the `Not to be cataloged` directory under
+`new_path`; use `destination_name` only when the source filename would collide with a
+different file already there.
+
+```json
+{
+  "schema_version": 1,
+  "action": "move_to_not_cataloged",
+  "confidence": "high",
+  "reason": "The catalog already contains the useful Article extracted from this file.",
+  "evidence": [
+    { "kind": "duplicate_check", "text": "Existing Article and catalog file verified." }
+  ],
+  "file": {
+    "source_root": "downloads",
+    "source_path": "downloaded-source.pdf",
+    "sha256": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+    "size": 123456
+  }
+}
+```
+
+The action verifies the source and any pre-existing destination by size and SHA-256. It
+is restart-safe: if the exact destination already exists, application removes only an
+exact remaining intake duplicate; conflicting destination bytes stop validation.
 
 ## Application semantics
 
 On explicit human application, `create_item_file` installs a checksum-verified copy in
-`item_file_path`, creates the ItemFile, and only then removes the staged source. It
+`item_file_path`, creates the ItemFile, and only then removes the intake source. It
 retains the complete PDF when Articles are later extracted with `ItemFile.burst()`.
 Interrupted exact partial states can be retried; conflicting metadata or bytes are
 rejected.
@@ -334,9 +378,11 @@ unchecked editor Persons and the BOOK, and records normal Article history withou
 touching the filesystem. A child then creates unchecked author Persons, points to that
 exact parent, and installs the file through a verified temporary copy. PDFs are then
 extracted into the configured text store and indexed for search; all formats receive the
-normal Article history entries. Only after those steps succeed does it remove the staged
-source. An interrupted exact partial state can be rerun; any differing database value,
-parent, or file checksum blocks the action.
+normal Article history entries. Only after those steps succeed does it remove the intake
+source, including a directly referenced Downloads source. An interrupted exact partial
+state can be rerun; an exact completed database-and-library state cleans up a
+still-present matching source, while any differing database value, parent, or file
+checksum blocks the action.
 
 The action deliberately does not call the interactive `edittitle()`,
 `specify_authors()`, or `edit_until_clean()` loops used by the traditional shell flow.

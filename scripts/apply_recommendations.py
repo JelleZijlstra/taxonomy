@@ -11,6 +11,8 @@ prints the affected ClassificationEntry hierarchy, including existing ancestor e
 and proposed creations and updates, grouped by Article. ``--apply`` performs both
 post-apply cleanup and manual-review editing by default;
 use ``--no-edit-applied`` or ``--no-edit-manual`` to skip either phase. Use
+``--edit-each`` to call ``edit()`` on every affected object during post-apply
+cleanup, after its automatic formatting and lint cleanup. Use
 ``--review-each`` to review every
 row in file order and choose yes (apply it immediately), no (skip it), or edit
 (open its affected database object and skip the automated recommendation). Before each
@@ -48,6 +50,7 @@ from taxonomy.applicator import generic as generic_recommendations
 from taxonomy.applicator import item_file as item_file_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import proposals as virtual_proposals
+from taxonomy.applicator import staged_file as staged_file_recommendations
 from taxonomy.applicator import taxon as taxon_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
 from taxonomy.db.models import Article, ClassificationEntry, Location, Name
@@ -88,6 +91,11 @@ ACTION_HANDLERS = (
         "item_file",
         frozenset(item_file_recommendations.ALLOWED_ACTIONS),
         item_file_recommendations.parse_recommendation,
+    ),
+    RegisteredActionHandler(
+        "staged_file",
+        frozenset(staged_file_recommendations.ALLOWED_ACTIONS),
+        staged_file_recommendations.parse_recommendation,
     ),
     RegisteredActionHandler(
         "generic",
@@ -286,8 +294,8 @@ def _declared_affected_objects(
             yield origin_update.taxon
 
 
-def edit_applied_objects(result: ExecutionResult) -> bool:
-    """Clean affected objects and any additional objects their autofixes create."""
+def edit_applied_objects(result: ExecutionResult, *, edit_each: bool = False) -> bool:
+    """Clean affected objects and optionally edit each one interactively."""
     failures: list[str] = []
     objects = list(result.affected_objects)
     seen = {_persistent_identity(obj) for obj in objects}
@@ -305,6 +313,8 @@ def edit_applied_objects(result: ExecutionResult) -> bool:
                 obj.reload()
                 obj.format(quiet=True)
                 obj.edit_until_clean()
+                if edit_each:
+                    obj.edit()
                 obj.reload()
                 if not obj.is_lint_clean(
                     cfg=LintConfig(interactive=False, autofix=False)
@@ -338,6 +348,7 @@ class Recommendations:
     taxon_rows: tuple[taxon_recommendations.Recommendation, ...] = ()
     coverage_rows: tuple[coverage_recommendations.Recommendation, ...] = ()
     item_file_rows: tuple[item_file_recommendations.Recommendation, ...] = ()
+    staged_file_rows: tuple[staged_file_recommendations.Recommendation, ...] = ()
 
     @property
     def count(self) -> int:
@@ -349,6 +360,7 @@ class Recommendations:
             + len(self.taxon_rows)
             + len(self.coverage_rows)
             + len(self.item_file_rows)
+            + len(self.staged_file_rows)
         )
 
 
@@ -363,6 +375,7 @@ class ManualReviewObject:
 Recommendation = (
     article_recommendations.Recommendation
     | item_file_recommendations.Recommendation
+    | staged_file_recommendations.Recommendation
     | generic_recommendations.Recommendation
     | location_recommendations.Recommendation
     | type_recommendations.Recommendation
@@ -381,6 +394,7 @@ RecommendationPlans = tuple[
 class UnifiedRecommendationPlan:
     article: article_recommendations.RecommendationPlan
     item_file: item_file_recommendations.RecommendationPlan
+    staged_file: staged_file_recommendations.RecommendationPlan
     taxon: taxon_recommendations.RecommendationPlan
     generic: generic_recommendations.RecommendationPlan
     location: location_recommendations.RecommendationPlan
@@ -400,6 +414,7 @@ class IndividualReviewItem:
     family: Literal[
         "article",
         "item_file",
+        "staged_file",
         "generic",
         "location",
         "type_locality",
@@ -528,6 +543,7 @@ def _validate_type_locality_rows(
 def read_recommendations(path: Path) -> Recommendations:
     article_rows: list[article_recommendations.Recommendation] = []
     item_file_rows: list[item_file_recommendations.Recommendation] = []
+    staged_file_rows: list[staged_file_recommendations.Recommendation] = []
     generic_rows: list[generic_recommendations.Recommendation] = []
     location_rows: list[location_recommendations.Recommendation] = []
     type_rows: list[type_recommendations.Recommendation] = []
@@ -566,6 +582,7 @@ def read_recommendations(path: Path) -> Recommendations:
             destinations: dict[str, list[Any]] = {
                 "article": article_rows,
                 "item_file": item_file_rows,
+                "staged_file": staged_file_rows,
                 "generic": generic_rows,
                 "location": location_rows,
                 "type_locality": type_rows,
@@ -581,6 +598,7 @@ def read_recommendations(path: Path) -> Recommendations:
             taxon_recommendations.RecommendationError,
             coverage_recommendations.RecommendationError,
             item_file_recommendations.RecommendationError,
+            staged_file_recommendations.RecommendationError,
         ) as exc:
             raise RecommendationError(str(exc)) from exc
     if not any(
@@ -592,6 +610,7 @@ def read_recommendations(path: Path) -> Recommendations:
             taxon_rows,
             coverage_rows,
             item_file_rows,
+            staged_file_rows,
         )
     ):
         raise RecommendationError("recommendation file contains no rows")
@@ -605,6 +624,7 @@ def read_recommendations(path: Path) -> Recommendations:
         tuple(taxon_rows),
         tuple(coverage_rows),
         tuple(item_file_rows),
+        tuple(staged_file_rows),
     )
 
 
@@ -619,6 +639,11 @@ def print_review(
     item_file_rows = tuple(
         row
         for row in recommendations.item_file_rows
+        if actions is None or row.action in actions
+    )
+    staged_file_rows = tuple(
+        row
+        for row in recommendations.staged_file_rows
         if actions is None or row.action in actions
     )
     generic_rows = tuple(
@@ -654,18 +679,29 @@ def print_review(
             print()
         print("ITEM FILE RECOMMENDATIONS")
         item_file_recommendations.print_review_table(item_file_rows)
-    if generic_rows:
+    if staged_file_rows:
         if article_rows or item_file_rows:
+            print()
+        print("STAGED FILE RECOMMENDATIONS")
+        staged_file_recommendations.print_review_table(staged_file_rows)
+    if generic_rows:
+        if article_rows or item_file_rows or staged_file_rows:
             print()
         print("GENERIC RECOMMENDATIONS")
         generic_recommendations.print_review_table(generic_rows)
     if location_rows:
-        if article_rows or item_file_rows or generic_rows:
+        if article_rows or item_file_rows or staged_file_rows or generic_rows:
             print()
         print("LOCATION RECOMMENDATIONS")
         location_recommendations.print_review_table(location_rows)
     if type_rows:
-        if article_rows or item_file_rows or generic_rows or location_rows:
+        if (
+            article_rows
+            or item_file_rows
+            or staged_file_rows
+            or generic_rows
+            or location_rows
+        ):
             print()
         print("TYPE-LOCALITY RECOMMENDATIONS")
         type_recommendations.print_review_table(type_rows)
@@ -678,6 +714,7 @@ def print_review(
         if (
             article_rows
             or item_file_rows
+            or staged_file_rows
             or generic_rows
             or location_rows
             or type_rows
@@ -690,6 +727,7 @@ def print_review(
         (
             article_rows,
             item_file_rows,
+            staged_file_rows,
             generic_rows,
             location_rows,
             type_rows,
@@ -1159,6 +1197,7 @@ def _all_recommendation_rows(
         Literal[
             "article",
             "item_file",
+            "staged_file",
             "generic",
             "location",
             "type_locality",
@@ -1174,6 +1213,7 @@ def _all_recommendation_rows(
             Literal[
                 "article",
                 "item_file",
+                "staged_file",
                 "generic",
                 "location",
                 "type_locality",
@@ -1185,6 +1225,7 @@ def _all_recommendation_rows(
     ] = [
         *(("article", row) for row in recommendations.article_rows),
         *(("item_file", row) for row in recommendations.item_file_rows),
+        *(("staged_file", row) for row in recommendations.staged_file_rows),
         *(("generic", row) for row in recommendations.generic_rows),
         *(("location", row) for row in recommendations.location_rows),
         *(("type_locality", row) for row in recommendations.type_locality_rows),
@@ -1278,6 +1319,9 @@ def _print_individual_recommendation(
     elif item.family == "item_file":
         assert isinstance(row, item_file_recommendations.Recommendation)
         item_file_recommendations.print_review_table((row,))
+    elif item.family == "staged_file":
+        assert isinstance(row, staged_file_recommendations.Recommendation)
+        staged_file_recommendations.print_review_table((row,))
     elif item.family == "generic":
         assert isinstance(row, generic_recommendations.Recommendation)
         generic_recommendations.print_review_table((row,))
@@ -1319,6 +1363,10 @@ def _print_individual_recommendation(
         for evidence_index, item_evidence in enumerate(row.evidence, start=1):
             print(f"{evidence_index}. {getinput.italicize(item_evidence.kind)}")
             print(item_evidence.text)
+    elif isinstance(row, staged_file_recommendations.Recommendation):
+        for evidence_index, file_evidence in enumerate(row.evidence, start=1):
+            print(f"{evidence_index}. {getinput.italicize(file_evidence.kind)}")
+            print(file_evidence.text)
     else:
         for evidence_index, remaining_evidence in enumerate(row.evidence, start=1):
             simple_evidence = cast(Any, remaining_evidence)
@@ -1470,6 +1518,11 @@ def _filter_recommendations(
             for row in recommendations.item_file_rows
             if row.line_number in selected_lines
         ),
+        tuple(
+            row
+            for row in recommendations.staged_file_rows
+            if row.line_number in selected_lines
+        ),
     )
 
 
@@ -1534,11 +1587,38 @@ def _print_type_locality_manual_review_for_edit(
 def _uses_unified_plan(recommendations: Recommendations) -> bool:
     return bool(
         recommendations.item_file_rows
+        or recommendations.staged_file_rows
         or recommendations.taxon_rows
         or recommendations.coverage_rows
         or any(row.ref is not None for row in recommendations.article_rows)
         or any(row.schema_version == 2 for row in recommendations.generic_rows)
     )
+
+
+def _validate_unique_intake_sources(
+    article_plan: article_recommendations.RecommendationPlan,
+    item_file_plan: item_file_recommendations.RecommendationPlan,
+    staged_file_plan: staged_file_recommendations.RecommendationPlan,
+) -> None:
+    seen: dict[Path, tuple[int, str]] = {}
+    actions: tuple[Any, ...] = (
+        *(action for action in article_plan.actions if action.source_path is not None),
+        *item_file_plan.actions,
+        *staged_file_plan.actions,
+    )
+    for action in actions:
+        source = action.source_path
+        assert source is not None
+        resolved = source.resolve(strict=False)
+        line = action.recommendation.line_number
+        previous = seen.get(resolved)
+        if previous is not None:
+            previous_line, previous_action = previous
+            raise RecommendationError(
+                f"line {line}: intake file {source} is also used by line "
+                f"{previous_line} action {previous_action}"
+            )
+        seen[resolved] = (line, action.recommendation.action)
 
 
 def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
@@ -1548,6 +1628,17 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
         item_file_plan = item_file_recommendations.build_plan(
             recommendations.item_file_rows
         )
+        staged_file_plan = staged_file_recommendations.build_plan(
+            recommendations.staged_file_rows
+        )
+        if (
+            recommendations.article_rows
+            or recommendations.item_file_rows
+            or recommendations.staged_file_rows
+        ):
+            _validate_unique_intake_sources(
+                article_plan, item_file_plan, staged_file_plan
+            )
         if _uses_unified_plan(recommendations):
             builder = virtual_proposals.ProposalBuilder()
             references: dict[str, BaseModel] = dict(
@@ -1605,6 +1696,7 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             return UnifiedRecommendationPlan(
                 article_plan,
                 item_file_plan,
+                staged_file_plan,
                 taxon_plan,
                 generic_plan,
                 location_plan,
@@ -1621,6 +1713,7 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
         taxon_recommendations.RecommendationError,
         coverage_recommendations.RecommendationError,
         item_file_recommendations.RecommendationError,
+        staged_file_recommendations.RecommendationError,
     ) as exc:
         raise RecommendationError(str(exc)) from exc
     builder = virtual_proposals.ProposalBuilder()
@@ -1771,8 +1864,17 @@ def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionRes
                     print()
                 print("ITEM FILE PLAN")
                 item_file_recommendations.execute_plan(plans.item_file, apply=apply)
-            if plans.taxon.action_counts:
+            if plans.staged_file.action_counts:
                 if plans.article.action_counts or plans.item_file.action_counts:
+                    print()
+                print("STAGED FILE PLAN")
+                staged_file_recommendations.execute_plan(plans.staged_file, apply=apply)
+            if plans.taxon.action_counts:
+                if (
+                    plans.article.action_counts
+                    or plans.item_file.action_counts
+                    or plans.staged_file.action_counts
+                ):
                     print()
                 print("TAXON PLAN")
                 replacements.update(
@@ -2016,7 +2118,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
 
     if args.edit_applied and execution_result is not None:
         begin_output()
-        if not edit_applied_objects(execution_result):
+        if not edit_applied_objects(execution_result, edit_each=args.edit_each):
             print(
                 getinput.yellow(
                     "Warning: post-apply cleanup was incomplete; recommendations were already applied. Continuing."
@@ -2061,6 +2163,8 @@ def main() -> None:
         choices=sorted(
             generic_recommendations.ALLOWED_ACTIONS
             | article_recommendations.ALLOWED_ACTIONS
+            | item_file_recommendations.ALLOWED_ACTIONS
+            | staged_file_recommendations.ALLOWED_ACTIONS
             | location_recommendations.ALLOWED_ACTIONS
             | type_recommendations.ALLOWED_ACTIONS
             | taxon_recommendations.ALLOWED_ACTIONS
@@ -2112,6 +2216,13 @@ def main() -> None:
         ),
     )
     parser.add_argument(
+        "--edit-each",
+        action="store_true",
+        help=(
+            "during post-apply cleanup, invoke edit() on every created or modified object after automatic formatting and lint cleanup; requires --apply or --review-each"
+        ),
+    )
+    parser.add_argument(
         "--virtual-lint",
         action="store_true",
         help=(
@@ -2138,14 +2249,18 @@ def main() -> None:
     args = parser.parse_args()
     if args.edit_manual is None:
         args.edit_manual = args.apply
+    if args.edit_each and args.edit_applied is False:
+        parser.error("--edit-each cannot be combined with --no-edit-applied")
     if args.edit_applied is None:
-        args.edit_applied = args.apply
+        args.edit_applied = args.apply or args.edit_each
     if args.review_action and not args.review:
         parser.error("--review-action requires --review")
     if args.review_each and args.apply:
         parser.error(
             "--review-each selects individual rows, so it cannot be combined with --apply, which applies every row"
         )
+    if args.edit_each and not (args.apply or args.review_each):
+        parser.error("--edit-each requires --apply or --review-each")
     if args.edit_applied and not (args.apply or args.review_each):
         parser.error("--edit-applied requires --apply or --review-each")
     context = (
