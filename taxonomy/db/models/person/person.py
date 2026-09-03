@@ -299,7 +299,17 @@ class Person(BaseModel):
             NamingConvention.hungarian,
         )
         parts = []
-        if family_first:
+        if self.naming_convention is NamingConvention.vietnamese:
+            parts.append(self.family_name)
+            other_names = [
+                part
+                for part in (self.tussenvoegsel, self.given_names or self.initials)
+                if part
+            ]
+            if other_names:
+                parts.append(", " if family_first else " ")
+                parts.append(" ".join(other_names))
+        elif family_first:
             parts.append(self.family_name)
             if self.given_names or self.initials or self.tussenvoegsel:
                 parts.append(", ")
@@ -393,11 +403,6 @@ class Person(BaseModel):
         return self.romanize(initials)
 
     def taxonomic_authority(self) -> str:
-        if (
-            self.naming_convention is NamingConvention.vietnamese
-            and self.given_names is not None
-        ):
-            return self.given_names
         if (
             self.tussenvoegsel is not None
             and self.naming_convention is NamingConvention.dutch
@@ -1343,12 +1348,13 @@ def get_initials(person: Person | VirtualPerson) -> str | None:
     if person.initials:
         return person.initials
     if person.given_names:
-        names = person.given_names.split(" ")
-        if (
-            person.naming_convention is NamingConvention.vietnamese
-            and person.tussenvoegsel
-        ):
-            names.extend(person.tussenvoegsel.split(" "))
+        if person.naming_convention is NamingConvention.vietnamese:
+            names: list[str] = []
+            if person.tussenvoegsel:
+                names.extend(person.tussenvoegsel.split(" "))
+            names.extend(person.given_names.split(" "))
+        else:
+            names = person.given_names.split(" ")
 
         def name_to_initial(name: str) -> str:
             if not name:

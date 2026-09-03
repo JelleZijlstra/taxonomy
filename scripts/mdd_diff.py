@@ -328,7 +328,7 @@ def get_mdd_style_authority_for_single_person(
         case NamingConvention.korean:
             return f"{person.family_name} {person.given_names}"
         case NamingConvention.vietnamese:
-            return f"{person.given_names} {person.family_name}"
+            return person.get_full_name()
         case _:
             family_name = person.get_transliterated_family_name()
             if person.tussenvoegsel is not None:
@@ -373,7 +373,7 @@ def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
         yield f"{hesp_author.family_name} {hesp_author.given_names}"
         return
     if hesp_author.naming_convention is NamingConvention.vietnamese:
-        name = f"{hesp_author.given_names} {hesp_author.family_name}"
+        name = hesp_author.get_full_name()
         yield name
         decoded = unidecode.unidecode(name)
         if name != decoded:

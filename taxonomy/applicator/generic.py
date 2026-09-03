@@ -948,6 +948,38 @@ def _find_objects_by_match(
     return list(query)
 
 
+def _quote_sqlite_identifier(identifier: str) -> str:
+    return '"' + identifier.replace('"', '""') + '"'
+
+
+def _get_unique_constraints(model: type[BaseModel]) -> tuple[tuple[str, ...], ...]:
+    """Return ordinary-field UNIQUE constraints declared by the SQLite schema."""
+    table = _quote_sqlite_identifier(model.clirm_table_name)
+    constraints: list[tuple[str, ...]] = []
+    for index_row in model.clirm.conn.execute(f"PRAGMA index_list({table})"):
+        _sequence, index_name, is_unique, _origin, is_partial = index_row
+        if not is_unique or is_partial:
+            continue
+        quoted_index = _quote_sqlite_identifier(index_name)
+        columns = tuple(
+            row[2]
+            for row in model.clirm.conn.execute(f"PRAGMA index_info({quoted_index})")
+            if row[2] is not None
+        )
+        if columns and all(column in model.clirm_fields for column in columns):
+            constraints.append(columns)
+    return tuple(constraints)
+
+
+def _find_objects_by_unique_constraint(
+    model: type[BaseModel], field_names: tuple[str, ...], values: tuple[Any, ...]
+) -> list[BaseModel]:
+    query = model.select()
+    for field_name, value in zip(field_names, values, strict=True):
+        query = query.filter(model.clirm_fields[field_name] == value)
+    return list(query)
+
+
 def _iter_refs(value: Any) -> Iterable[str]:
     if isinstance(value, Mapping):
         ref = value.get("ref")
@@ -1225,6 +1257,12 @@ def build_plan(
     find_objects_by_match: Callable[
         [type[BaseModel], Mapping[str, Any]], list[BaseModel]
     ] = _find_objects_by_match,
+    get_unique_constraints: Callable[
+        [type[BaseModel]], tuple[tuple[str, ...], ...]
+    ] = _get_unique_constraints,
+    find_objects_by_unique_constraint: Callable[
+        [type[BaseModel], tuple[str, ...], tuple[Any, ...]], list[BaseModel]
+    ] = _find_objects_by_unique_constraint,
     initial_references: Mapping[str, BaseModel] | None = None,
     allow_manual_label_changes: bool = False,
     find_collection_references: Callable[
@@ -1246,6 +1284,8 @@ def build_plan(
     seen: set[tuple[str, str, str | None, str]] = set()
     planned_values: dict[tuple[str, str, str], Any] = {}
     references: dict[str, BaseModel] = dict(initial_references or {})
+    planned_creates: list[tuple[Recommendation, BaseModel]] = []
+    object_identities: dict[int, str] = {}
     for row in rows:
         try:
             model = registry.get(row.object.model)
@@ -1317,6 +1357,53 @@ def build_plan(
                 else:
                     obj = model.virtual(**values)
                     already_applied = False
+                    for constraint in get_unique_constraints(model):
+                        constraint_values = tuple(
+                            getattr(obj, field_name) for field_name in constraint
+                        )
+                        # SQLite permits repeated NULL values in UNIQUE indexes.
+                        if any(value is None for value in constraint_values):
+                            continue
+                        conflicts: list[tuple[str, BaseModel]] = [
+                            (f"existing {model.__name__} {conflict.id}", conflict)
+                            for conflict in find_objects_by_unique_constraint(
+                                model, constraint, constraint_values
+                            )
+                        ]
+                        conflicts.extend(
+                            (f"manifest line {create_row.line_number}", candidate)
+                            for create_row, candidate in planned_creates
+                            if type(candidate) is model
+                        )
+                        for conflict_label, conflict in conflicts:
+                            conflict_identity = object_identities.get(id(conflict)) or (
+                                next(
+                                    f"ref:{create_row.object.ref}"
+                                    for create_row, candidate in planned_creates
+                                    if candidate is conflict
+                                )
+                                if conflict.id is None
+                                else f"id:{conflict.id}"
+                            )
+                            final_conflict_values = tuple(
+                                planned_values.get(
+                                    (model.__name__, conflict_identity, field_name),
+                                    getattr(conflict, field_name),
+                                )
+                                for field_name in constraint
+                            )
+                            if final_conflict_values == constraint_values:
+                                fields = ", ".join(constraint)
+                                values_text = ", ".join(
+                                    repr(value) for value in constraint_values
+                                )
+                                raise RecommendationError(
+                                    f"create_object violates UNIQUE constraint "
+                                    f"{model.__name__}({fields}) with values "
+                                    f"({values_text}); conflicts with {conflict_label}"
+                                )
+                    planned_creates.append((row, obj))
+                    object_identities[id(obj)] = f"ref:{row.object.ref}"
                 references[row.object.ref] = obj
                 actions.append(
                     PlannedAction(
@@ -1359,6 +1446,7 @@ def build_plan(
             else:
                 assert row.object.object_id is not None
                 obj = get_object(model, row.object.object_id)
+                object_identities[id(obj)] = identity
             label = _object_label(model, obj)
             allowed_object_labels = {row.object.label}
             if row.action == UPDATE_OBJECT:

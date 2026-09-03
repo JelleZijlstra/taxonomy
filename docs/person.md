@@ -128,20 +128,10 @@ Languages written in the Latin alphabet:
 - _turkish_: Turkish names are separated because forms of the letter I are capitalized
   differently: I ı forms a separate pair from İ i.
 - _vietnamese_: A Vietnamese name commonly has the native order family name, middle name
-  or names, given name. International publications also commonly use the order given
-  name, middle name or names, family name. Store these components according to their
-  meaning: the inherited family name in _family_name_, the personal given name in
-  _given_names_, and the middle name or names in _tussenvoegsel_. For example, Nguyễn
-  Trường Sơn is stored with `family_name="Nguyễn"`, `tussenvoegsel="Trường"`, and
-  `given_names="Sơn"`; the ordinary Western-order display is "Sơn Trường Nguyễn", and
-  the family-first bibliographic display is "Nguyễn, Sơn Trường". Taxonomic authors are
-  commonly cited by their given name, so this person's taxonomic authority is "Sơn" and
-  a citation with initials uses "Nguyễn, S.T.". A compound inherited family name stays
-  together in _family_name_; it is not split merely because it contains a space.
-  Preserve a different native-order or publication form as a name alias when references
-  need to retain that exact displayed identity. Do not infer omitted diacritics or the
-  boundary between middle and given names without evidence from the person's
-  publications, ORCID profile, institutional page, or another reliable source.
+  or names, given name. Store those components according to their meaning and display
+  the canonical name in native order. Thus Nguyễn Trường Sơn has `family_name="Nguyễn"`,
+  `tussenvoegsel="Trường"`, and `given_names="Sơn"`; the family-first form is "Nguyễn,
+  Trường Sơn", the initials are "T.S.", and the default authority is "Nguyễn".
 
 Non-Latin writing systems:
 

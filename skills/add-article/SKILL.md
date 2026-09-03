@@ -78,6 +78,21 @@ chapter page range, and whether separately numbered plates follow the text. A mi
 between the requested work, landing page, and staged file is a hard stop. Do not
 silently switch sources.
 
+Treat the publication itself as the authority for its author list. Transcribe every
+printed author's most detailed attested form, including full given names when the PDF
+prints them. Do not mechanically reuse the abbreviated Persons attached to the Names
+that motivated the search, and do not reduce a printed full name to initials merely
+because the Name authority is abbreviated. Reuse a guarded existing Person only after
+checking that it represents the same person and preserves at least as much detail as the
+publication. Otherwise supply the fuller author components so application can create an
+unchecked Person; leave uncertain identities separate.
+
+Transcribe the complete publication title, not a shortened search label. Apply the
+database's Markdown title convention while preserving wording: italicize scientific
+genus- and species-group names (and other source elements conventionally requiring
+italics) with underscores. Title typography is metadata, not a reason to alter the
+printed spelling or capitalization beyond the ordinary rules in `docs/article.md`.
+
 ### 3. Check current database state
 
 Use `CLIRM_READONLY=1` for every inspection. Check for:
@@ -106,11 +121,16 @@ PDFs and verify each printed page range. Record source-PDF page indices in evide
 they are not necessarily the printed page numbers. Do not infer publication months from
 issue numbers alone.
 
-To name the Article, choose a concise content description under
-`docs/article-naming.md`. The source title is not the filename. Electronic Article names
-must be printable ASCII and have an extension. Ordinary electronic Articles must end in
-lowercase `.pdf`; a `SUPPLEMENT` keeps the source format extension. A no-copy parent
-BOOK must be printable ASCII and have no extension.
+To name the Article, choose a concise but representative description of the complete
+publication under `docs/article-naming.md`. The source title is not the filename, but
+the filename must describe the work's overall contents rather than only the taxon,
+specimen, or nomenclatural act that prompted acquisition. Use a `nov` core only when it
+fairly represents the publication as a whole; use the normal taxonomic, geographic,
+temporal, or topic form for broader faunas, expedition reports, reviews, catalogues, and
+multi-taxon papers. Record the reasoning for any non-obvious content scope in evidence.
+Electronic Article names must be printable ASCII and have an extension. Ordinary
+electronic Articles must end in lowercase `.pdf`; a `SUPPLEMENT` keeps the source format
+extension. A no-copy parent BOOK must be printable ASCII and have no extension.
 
 Validate it with the catalog parser:
 
@@ -169,7 +189,33 @@ To use a parent already in the database instead, guard it with
 name lookup. The older planned `{name}` form remains supported only for an earlier row;
 new bundle workflows should use typed refs.
 
-### 7. Hash the staged file and write the row
+### 7. Review related Names and write companion recommendations
+
+When the Article was acquired to resolve one or more Names, inspect every Name whose
+original nomenclatural act is actually contained in the staged publication, not merely
+the first search target. Prepare guarded companion recommendations for the obvious
+source-backed work, including:
+
+- setting `original_citation` to the new or newly applied Article;
+- direct-quotation `TypeTag.LocationDetail` and `TypeTag.SpecimenDetail` tags when the
+  publication states the type locality or type material; and
+- other straightforward fields or tags directly established by the same pages.
+
+Do not infer a type designation, locality, repository, specimen identity, or wording
+that the source does not state. Detail-tag text must be a faithful quotation with only
+transparent line-break or typographic normalization. If the Article and Name changes
+cannot safely share one manifest because the Article is not yet addressable by a typed
+manifest-local reference, create and validate a named follow-up manifest immediately
+after the Article is applied; identify that dependency explicitly at handoff rather than
+silently omitting the Name work.
+
+For an already cataloged electronic Article, never change `Article.name` with generic
+`set_field` or `update_object`: those actions do not move the library file. Use a
+specialized action that calls the Article move semantics, or emit a guarded
+`manual_review` with the exact parser-valid proposed name so the reviewer can rename it
+through `Article.move()`.
+
+### 8. Hash the staged file, write the rows, and close the intake set
 
 Compute the exact byte size and SHA-256 after all file verification. Write a new JSONL
 manifest under `recs/manifests/`; do not revise an already-applied manifest.
@@ -211,6 +257,22 @@ the catalog database row and destination bytes already exist, application verifi
 guards and removes a still-present source from either root. Dry run and review never
 remove it.
 
+Before handoff, inventory every file downloaded, generated, or copied during the
+campaign in both configured intake roots. Each campaign file must be accounted for
+exactly once by one of these outcomes:
+
+- a `create_article` file object;
+- a `create_item_file` file object;
+- a checksum-guarded `move_to_not_cataloged` row; or
+- an explicitly reported unresolved file that the user has asked to retain in intake.
+
+Do not leave unreferenced whole-volume sources, alternate downloads, failed extracts, or
+rejected reprints for a later `check_new()` run. When useful content has already been
+retained elsewhere, use `move_to_not_cataloged`; when a whole volume is itself worth
+retaining, use `create_item_file`. After application, re-inventory both roots and verify
+that no campaign-created file remains. If application is partial, generate a new
+retry-safe cleanup manifest from the live database and filesystem state.
+
 Inline CitationGroup creation replaces `article.citation_group` with:
 
 ```json
@@ -248,7 +310,7 @@ Optional Article keys are:
 Explicit values override CrossRef. Do not copy CrossRef data into overrides merely to
 make the row verbose.
 
-### 8. Review and validate
+### 9. Review and validate
 
 Run all three views with the repository interpreter:
 
@@ -256,7 +318,8 @@ Run all three views with the repository interpreter:
 CLIRM_READONLY=1 /Users/jelle/py/venvs/taxonomy314/bin/python \
   scripts/apply_recommendations.py recs/manifests/<file>.jsonl --review
 CLIRM_READONLY=1 /Users/jelle/py/venvs/taxonomy314/bin/python \
-  scripts/apply_recommendations.py recs/manifests/<file>.jsonl --virtual-lint
+  scripts/apply_recommendations.py recs/manifests/<file>.jsonl \
+  --virtual-lint-issues-only
 CLIRM_READONLY=1 /Users/jelle/py/venvs/taxonomy314/bin/python \
   scripts/apply_recommendations.py recs/manifests/<file>.jsonl --dry-run
 ```
@@ -265,11 +328,14 @@ CLIRM_READONLY=1 /Users/jelle/py/venvs/taxonomy314/bin/python \
 expands the DOI, resolves parents in manifest order, requires an existing destination
 folder for every file, checks PDF magic bytes where applicable plus size and SHA-256 for
 all formats, and blocks name, DOI, CitationGroup, parent, or destination conflicts.
-Virtual lint is advisory; inspect every reported Article, CitationGroup, and Person
-issue.
+Virtual lint is advisory; inspect every reported Article, CitationGroup, Person, and
+companion Name issue. Resolve every `VIRTUAL_LINT_ISSUES` title-formatting finding,
+including `must_have_italics`, rather than treating it as harmless advisory noise.
 
 Do not use `--apply`. Tell the user where the staged file and manifest are, summarize
-CrossRef overrides and any new CitationGroup, and hand off the exact validation results.
+CrossRef overrides, fuller author identities, representative filename choices, any new
+CitationGroup, the companion Name scope, and the intake-closure audit. Hand off the
+exact validation results.
 
 ## Whole-volume and issue PDFs: ItemFile
 

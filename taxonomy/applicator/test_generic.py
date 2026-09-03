@@ -165,6 +165,66 @@ def test_schema_v2_create_object_allows_forward_references() -> None:
     assert created[1].parent is created[0]
 
 
+def test_create_object_rejects_unique_collision_hidden_by_detailed_match() -> None:
+    existing = _make_location(name="Precise site", latitude=None)
+    data = _create_location_row()
+    data.update(
+        {
+            "schema_version": 2,
+            "match": {"name": "Precise site", "latitude": "37°N"},
+            "values": {"name": "Precise site", "latitude": "37°N"},
+        }
+    )
+
+    with pytest.raises(
+        recommendations.RecommendationError,
+        match=r"UNIQUE constraint Location\(name\).*existing Location",
+    ):
+        recommendations.build_plan(
+            [recommendations.parse_recommendation(data, 1)],
+            model_registry={"Location": Location},
+            find_objects_by_match=lambda _model, _match: [],
+            get_unique_constraints=lambda _model: (("name",),),
+            find_objects_by_unique_constraint=lambda _model, _fields, _values: [
+                existing
+            ],
+        )
+
+
+def test_create_object_allows_unique_value_freed_by_earlier_update() -> None:
+    existing = _make_location(name="Precise site", latitude=None)
+    rename = _common(recommendations.SET_FIELD, "name")
+    rename.update(
+        {
+            "object": {"model": "Location", "id": 2300, "label": "Precise site"},
+            "old_value": "Precise site",
+            "new_value": "Renamed site",
+        }
+    )
+    create = _create_location_row()
+    create.update(
+        {
+            "schema_version": 2,
+            "match": {"name": "Precise site", "latitude": "37°N"},
+            "values": {"name": "Precise site", "latitude": "37°N"},
+        }
+    )
+
+    plan = recommendations.build_plan(
+        [
+            recommendations.parse_recommendation(rename, 1),
+            recommendations.parse_recommendation(create, 2),
+        ],
+        model_registry={"Location": Location},
+        get_object=lambda _model, _id: existing,
+        find_objects_by_match=lambda _model, _match: [],
+        get_unique_constraints=lambda _model: (("name",),),
+        find_objects_by_unique_constraint=lambda _model, _fields, _values: [existing],
+    )
+
+    assert len(plan.actions) == 2
+
+
 def test_create_object_allows_auto_generated_id_label() -> None:
     citation_group = CitationGroup.virtual(name="Journal of Test Evidence")
     values: dict[str, object] = {

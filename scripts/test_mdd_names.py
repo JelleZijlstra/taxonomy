@@ -1,7 +1,10 @@
 from types import SimpleNamespace
 from typing import cast
 
+from scripts import mdd_diff
 from scripts.mdd_names import _mdd_coordinates_match, get_type_locality_coordinates
+from taxonomy.db.constants import NamingConvention, PersonType
+from taxonomy.db.models import Person
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name import Name, TypeTag
 
@@ -105,3 +108,44 @@ def test_mdd_coordinate_ranges_compare_semantically() -> None:
     assert not _mdd_coordinates_match(
         "(-12 to -10.5)", "(-10.5 to 12)", is_latitude=True
     )
+
+
+def _person(
+    family_name: str,
+    *,
+    given_names: str | None = None,
+    tussenvoegsel: str | None = None,
+    naming_convention: NamingConvention = NamingConvention.unspecified,
+) -> Person:
+    return Person.virtual(
+        family_name=family_name,
+        given_names=given_names,
+        tussenvoegsel=tussenvoegsel,
+        naming_convention=naming_convention,
+        type=PersonType.checked,
+        tags=(),
+    )
+
+
+def test_mdd_author_uses_native_order_for_vietnamese_names() -> None:
+    vuong = _person(
+        "Vuong",
+        given_names="Tu",
+        tussenvoegsel="Tan",
+        naming_convention=NamingConvention.vietnamese,
+    )
+    hassanin = _person("Hassanin")
+    article_authors = [vuong, _person("Cornette"), _person("Utge"), hassanin]
+    name = cast(
+        Name,
+        SimpleNamespace(
+            get_authors=lambda: [vuong, hassanin],
+            original_citation=SimpleNamespace(get_authors=lambda: article_authors),
+        ),
+    )
+
+    assert (
+        mdd_diff.get_mdd_style_authority(name, set())
+        == "Vuong Tan Tu & Hassanin in Vuong Tan Tu, Cornette, Utge, & Hassanin"
+    )
+    assert list(mdd_diff.possible_mdd_authors(vuong)) == ["Vuong Tan Tu"]

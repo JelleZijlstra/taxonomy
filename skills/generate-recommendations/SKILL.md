@@ -19,13 +19,21 @@ entry point.
 1. Inspect relevant documentation in `docs/` for the topic and follow current
    conventions.
 2. Inspect current database state and primary evidence. Separate source text from
-   inference and retain uncertainty.
+   inference and retain uncertainty. Define the complete directly affected object set
+   before writing rows. When a source or newly created object makes straightforward
+   related changes evident, inspect those existing objects too—for example, connect
+   Names to their original Article and add source-quoted locality or specimen details
+   supplied by the same publication. Include the guarded companion rows unless the user
+   explicitly narrows scope; do not stop at the motivating object while leaving obvious
+   source-backed relationships unresolved.
 3. Write `recs/scripts/generate_<topic>_recommendations.py` when generation is repeated
    or database-dependent. Generators may read but must never write the database. This
    directory is intentionally untracked; keep durable applicators in `scripts/`.
 4. Write a new topic- or round-specific JSONL under `recs/manifests/`, which is also
    intentionally untracked. Do not revise a manifest that the user has already applied;
-   start another file.
+   start another file. When a prior manifest has been applied only partly, rebuild the
+   follow-up from the current database and filesystem state so already-completed rows
+   remain retry-safe and stale assumptions are rejected.
 5. Give every row `schema_version`, `action`, `confidence`, `reason`, evidence, and
    enough object IDs, labels, and old values to reject stale database state.
 6. Run both views before handoff:
@@ -307,6 +315,17 @@ safer; generic actions are not a reason to discard those guardrails.
   quotation from its cited source, never a paraphrase or inference. Put standardized
   interpretations on structured fields or non-Detail comments without rewriting the
   quoted evidence.
+- Treat completeness as part of correctness. For every created or newly connected
+  source, enumerate the directly related existing objects reviewed and include all
+  obvious evidence-backed companion changes (`original_citation`, `LocationDetail`,
+  `SpecimenDetail`, and analogous fields or tags). If an applicator dependency prevents
+  the changes from sharing one file, produce a named follow-up manifest after the
+  dependency is applied or add an explicit `manual_review`; never omit them silently.
+- If a recommendation campaign stages files in an intake directory, finish with a
+  checksum-backed disposition for every campaign-created file. Creation actions must
+  consume cataloged sources; rejected, duplicate, superseded, or extraction-only files
+  must use `move_to_not_cataloged` when supported. Re-inventory after application so a
+  later intake scan cannot rediscover leftovers.
 - Require exact support for source-derived coordinates and include the corresponding
   provenance tag.
 - Reuse an existing object only after checking all relevant context, not merely its
