@@ -410,7 +410,6 @@ class Region(BaseModel):
             setattr(obj, field.attribute_name, other)
         self.parent = other
         self.kind = constants.RegionKind.redirect
-        self.tags = ()  # type: ignore[assignment]
 
     def remove(self) -> None:
         """Mark an unreferenced Region as deleted without removing its DB row."""

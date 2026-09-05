@@ -1212,7 +1212,7 @@ def test_delete_region_is_guarded_restart_safe_and_virtual(
     proposed = builder.build()[0].model
     assert isinstance(proposed, Region)
     assert proposed.kind is RegionKind.deleted
-    assert proposed.tags == ()
+    assert proposed.tags == (RegionTag.OpenStreetMap("relation", 123, "boundary"),)
 
     recommendations.execute_plan(plan, apply=False)
     assert "WOULD_DELETE_REGION source=Region:1" in capsys.readouterr().out
@@ -1220,7 +1220,7 @@ def test_delete_region_is_guarded_restart_safe_and_virtual(
 
     recommendations.execute_plan(plan, apply=True)
     assert source.kind is RegionKind.deleted  # type: ignore[comparison-overlap]
-    assert source.tags == ()
+    assert source.tags == (RegionTag.OpenStreetMap("relation", 123, "boundary"),)
 
     rebuilt = recommendations.build_plan(
         [row], model_registry={"Region": Region}, get_object=lambda _model, _id: source
@@ -1252,7 +1252,11 @@ def test_delete_region_rejects_valid_reference(monkeypatch: pytest.MonkeyPatch) 
 def test_merge_region_composes_with_target_rename_and_is_restart_safe(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = Region.virtual(name="Obsolete Region", kind=RegionKind.territory, tags=())
+    source = Region.virtual(
+        name="Obsolete Region",
+        kind=RegionKind.territory,
+        tags=(RegionTag.IncompletelyDivided,),
+    )
     target = Region.virtual(name="Canonical Region", kind=RegionKind.territory, tags=())
     location = Location.virtual(name="Referenced site", region=source, tags=())
 
@@ -1298,6 +1302,7 @@ def test_merge_region_composes_with_target_rename_and_is_restart_safe(
     assert location.region is target
     assert source.parent is target
     assert source.kind is RegionKind.redirect
+    assert source.tags == (RegionTag.IncompletelyDivided,)
     rebuilt = recommendations.build_plan(
         rows, model_registry={"Region": Region}, get_object=get_object
     )
@@ -1307,7 +1312,11 @@ def test_merge_region_composes_with_target_rename_and_is_restart_safe(
 def test_merge_region_participates_in_virtual_proposal_graph(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = Region.virtual(name="Obsolete Region", kind=RegionKind.territory, tags=())
+    source = Region.virtual(
+        name="Obsolete Region",
+        kind=RegionKind.territory,
+        tags=(RegionTag.IncompletelyDivided,),
+    )
     target = Region.virtual(name="Canonical Region", kind=RegionKind.territory, tags=())
     location = Location.virtual(name="Referenced site", region=source, tags=())
     monkeypatch.setattr(
@@ -1338,6 +1347,7 @@ def test_merge_region_participates_in_virtual_proposal_graph(
     )
     assert proposed_source.kind is RegionKind.redirect
     assert proposed_source.parent is target
+    assert proposed_source.tags == (RegionTag.IncompletelyDivided,)
     assert proposed_location.region is target
     assert source.kind is RegionKind.territory
     assert location.region is source

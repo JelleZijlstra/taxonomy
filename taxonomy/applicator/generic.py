@@ -2130,7 +2130,7 @@ def build_plan(
                         raise RecommendationError(
                             "merge source already redirects to a different Region"
                         )
-                    already_applied = not actual_tags
+                    already_applied = True
                 else:
                     if target.has_parent(obj):
                         raise RecommendationError(
@@ -2139,7 +2139,7 @@ def build_plan(
                     already_applied = False
                 planned_values[source_parent_key] = target
                 planned_values[source_kind_key] = constants.RegionKind.redirect
-                planned_values[source_tags_key] = ()
+                planned_values[source_tags_key] = actual_tags
                 actions.append(
                     PlannedAction(
                         row,
@@ -2160,10 +2160,6 @@ def build_plan(
                 if obj.kind is constants.RegionKind.redirect:
                     raise RecommendationError("delete_region source is a redirect")
                 if obj.kind is constants.RegionKind.deleted:
-                    if obj.tags:
-                        raise RecommendationError(
-                            "deleted Region unexpectedly retains tags"
-                        )
                     actions.append(
                         PlannedAction(
                             row,
@@ -3057,7 +3053,6 @@ def execute_plan(
                 deleted_region = cast(
                     models.Region, _replace_created_models(planned.object, replacements)
                 )
-                deleted_region.tags = ()  # type: ignore[assignment]
                 deleted_region.remove()
             applied += 1
             continue

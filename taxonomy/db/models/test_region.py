@@ -145,7 +145,7 @@ def test_region_merge_reassigns_references_and_creates_redirect() -> None:
     assert reference.region is target
     assert source.parent is target
     assert source.kind is RegionKind.redirect
-    assert source.tags == ()
+    assert source.tags == (RegionTag.IncompletelyDivided,)
     source.get_direct_backrefs.assert_called_once_with(include_invalid=True)  # type: ignore[attr-defined]
 
 

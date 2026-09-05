@@ -75,6 +75,47 @@ def _location(
     )
 
 
+def test_type_locality_summary_labels_are_independent_of_tree() -> None:
+    missing = cast(Name, _FakeName(None, AgeClass.fossil, locality_required=False))
+    regionwide = cast(
+        Name,
+        _FakeName(
+            _location("Country", coordinates=True), AgeClass.extant, imprecise=True
+        ),
+    )
+    fossil_unplaced = cast(
+        Name,
+        _FakeName(
+            _location(
+                "Unknown bed",
+                recent=False,
+                tags=frozenset({models.tags.LocationTag.Unplaced}),
+            ),
+            AgeClass.fossil,
+        ),
+    )
+
+    assert shell._type_locality_summary_labels(missing) == {
+        "type_locality_set": False,
+        "type_locality_required": False,
+        "taxon_age": frozenset({"fossil"}),
+    }
+    assert shell._type_locality_summary_labels(regionwide) == {
+        "type_locality_set": True,
+        "location_age": frozenset({"Recent"}),
+        "location_kind": frozenset({"regionwide"}),
+        "imprecise_locality": True,
+        "coordinates_set": True,
+    }
+    assert shell._type_locality_summary_labels(fossil_unplaced) == {
+        "type_locality_set": True,
+        "location_age": frozenset({"fossil"}),
+        "location_kind": frozenset({"Unplaced"}),
+        "imprecise_locality": False,
+        "coordinates_set": False,
+    }
+
+
 def test_type_locality_summary_lines() -> None:
     names = cast(
         list[Name],
