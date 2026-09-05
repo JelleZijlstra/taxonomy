@@ -1,9 +1,13 @@
+import copy
+import hashlib
 import json
 import sys
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
+from functools import partial
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any, Literal, Self, cast
 
 import pytest
@@ -16,8 +20,17 @@ from taxonomy.applicator import item_file as item_file_recommendations
 from taxonomy.applicator import location as location_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
 from taxonomy.applicator.proposals import ProposedModel
-from taxonomy.db.constants import Rank, RegionKind
-from taxonomy.db.models import Article, ClassificationEntry, Location, Region
+from taxonomy.db.constants import ArticleType, Rank, RegionKind
+from taxonomy.db.models import (
+    Article,
+    CitationGroup,
+    ClassificationEntry,
+    ItemFile,
+    Location,
+    Person,
+    Region,
+)
+from taxonomy.db.models.citation_group.cg import CitationGroupStatus
 
 
 def _location_row() -> dict[str, object]:
@@ -201,6 +214,151 @@ def test_item_file_static_review_does_not_plan_or_access_files(
     output = capsys.readouterr().out
     assert "ITEM FILE RECOMMENDATIONS" in output
     assert "raw volume.pdf" in output
+
+
+@pytest.mark.parametrize("conflicting", [False, True])
+def test_article_and_item_share_inline_journal(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *, conflicting: bool
+) -> None:
+    pdf = b"%PDF-1.4\nfixture\n%%EOF\n"
+    options = SimpleNamespace(
+        new_path=tmp_path / "new",
+        library_path=tmp_path / "library",
+        item_file_path=tmp_path / "items",
+    )
+    options.new_path.mkdir()
+    (options.library_path / "Mollusca").mkdir(parents=True)
+    options.item_file_path.mkdir()
+    region = Region.virtual(name="Fiji")
+    group = {
+        "name": "New Journal of Mollusks",
+        "type": "JOURNAL",
+        "region": {"id": region.id, "name": region.name},
+        "tags": [],
+    }
+    article_row = cast(dict[str, Any], _article_row())
+    article_row["article"] = {
+        "name": "Endodontidae.pdf",
+        "type": "JOURNAL",
+        "citation_group": group,
+        "fields": {"title": "Example publication", "year": "2020"},
+        "authors": [{"family_name": "Smith", "given_names": "Jane"}],
+    }
+    item_row = cast(dict[str, Any], _item_file_row())
+    item_row["item_file"]["citation_group"] = copy.deepcopy(group)
+    if conflicting:
+        item_row["item_file"]["citation_group"]["type"] = "BOOK"
+    for index, row in enumerate((article_row, item_row)):
+        row["file"].update(
+            source_path=f"source{index}.pdf",
+            sha256=hashlib.sha256(pdf).hexdigest(),
+            size=len(pdf),
+        )
+        (options.new_path / row["file"]["source_path"]).write_bytes(pdf)
+    monkeypatch.setattr(
+        article_recommendations,
+        "build_plan",
+        partial(
+            article_recommendations.build_plan,
+            options=options,
+            get_article=lambda _name: None,
+            is_catalog_folder=lambda _path: True,
+            citation_groups_named=lambda _name: (),
+            get_region=lambda _id: region,
+        ),
+    )
+    monkeypatch.setattr(
+        item_file_recommendations,
+        "build_plan",
+        partial(
+            item_file_recommendations.build_plan,
+            options=options,
+            get_item_file=lambda _name: None,
+            citation_groups_named=lambda _name: (),
+            get_region=lambda _id: region,
+        ),
+    )
+    recommendations = apply_recommendations.Recommendations(
+        (article_recommendations.parse_recommendation(article_row, 2),),
+        (),
+        (),
+        (),
+        item_file_rows=(item_file_recommendations.parse_recommendation(item_row, 1),),
+    )
+    if conflicting:
+        with pytest.raises(
+            apply_recommendations.RecommendationError,
+            match="conflicting definitions for new CitationGroup",
+        ):
+            apply_recommendations.build_plans(recommendations)
+        assert len(list(options.new_path.iterdir())) == 2
+        assert not list(options.item_file_path.iterdir())
+        return
+
+    plans = apply_recommendations.build_plans(recommendations)
+    assert isinstance(plans, apply_recommendations.UnifiedRecommendationPlan)
+    proposals = [proposal.model for proposal in plans.proposals]
+    journals = [model for model in proposals if isinstance(model, CitationGroup)]
+    assert len(journals) == 1
+    assert all(
+        model.citation_group is journals[0]
+        for model in proposals
+        if isinstance(model, (Article, ItemFile))
+    )
+    created_groups: list[CitationGroup] = []
+    created_records: list[Article | ItemFile] = []
+
+    def create_group(
+        planned: article_recommendations.PlannedCitationGroup,
+    ) -> CitationGroup:
+        cg = CitationGroup.virtual(
+            name=planned.spec.name,
+            type=ArticleType.JOURNAL,
+            region=region,
+            status=CitationGroupStatus.normal,
+            tags=planned.tags,
+        )
+        created_groups.append(cg)
+        return cg
+
+    def create_article(name: str, values: Mapping[str, Any]) -> Article:
+        article = Article.virtual(name=name, **values)
+        created_records.append(article)
+        return article
+
+    def create_item(values: Mapping[str, Any]) -> ItemFile:
+        item = ItemFile.virtual(**values)
+        created_records.append(item)
+        return item
+
+    monkeypatch.setattr(
+        article_recommendations,
+        "execute_plan",
+        partial(
+            article_recommendations.execute_plan,
+            create_citation_group=create_group,
+            create_article=create_article,
+            get_or_create_person=lambda **kwargs: Person.virtual(**kwargs),
+            run_auxiliary=lambda _article, *, add_history: None,
+        ),
+    )
+    monkeypatch.setattr(
+        item_file_recommendations,
+        "execute_plan",
+        partial(
+            item_file_recommendations.execute_plan,
+            create_citation_group=create_group,
+            create_item_file=create_item,
+        ),
+    )
+    apply_recommendations.execute_plans(plans, apply=False)
+    assert not created_groups and not created_records
+    assert len(list(options.new_path.iterdir())) == 2
+    apply_recommendations.execute_plans(plans, apply=True)
+    assert len(created_groups) == 1
+    assert len(created_records) == 2
+    assert all(record.citation_group is created_groups[0] for record in created_records)
+    assert not list(options.new_path.iterdir())
 
 
 def test_classification_review_overlays_plan_on_existing_hierarchy(
@@ -510,7 +668,12 @@ def test_build_plans_passes_separately_planned_target_name(
         {"field": "name", "old_value": "Example", "new_value": "Modern Example"}
     ]
     location_row = location_recommendations.parse_recommendation(row_data, 1)
-    expected_plans = (object(), object(), object(), object())
+    expected_plans = (
+        article_recommendations.RecommendationPlan((), Counter()),
+        object(),
+        object(),
+        object(),
+    )
 
     monkeypatch.setattr(
         article_recommendations, "build_plan", lambda rows: expected_plans[0]

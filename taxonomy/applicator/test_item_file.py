@@ -8,9 +8,12 @@ from typing import Any, cast
 import pytest
 
 from taxonomy.applicator import item_file as recommendations
+from taxonomy.applicator.citation_group import PlannedCitationGroup
 from taxonomy.db.constants import ArticleType
-from taxonomy.db.models import CitationGroup, ItemFile
+from taxonomy.db.models import CitationGroup, ItemFile, Region
 from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.citation_group import CitationGroupTag
+from taxonomy.db.models.citation_group.cg import CitationGroupStatus
 from taxonomy.db.models.item_file import ItemFileTag, lint_detect_url
 
 
@@ -50,6 +53,7 @@ def _citation_group() -> CitationGroup:
             id=12,
             name="Journal of Examples",
             type=ArticleType.JOURNAL,
+            tags=(),
             is_invalid=lambda: False,
         ),
     )
@@ -337,3 +341,156 @@ def test_detect_url_lint_skips_new_virtual_item_file() -> None:
     )
 
     assert list(lint_detect_url(item_file, LintConfig())) == []
+
+
+def _inline_group(region: Region) -> dict[str, Any]:
+    return {
+        "name": "Journal of Examples",
+        "type": "JOURNAL",
+        "region": {"id": region.id, "name": region.name},
+        "tags": [],
+    }
+
+
+@pytest.mark.parametrize("interrupt_after_group", [False, True])
+def test_inline_group_created_once_and_reused_on_retry(
+    tmp_path: Path, *, interrupt_after_group: bool
+) -> None:
+    pdf = _pdf_bytes()
+    options = _options(tmp_path)
+    region = Region.virtual(name="Fiji")
+    rows = []
+    for index in range(2):
+        row = _row(pdf)
+        row["item_file"]["citation_group"] = _inline_group(region)
+        row["item_file"]["filename"] = f"volume {index}.pdf"
+        row["file"]["source_path"] = f"volume {index}.pdf"
+        (options.new_path / row["file"]["source_path"]).write_bytes(pdf)
+        rows.append(recommendations.parse_recommendation(row, index + 1))
+    groups: list[CitationGroup] = []
+    items: dict[str, ItemFile] = {}
+
+    def build() -> recommendations.RecommendationPlan:
+        return recommendations.build_plan(
+            rows,
+            options=options,
+            citation_groups_named=lambda _name: groups,
+            get_region=lambda _id: region,
+            get_item_file=items.get,
+        )
+
+    def create_group(planned: PlannedCitationGroup) -> CitationGroup:
+        cg = CitationGroup.virtual(
+            name=planned.spec.name,
+            type=planned.spec.article_type,
+            region=planned.region,
+            status=CitationGroupStatus.normal,
+            tags=planned.tags,
+        )
+        groups.append(cg)
+        return cg
+
+    def create_item(values: Mapping[str, Any]) -> ItemFile:
+        item = ItemFile.virtual(**values)
+        items[item.filename] = item
+        return item
+
+    plan = build()
+    recommendations.execute_plan(
+        plan,
+        apply=False,
+        create_citation_group=lambda _planned: pytest.fail("dry run created journal"),
+        create_item_file=lambda _values: pytest.fail("dry run created ItemFile"),
+    )
+    assert all(action.source_path.exists() for action in plan.actions)
+    assert not list(options.item_file_path.iterdir())
+    if interrupt_after_group:
+
+        def fail_item(_values: Mapping[str, Any]) -> ItemFile:
+            raise RuntimeError("interrupted after journal creation")
+
+        with pytest.raises(RuntimeError, match="interrupted after journal creation"):
+            recommendations.execute_plan(
+                plan,
+                apply=True,
+                create_citation_group=create_group,
+                create_item_file=fail_item,
+            )
+        assert len(groups) == 1 and not items
+        assert all(action.source_path.exists() for action in plan.actions)
+        plan = build()
+    recommendations.execute_plan(
+        plan,
+        apply=True,
+        create_citation_group=create_group,
+        create_item_file=create_item,
+    )
+    assert len(groups) == 1
+    assert len(items) == 2
+    assert all(item.citation_group is groups[0] for item in items.values())
+    assert all(not action.source_path.exists() for action in plan.actions)
+
+    retry = build()
+    assert all(action.already_applied for action in retry.actions)
+    recommendations.execute_plan(
+        retry,
+        apply=True,
+        create_citation_group=lambda _planned: pytest.fail("retry created journal"),
+        create_item_file=lambda _values: pytest.fail("retry created ItemFile"),
+    )
+
+
+@pytest.mark.parametrize("field", ["type", "region", "status", "tags"])
+def test_inline_group_rejects_conflicting_existing_record(
+    tmp_path: Path, field: str
+) -> None:
+    options = _options(tmp_path)
+    region = Region.virtual(name="Fiji")
+    existing = CitationGroup.virtual(
+        name="Journal of Examples",
+        type=ArticleType.JOURNAL,
+        region=region,
+        status=CitationGroupStatus.normal,
+        tags=(),
+    )
+    alternatives = {
+        "type": ArticleType.BOOK,
+        "region": Region.virtual(name="Other country"),
+        "status": CitationGroupStatus.redirect,
+        "tags": (CitationGroupTag.MustHaveSeries(),),
+    }
+    setattr(existing, field, alternatives[field])
+    row = _row(_pdf_bytes())
+    row["item_file"]["citation_group"] = _inline_group(region)
+    with pytest.raises(recommendations.RecommendationError, match="conflicts"):
+        recommendations.build_plan(
+            [recommendations.parse_recommendation(row, 1)],
+            options=options,
+            citation_groups_named=lambda _name: [existing],
+            get_region=lambda _id: region,
+            get_item_file=lambda _name: None,
+        )
+
+
+def test_inline_group_checks_region_snapshot_and_tags(tmp_path: Path) -> None:
+    options = _options(tmp_path)
+    region = Region.virtual(name="Fiji")
+    row = _row(_pdf_bytes())
+    row["item_file"]["citation_group"] = _inline_group(region)
+    region.name = "Renamed region"
+    with pytest.raises(recommendations.RecommendationError, match=r"Region .* changed"):
+        recommendations.build_plan(
+            [recommendations.parse_recommendation(row, 1)],
+            options=options,
+            get_region=lambda _id: region,
+        )
+    row["item_file"]["citation_group"] = _inline_group(region)
+    row["item_file"]["citation_group"]["tags"] = [[999999]]
+    with pytest.raises(
+        recommendations.RecommendationError, match="invalid serialized tag"
+    ):
+        recommendations.build_plan(
+            [recommendations.parse_recommendation(row, 1)],
+            options=options,
+            get_region=lambda _id: region,
+        )

@@ -53,7 +53,13 @@ from taxonomy.applicator import proposals as virtual_proposals
 from taxonomy.applicator import staged_file as staged_file_recommendations
 from taxonomy.applicator import taxon as taxon_recommendations
 from taxonomy.applicator import type_locality as type_recommendations
-from taxonomy.db.models import Article, ClassificationEntry, Location, Name
+from taxonomy.db.models import (
+    Article,
+    CitationGroup,
+    ClassificationEntry,
+    Location,
+    Name,
+)
 from taxonomy.db.models.base import BaseModel, LintConfig
 
 
@@ -1626,7 +1632,12 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
     try:
         article_plan = article_recommendations.build_plan(recommendations.article_rows)
         item_file_plan = item_file_recommendations.build_plan(
-            recommendations.item_file_rows
+            recommendations.item_file_rows,
+            initial_citation_groups=(
+                action.citation_group
+                for action in article_plan.actions
+                if action.citation_group is not None
+            ),
         )
         staged_file_plan = staged_file_recommendations.build_plan(
             recommendations.staged_file_rows
@@ -1641,8 +1652,11 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             )
         if _uses_unified_plan(recommendations):
             builder = virtual_proposals.ProposalBuilder()
+            new_citation_groups: dict[str, CitationGroup] = {}
             references: dict[str, BaseModel] = dict(
-                article_recommendations.add_virtual_models(article_plan, builder)
+                article_recommendations.add_virtual_models(
+                    article_plan, builder, new_citation_groups=new_citation_groups
+                )
             )
             taxon_plan = taxon_recommendations.build_plan(
                 recommendations.taxon_rows, initial_references=references
@@ -1687,7 +1701,9 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             type_recommendations.add_virtual_models(type_plan, builder)
             location_recommendations.add_virtual_models(location_plan, builder)
             generic_recommendations.add_virtual_models(generic_plan, builder)
-            item_file_recommendations.add_virtual_models(item_file_plan, builder)
+            item_file_recommendations.add_virtual_models(
+                item_file_plan, builder, new_citation_groups=new_citation_groups
+            )
             coverage_plan = coverage_recommendations.build_plan(
                 recommendations.coverage_rows, references=references
             )
@@ -1850,10 +1866,13 @@ def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionRes
     with recorder_context as recorder:
         if isinstance(plans, UnifiedRecommendationPlan):
             replacements: dict[int, BaseModel] = {}
+            created_citation_groups: dict[str, CitationGroup] = {}
             if plans.article.action_counts:
                 print("ARTICLE PLAN")
                 article_outputs = article_recommendations.execute_plan(
-                    plans.article, apply=apply
+                    plans.article,
+                    apply=apply,
+                    created_citation_groups=created_citation_groups,
                 )
                 for ref, actual in article_outputs.items():
                     proposed = plans.references.get(ref)
@@ -1863,7 +1882,11 @@ def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionRes
                 if plans.article.action_counts:
                     print()
                 print("ITEM FILE PLAN")
-                item_file_recommendations.execute_plan(plans.item_file, apply=apply)
+                item_file_recommendations.execute_plan(
+                    plans.item_file,
+                    apply=apply,
+                    created_citation_groups=created_citation_groups,
+                )
             if plans.staged_file.action_counts:
                 if plans.article.action_counts or plans.item_file.action_counts:
                     print()

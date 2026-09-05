@@ -18,9 +18,11 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from taxonomy import config
+from taxonomy.applicator import citation_group as citation_group_recommendations
 from taxonomy.applicator import generic as generic_recommendations
+from taxonomy.applicator.citation_group import CitationGroupSpec, PlannedCitationGroup
 from taxonomy.applicator.proposals import ProposalBuilder
-from taxonomy.db.models import CitationGroup, ItemFile
+from taxonomy.db.models import CitationGroup, ItemFile, Region
 from taxonomy.db.models.item_file import ItemFileTag
 
 SCHEMA_VERSION = 1
@@ -52,12 +54,6 @@ class Evidence:
 
 
 @dataclass(frozen=True, slots=True)
-class CitationGroupSpec:
-    citation_group_id: int
-    name: str
-
-
-@dataclass(frozen=True, slots=True)
 class FileSpec:
     source_path: str
     sha256: str
@@ -84,7 +80,7 @@ class PlannedAction:
     recommendation: Recommendation
     source_path: Path
     destination_path: Path
-    citation_group: CitationGroup
+    citation_group: PlannedCitationGroup
     fields: Mapping[str, str | None]
     tags: tuple[ItemFileTag, ...]
     item_file: ItemFile | None
@@ -142,14 +138,12 @@ def _parse_evidence(value: Any, line: int) -> tuple[Evidence, ...]:
 
 
 def _parse_citation_group(value: Any, line: int) -> CitationGroupSpec:
-    data = _object(value, "item_file.citation_group", line)
-    if set(data) != {"id", "name"}:
-        raise RecommendationError(
-            f"line {line}: item_file.citation_group accepts id and name"
+    try:
+        return citation_group_recommendations.parse_spec(
+            value, line=line, context="item_file.citation_group"
         )
-    return CitationGroupSpec(
-        _required_int(data, "id", line), _required_str(data, "name", line)
-    )
+    except citation_group_recommendations.RecommendationError as exc:
+        raise RecommendationError(str(exc)) from exc
 
 
 def _parse_file(value: Any, line: int) -> FileSpec:
@@ -336,10 +330,11 @@ def _check_field_snapshot(item_file: ItemFile, action: PlannedAction) -> None:
         for field, value in expected.items()
         if getattr(item_file, field) != value
     ]
-    if item_file.citation_group.id != action.citation_group.id:
+    expected_cg = action.citation_group.citation_group
+    if expected_cg is None or item_file.citation_group.id != expected_cg.id:
         mismatches.append(
             f"citation_group={item_file.citation_group!r} "
-            f"(expected {action.citation_group!r})"
+            f"(expected {expected_cg!r})"
         )
     if frozenset(item_file.tags or ()) != frozenset(action.tags):
         mismatches.append("tags differ")
@@ -357,6 +352,11 @@ def build_plan(
     options: OptionsLike | None = None,
     get_citation_group: Callable[[int], CitationGroup] = _get_citation_group,
     get_item_file: Callable[[str], ItemFile | None] = _get_item_file,
+    citation_groups_named: Callable[[str], Iterable[CitationGroup]] = (
+        citation_group_recommendations.citation_groups_named
+    ),
+    get_region: Callable[[int], Region] = citation_group_recommendations.get_region,
+    initial_citation_groups: Iterable[PlannedCitationGroup] = (),
 ) -> RecommendationPlan:
     resolved_options: OptionsLike = options or config.get_options()
     rows = list(recommendations)
@@ -371,6 +371,11 @@ def build_plan(
     actions: list[PlannedAction] = []
     seen_filenames: set[str] = set()
     seen_sources: set[Path] = set()
+    planned_new_citation_groups = {
+        planned.spec.name: planned
+        for planned in initial_citation_groups
+        if planned.citation_group is None
+    }
     for recommendation in rows:
         line = recommendation.line_number
         if recommendation.filename in seen_filenames:
@@ -413,17 +418,17 @@ def build_plan(
         if destination.is_symlink():
             raise RecommendationError(f"line {line}: destination may not be a symlink")
 
-        spec = recommendation.citation_group
-        citation_group = get_citation_group(spec.citation_group_id)
-        if (
-            citation_group.id != spec.citation_group_id
-            or citation_group.name != spec.name
-            or citation_group.is_invalid()
-        ):
-            raise RecommendationError(
-                f"line {line}: CitationGroup {spec.citation_group_id} is not valid "
-                f"with name {spec.name!r}"
+        try:
+            citation_group = citation_group_recommendations.plan_citation_group(
+                recommendation.citation_group,
+                line=line,
+                planned_new=planned_new_citation_groups,
+                get_citation_group=get_citation_group,
+                citation_groups_named=citation_groups_named,
+                get_region=get_region,
             )
+        except citation_group_recommendations.RecommendationError as exc:
+            raise RecommendationError(str(exc)) from exc
         tags = _decode_tags(recommendation.serialized_tags, line=line)
         item_file = get_item_file(recommendation.filename)
         action = PlannedAction(
@@ -479,7 +484,14 @@ def print_review_table(rows: Iterable[Recommendation]) -> None:
         generic_recommendations._print_review_detail("file", repr(row.file))
 
 
-def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> None:
+def add_virtual_models(
+    plan: RecommendationPlan,
+    builder: ProposalBuilder,
+    *,
+    new_citation_groups: dict[str, CitationGroup] | None = None,
+) -> None:
+    if new_citation_groups is None:
+        new_citation_groups = {}
     for action in plan.actions:
         context = f"line {action.recommendation.line_number} {CREATE_ITEM_FILE}"
         if action.item_file is not None:
@@ -489,7 +501,12 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             ItemFile,
             context=context,
             filename=action.recommendation.filename,
-            citation_group=builder.copy(action.citation_group, context=context),
+            citation_group=citation_group_recommendations.add_virtual_model(
+                action.citation_group,
+                builder,
+                context=context,
+                new_citation_groups=new_citation_groups,
+            ),
             tags=action.tags,
             title=action.fields.get("title"),
             series=action.fields.get("series"),
@@ -536,8 +553,14 @@ def execute_plan(
     apply: bool,
     create_item_file: Callable[[Mapping[str, Any]], ItemFile] = _create_item_file,
     install_pdf: Callable[[Path, Path, str], None] = _install_pdf,
+    create_citation_group: Callable[[PlannedCitationGroup], CitationGroup] = (
+        citation_group_recommendations.create_citation_group
+    ),
+    created_citation_groups: dict[str, CitationGroup] | None = None,
 ) -> tuple[ItemFile, ...]:
     resolved: list[ItemFile] = []
+    if created_citation_groups is None:
+        created_citation_groups = {}
     for action in plan.actions:
         status = (
             "ALREADY_APPLIED"
@@ -547,7 +570,7 @@ def execute_plan(
         print(
             f"{status} action={CREATE_ITEM_FILE} "
             f"filename={action.recommendation.filename!r} "
-            f"citation_group={action.citation_group.name!r} "
+            f"citation_group={action.citation_group.spec.name!r} "
             f"source={str(action.source_path)!r} "
             f"destination={str(action.destination_path)!r} "
             f"sha256={action.recommendation.file.sha256}"
@@ -562,10 +585,16 @@ def execute_plan(
             )
         item_file = action.item_file
         if item_file is None:
+            cg = action.citation_group.citation_group
+            if cg is None:
+                cg = created_citation_groups.get(action.citation_group.spec.name)
+                if cg is None:
+                    cg = create_citation_group(action.citation_group)
+                    created_citation_groups[action.citation_group.spec.name] = cg
             item_file = create_item_file(
                 {
                     "filename": action.recommendation.filename,
-                    "citation_group": action.citation_group,
+                    "citation_group": cg,
                     "tags": action.tags,
                     **_expected_fields(action.fields),
                 }

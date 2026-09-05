@@ -21,7 +21,12 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from taxonomy import config
+from taxonomy.applicator import citation_group as citation_group_recommendations
 from taxonomy.applicator import generic as generic_recommendations
+from taxonomy.applicator.citation_group import CitationGroupSpec as CitationGroupSpec
+from taxonomy.applicator.citation_group import (
+    PlannedCitationGroup as PlannedCitationGroup,
+)
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db.constants import ArticleKind, ArticleType, NamingConvention, PersonType
 from taxonomy.db.helpers import trimdoi
@@ -30,8 +35,6 @@ from taxonomy.db.models.article.api_data import expand_doi_json
 from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.article.lint import is_valid_doi
 from taxonomy.db.models.article.name_parser import get_name_parser
-from taxonomy.db.models.citation_group import CitationGroupTag
-from taxonomy.db.models.citation_group.cg import CitationGroupStatus
 from taxonomy.db.models.person import AuthorTag, VirtualPerson
 
 SCHEMA_VERSION = 1
@@ -117,25 +120,6 @@ class PersonSpec:
 
 
 @dataclass(frozen=True, slots=True)
-class RegionSpec:
-    region_id: int
-    region_name: str
-
-
-@dataclass(frozen=True, slots=True)
-class CitationGroupSpec:
-    citation_group_id: int | None
-    name: str
-    article_type: ArticleType | None
-    region: RegionSpec | None
-    serialized_tags: tuple[Any, ...]
-
-    @property
-    def requests_creation(self) -> bool:
-        return self.citation_group_id is None
-
-
-@dataclass(frozen=True, slots=True)
 class FileSpec:
     source_path: str
     destination_folder: str
@@ -172,14 +156,6 @@ class Recommendation:
     parent: ParentSpec | None
     file: FileSpec | None
     ref: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class PlannedCitationGroup:
-    spec: CitationGroupSpec
-    region: Region | None
-    citation_group: CitationGroup | None
-    tags: tuple[CitationGroupTag, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,37 +288,12 @@ def _parse_authors(value: Any, line: int) -> tuple[PersonSpec, ...]:
 
 
 def _parse_citation_group(value: Any, line: int) -> CitationGroupSpec:
-    data = _object(value, "article.citation_group", line)
-    name = _required_str(data, "name", line)
-    object_id = data.get("id")
-    if object_id is not None:
-        if not isinstance(object_id, int) or isinstance(object_id, bool):
-            raise RecommendationError(
-                f"line {line}: citation_group.id must be an integer"
-            )
-        if set(data) != {"id", "name"}:
-            raise RecommendationError(
-                f"line {line}: an existing citation_group accepts only id and name"
-            )
-        return CitationGroupSpec(object_id, name, None, None, ())
-    article_type = _parse_type(
-        _required(data, "type", line), "citation_group.type", line
-    )
-    region_data = _object(
-        _required(data, "region", line), "citation_group.region", line
-    )
-    region = RegionSpec(
-        _required_int(region_data, "id", line), _required_str(region_data, "name", line)
-    )
-    tags = data.get("tags", [])
-    if not isinstance(tags, list):
-        raise RecommendationError(f"line {line}: citation_group.tags must be a list")
-    unknown = set(data) - {"name", "type", "region", "tags"}
-    if unknown:
-        raise RecommendationError(
-            f"line {line}: unsupported citation_group field(s): {', '.join(sorted(unknown))}"
+    try:
+        return citation_group_recommendations.parse_spec(
+            value, line=line, context="article.citation_group"
         )
-    return CitationGroupSpec(None, name, article_type, region, tuple(tags))
+    except citation_group_recommendations.RecommendationError as exc:
+        raise RecommendationError(str(exc)) from exc
 
 
 def _parse_parent(value: Any, line: int) -> ParentSpec:
@@ -949,60 +900,17 @@ def build_plan(
 
         planned_cg: PlannedCitationGroup | None = None
         if spec := recommendation.citation_group:
-            if spec.citation_group_id is not None:
-                cg = get_citation_group(spec.citation_group_id)
-                if (
-                    cg.id != spec.citation_group_id
-                    or cg.name != spec.name
-                    or cg.is_invalid()
-                ):
-                    raise RecommendationError(
-                        f"line {line}: CitationGroup {spec.citation_group_id} is not valid with name {spec.name!r}"
-                    )
-                planned_cg = PlannedCitationGroup(spec, None, cg, tuple(cg.tags or ()))
-            else:
-                assert spec.region is not None and spec.article_type is not None
-                region = get_region(spec.region.region_id)
-                if (
-                    region.id != spec.region.region_id
-                    or region.name != spec.region.region_name
-                ):
-                    raise RecommendationError(
-                        f"line {line}: Region {region.id} changed from {spec.region.region_name!r} to {region.name!r}"
-                    )
-                cg_tags = _decode_tags(
-                    spec.serialized_tags,
-                    CitationGroupTag,
-                    context=f"line {line} citation_group.tags",
+            try:
+                planned_cg = citation_group_recommendations.plan_citation_group(
+                    spec,
+                    line=line,
+                    planned_new=planned_new_citation_groups,
+                    get_citation_group=get_citation_group,
+                    citation_groups_named=citation_groups_named,
+                    get_region=get_region,
                 )
-                matches = list(citation_groups_named(spec.name))
-                if len(matches) > 1:
-                    raise RecommendationError(
-                        f"line {line}: multiple CitationGroups are named {spec.name!r}"
-                    )
-                existing_cg = matches[0] if matches else None
-                if existing_cg is not None and (
-                    existing_cg.status is not CitationGroupStatus.normal
-                    or existing_cg.type is not spec.article_type
-                    or existing_cg.region is None
-                    or existing_cg.region.id != region.id
-                    or frozenset(existing_cg.tags or ()) != frozenset(cg_tags)
-                ):
-                    raise RecommendationError(
-                        f"line {line}: existing CitationGroup {spec.name!r} conflicts with requested creation"
-                    )
-                planned_cg = PlannedCitationGroup(spec, region, existing_cg, cg_tags)
-                if existing_cg is None:
-                    earlier = planned_new_citation_groups.get(spec.name)
-                    if earlier is not None:
-                        assert earlier.region is not None
-                        if earlier.spec != spec or earlier.region.id != region.id:
-                            raise RecommendationError(
-                                f"line {line}: conflicting definitions for new CitationGroup {spec.name!r}"
-                            )
-                        planned_cg = earlier
-                    else:
-                        planned_new_citation_groups[spec.name] = planned_cg
+            except citation_group_recommendations.RecommendationError as exc:
+                raise RecommendationError(str(exc)) from exc
         if (
             article_type in {ArticleType.JOURNAL, ArticleType.THESIS}
             and planned_cg is None
@@ -1184,10 +1092,14 @@ def print_review_table(rows: Iterable[Recommendation]) -> None:
 
 
 def add_virtual_models(
-    plan: RecommendationPlan, builder: ProposalBuilder
+    plan: RecommendationPlan,
+    builder: ProposalBuilder,
+    *,
+    new_citation_groups: dict[str, CitationGroup] | None = None,
 ) -> Mapping[str, Article]:
     now = datetime.datetime.now(tz=datetime.UTC)
-    new_citation_groups: dict[str, CitationGroup] = {}
+    if new_citation_groups is None:
+        new_citation_groups = {}
     planned_articles: dict[str, Article] = {}
     references: dict[str, Article] = {}
     for action in plan.actions:
@@ -1200,25 +1112,12 @@ def add_virtual_models(
             continue
         cg: CitationGroup | None = None
         if action.citation_group is not None:
-            planned = action.citation_group
-            if planned.citation_group is not None:
-                cg = builder.copy(planned.citation_group, context=context)
-            else:
-                assert (
-                    planned.region is not None and planned.spec.article_type is not None
-                )
-                cg = new_citation_groups.get(planned.spec.name)
-                if cg is None:
-                    cg = builder.create(
-                        CitationGroup,
-                        context=context,
-                        name=planned.spec.name,
-                        type=planned.spec.article_type,
-                        region=planned.region,
-                        status=CitationGroupStatus.normal,
-                        tags=planned.tags,
-                    )
-                    new_citation_groups[planned.spec.name] = cg
+            cg = citation_group_recommendations.add_virtual_model(
+                action.citation_group,
+                builder,
+                context=context,
+                new_citation_groups=new_citation_groups,
+            )
         virtual_people = [
             (
                 builder.copy(resolved, context=context)
@@ -1277,17 +1176,6 @@ def add_virtual_models(
     return references
 
 
-def _create_citation_group(planned: PlannedCitationGroup) -> CitationGroup:
-    assert planned.region is not None and planned.spec.article_type is not None
-    return CitationGroup.create(
-        name=planned.spec.name,
-        type=planned.spec.article_type,
-        region=planned.region,
-        status=CitationGroupStatus.normal,
-        tags=planned.tags,
-    )
-
-
 def _create_article(name: str, values: Mapping[str, Any]) -> Article:
     return Article.make(name, **values)
 
@@ -1339,14 +1227,16 @@ def execute_plan(
     apply: bool,
     create_citation_group: Callable[
         [PlannedCitationGroup], CitationGroup
-    ] = _create_citation_group,
+    ] = citation_group_recommendations.create_citation_group,
     get_or_create_person: Callable[..., Person] = Person.get_or_create_unchecked,
     create_article: Callable[[str, Mapping[str, Any]], Article] = _create_article,
     install_file: Callable[[Path, Path, str], None] = _install_file,
     run_auxiliary: Callable[..., None] = _run_auxiliary,
     add_article_history: Callable[[Article], None] = _add_article_history,
+    created_citation_groups: dict[str, CitationGroup] | None = None,
 ) -> Mapping[str, Article]:
-    created_citation_groups: dict[str, CitationGroup] = {}
+    if created_citation_groups is None:
+        created_citation_groups = {}
     resolved_articles: dict[str, Article] = {}
     for action in plan.actions:
         status = (

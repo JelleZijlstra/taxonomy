@@ -354,10 +354,14 @@ plus a separate file move: the dedicated action guards the file size and SHA-256
 - Stage the whole PDF under `config.get_options().new_path`. The destination is
   `config.get_options().item_file_path`, which must already exist. Choose a plain PDF
   filename with no directory components; Article filename grammar does not apply.
-- Snapshot an existing CitationGroup's ID and exact name. Inline CitationGroup creation
-  is not supported by this action. Follow its series/volume/issue conventions; propose
-  any necessary CitationGroup tag correction separately, with source evidence, and
-  validate the proposed objects together.
+- Snapshot an existing CitationGroup's ID and exact name, or use the same inline
+  `{name, type, region, tags}` definition supported by `create_article`. When a source
+  volume and its extracts share a new journal, repeat its complete definition on each
+  row. The combined plan rejects conflicting definitions, shares one virtual journal for
+  lint, and creates it only once on application. Exact existing definitions are reused
+  on retries. Follow its series/volume/issue conventions; propose any necessary
+  CitationGroup tag correction separately, with source evidence, and validate the
+  proposed objects together.
 - Put supported, verified metadata in `item_file.fields`: `title`, `series`, `volume`,
   `issue`, `start_page`, `end_page`, and `url` (strings or null). Prefer a stable
   volume/item URL over an expiring download URL. There are no `year`, `authors`, or
