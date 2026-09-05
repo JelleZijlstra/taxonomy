@@ -1,7 +1,6 @@
 import math
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Self, cast
 from unittest.mock import Mock
 
 import pytest
@@ -9,29 +8,13 @@ import pytest
 from taxonomy import coordinates
 from taxonomy.apis import nominatim
 from taxonomy.db import coordinate_lint
-from taxonomy.db.constants import RegionKind
 from taxonomy.db.models.region import Region, RegionTag
 
 
-class FakeRegion:
-    def __init__(
-        self, name: str, parent: Self | None = None, *, tags: tuple[object, ...] = ()
-    ) -> None:
-        self.name = name
-        self.parent = parent
-        self.tags = tags
-        self.children: list[Self] = []
-        if parent is not None:
-            parent.children.append(self)
-
-    def parent_of_kind(self, kind: RegionKind) -> Self | None:
-        assert kind is RegionKind.country
-        region: FakeRegion | None = self
-        while region is not None:
-            if region.parent is None:
-                return cast(Self, region)
-            region = region.parent
-        return None
+def _region(
+    name: str, parent: Region | None = None, *, tags: tuple[RegionTag, ...] = ()
+) -> Region:
+    return Region.virtual(name=name, parent=parent, tags=tags)
 
 
 def test_get_region_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -377,14 +360,11 @@ def _boundary_result(geometry: coordinates.GeoGeometry) -> nominatim.BoundaryRes
 
 
 def test_check_point_in_linked_osm_region(monkeypatch: pytest.MonkeyPatch) -> None:
-    country = FakeRegion("Country")
-    expected = cast(
-        Region,
-        FakeRegion(
-            "Expected State",
-            country,
-            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
-        ),
+    country = _region("Country")
+    expected = _region(
+        "Expected State",
+        country,
+        tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
     )
     lookup = Mock(return_value=_boundary_result(_square_geometry()))
     monkeypatch.setattr(nominatim, "lookup_boundary", lookup)
@@ -408,12 +388,8 @@ def test_check_point_in_linked_osm_region(monkeypatch: pytest.MonkeyPatch) -> No
 def test_check_point_in_region_uses_cached_geometry_offline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = cast(
-        Region,
-        FakeRegion(
-            "Expected State",
-            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
-        ),
+    expected = _region(
+        "Expected State", tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),)
     )
     lookup = Mock(return_value=_boundary_result(_square_geometry()))
     monkeypatch.setattr(nominatim, "lookup_boundary", lookup)
@@ -432,12 +408,8 @@ def test_check_point_in_region_uses_cached_geometry_offline(
 def test_check_point_in_region_reports_point_just_outside_boundary(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = cast(
-        Region,
-        FakeRegion(
-            "Expected State",
-            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
-        ),
+    expected = _region(
+        "Expected State", tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),)
     )
     monkeypatch.setattr(
         nominatim,
@@ -453,12 +425,8 @@ def test_check_point_in_region_reports_point_just_outside_boundary(
 def test_check_point_in_region_suppresses_sub_500m_boundary_difference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = cast(
-        Region,
-        FakeRegion(
-            "Expected State",
-            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
-        ),
+    expected = _region(
+        "Expected State", tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),)
     )
     monkeypatch.setattr(
         nominatim,
@@ -477,12 +445,8 @@ def test_check_point_in_region_suppresses_sub_500m_boundary_difference(
 def test_check_extent_in_region_overlap_and_full_containment(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    expected = cast(
-        Region,
-        FakeRegion(
-            "Expected State",
-            tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),),
-        ),
+    expected = _region(
+        "Expected State", tags=(RegionTag.OpenStreetMap("relation", 123, "boundary"),)
     )
     monkeypatch.setattr(
         nominatim,

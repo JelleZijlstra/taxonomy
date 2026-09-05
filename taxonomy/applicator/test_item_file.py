@@ -194,7 +194,7 @@ def test_execute_installs_file_creates_object_and_removes_source(
     plan = _build(tmp_path)
     action = plan.actions[0]
     created_values: list[Mapping[str, Any]] = []
-    created = cast(ItemFile, SimpleNamespace(filename="source item.pdf"))
+    created = ItemFile.virtual(filename="source item.pdf")
 
     def create_item_file(values: Mapping[str, Any]) -> ItemFile:
         created_values.append(values)
@@ -220,7 +220,7 @@ def test_dry_run_does_not_move_or_create(tmp_path: Path) -> None:
     def create_item_file(_values: Mapping[str, Any]) -> ItemFile:
         nonlocal created
         created = True
-        return cast(ItemFile, SimpleNamespace(filename="source item.pdf"))
+        return ItemFile.virtual(filename="source item.pdf")
 
     recommendations.execute_plan(plan, apply=False, create_item_file=create_item_file)
 

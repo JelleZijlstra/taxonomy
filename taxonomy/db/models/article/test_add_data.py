@@ -1,10 +1,13 @@
-from types import SimpleNamespace
-from typing import cast
+from unittest.mock import Mock
+
+import pytest
 
 from taxonomy.db.models.article import Article, ArticleTag, add_data
 
 
-def test_get_jstor_data_uses_stable_id_and_cleans_pages() -> None:
+def test_get_jstor_data_uses_stable_id_and_cleans_pages(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     pdfcontent = """\
 FIRST RECORD OF THE WATER SHREW, SOREX PALUSTRIS, FROM GRAHAM COUNTY, NORTH CAROLINA
 Author(s): Stephen B. Frantz
@@ -15,7 +18,8 @@ Accessed: 1 January 2026
 
 Your use of the JSTOR archive indicates your acceptance of JSTOR's Terms and Conditions of Use
 """
-    article = cast(Article, SimpleNamespace(getpdfcontent=lambda: pdfcontent))
+    article = Article.virtual(name="source.pdf")
+    monkeypatch.setattr(Article, "getpdfcontent", Mock(return_value=pdfcontent))
 
     data = add_data.get_jstor_data(article)
 

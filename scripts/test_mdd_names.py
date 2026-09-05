@@ -1,12 +1,10 @@
-from types import SimpleNamespace
-from typing import cast
-
 from scripts import mdd_diff
 from scripts.mdd_names import _mdd_coordinates_match, get_type_locality_coordinates
-from taxonomy.db.constants import NamingConvention, PersonType
-from taxonomy.db.models import Person
+from taxonomy.db.constants import ArticleType, NamingConvention, PersonType
+from taxonomy.db.models import Article, Person
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name import Name, TypeTag
+from taxonomy.db.models.person import AuthorTag
 
 
 def _name(
@@ -20,20 +18,17 @@ def _name(
     )
     tags += tuple(
         TypeTag.PartialTypeLocality(
-            cast(
-                Location,
-                SimpleNamespace(id=id_, latitude=latitude, longitude=longitude),
-            )
+            Location.virtual(latitude=latitude, longitude=longitude)
         )
-        for id_, latitude, longitude in partial_location_coordinates
+        for _, latitude, longitude in partial_location_coordinates
     )
     if location_coordinates is None:
         type_locality = None
     else:
-        type_locality = SimpleNamespace(
+        type_locality = Location.virtual(
             latitude=location_coordinates[0], longitude=location_coordinates[1]
         )
-    return cast(Name, SimpleNamespace(type_tags=tags, type_locality=type_locality))
+    return Name.virtual(type_tags=tags, type_locality=type_locality)
 
 
 def test_type_locality_coordinates_fall_back_to_location() -> None:
@@ -136,12 +131,15 @@ def test_mdd_author_uses_native_order_for_vietnamese_names() -> None:
     )
     hassanin = _person("Hassanin")
     article_authors = [vuong, _person("Cornette"), _person("Utge"), hassanin]
-    name = cast(
-        Name,
-        SimpleNamespace(
-            get_authors=lambda: [vuong, hassanin],
-            original_citation=SimpleNamespace(get_authors=lambda: article_authors),
+    article = Article.virtual(
+        type=ArticleType.JOURNAL,
+        author_tags=tuple(
+            AuthorTag.Author(person=author) for author in article_authors
         ),
+    )
+    name = Name.virtual(
+        author_tags=(AuthorTag.Author(person=vuong), AuthorTag.Author(person=hassanin)),
+        original_citation=article,
     )
 
     assert (

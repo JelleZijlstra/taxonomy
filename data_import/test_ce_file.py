@@ -1,7 +1,5 @@
 import json
 from pathlib import Path
-from types import SimpleNamespace
-from typing import cast
 
 import pytest
 
@@ -13,7 +11,7 @@ from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 
 
 def test_serialize_ce() -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     ce: lib.CEDict = {
         "article": article,
         "page": "7",
@@ -39,8 +37,8 @@ def test_read_ce_file_allows_multiple_articles(
 ) -> None:
     path = tmp_path / "combined.ce.jsonl"
     path.write_text('{"source": "first"}\n{"source": "second"}\n')
-    first = SimpleNamespace(id=1)
-    second = SimpleNamespace(id=2)
+    first = models.Article.virtual(name="first.pdf")
+    second = models.Article.virtual(name="second.pdf")
     entries: list[lib.CEDict] = [
         {"article": first},  # type: ignore[typeddict-item]
         {"article": second},  # type: ignore[typeddict-item]
@@ -53,7 +51,7 @@ def test_read_ce_file_allows_multiple_articles(
 
 
 def test_validate_ce_parents_uses_corrected_name_for_genus_check() -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     entries: list[lib.CEDict] = [
         {"page": "7", "name": "Rattus", "rank": Rank.genus, "article": article},
         {
@@ -71,7 +69,7 @@ def test_validate_ce_parents_uses_corrected_name_for_genus_check() -> None:
 
 
 def test_serialize_occurrences() -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     ce: lib.CEDict = {
         "article": article,
         "page": "7",
@@ -98,7 +96,7 @@ def test_serialize_occurrences() -> None:
 
 
 def test_serialize_fallback_raw_data_with_classification_entry_tags() -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     ce: lib.CEDict = {
         "article": article,
         "page": "7",
@@ -118,7 +116,7 @@ def test_serialize_fallback_raw_data_with_classification_entry_tags() -> None:
 def test_get_existing_for_import_allows_normalized_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     ce: lib.CEDict = {
         "article": article,
         "page": "183–184",
@@ -144,7 +142,7 @@ def test_get_existing_for_import_allows_normalized_page(
 def test_get_existing_for_import_preserves_non_page_fields_when_normalizing_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     ce: lib.CEDict = {
         "article": article,
         "page": "183–184",
@@ -171,7 +169,7 @@ def test_get_existing_for_import_preserves_non_page_fields_when_normalizing_page
 def test_get_existing_for_import_allows_missing_existing_fields(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     ce: lib.CEDict = {
         "article": article,
         "page": "11",
@@ -181,7 +179,9 @@ def test_get_existing_for_import_allows_missing_existing_fields(
         "authority": "Leach",
         "year": "1821",
     }
-    existing = type("Existing", (), {"authority": None, "year": None, "parent": None})()
+    existing = models.ClassificationEntry.virtual(
+        authority=None, year=None, parent=None
+    )
 
     def get_existing(candidate: lib.CEDict, *, strict: bool = False) -> object | None:
         return None if strict else existing
@@ -194,7 +194,7 @@ def test_get_existing_for_import_allows_missing_existing_fields(
 def test_get_existing_for_import_rejects_populated_conflict(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    article = type("Article", (), {"name": "source.pdf"})()
+    article = models.Article.virtual(name="source.pdf")
     ce: lib.CEDict = {
         "article": article,
         "page": "11",
@@ -247,7 +247,7 @@ def test_deserialize_occurrence_rejects_incompatible_basis_tag() -> None:
 
 
 def test_validate_structure() -> None:
-    article = type("Article", (), {"id": 1})()
+    article = models.Article.virtual(name="source.pdf")
     entries: list[lib.CEDict] = [
         {"article": article, "page": "7", "name": "Rattus", "rank": Rank.genus},
         {
@@ -263,8 +263,8 @@ def test_validate_structure() -> None:
 
 
 def test_validate_structure_scopes_hierarchies_to_article() -> None:
-    first = cast(models.Article, SimpleNamespace(id=1))
-    second = cast(models.Article, SimpleNamespace(id=2))
+    first = models.Article.virtual(name="first.pdf")
+    second = models.Article.virtual(name="second.pdf")
     entries: list[lib.CEDict] = [
         {"article": first, "page": "1", "name": "Rattus", "rank": Rank.genus},
         {"article": second, "page": "2", "name": "Rattus", "rank": Rank.genus},
@@ -290,8 +290,8 @@ def test_validate_structure_scopes_hierarchies_to_article() -> None:
 
 
 def test_validate_structure_does_not_share_parents_between_articles() -> None:
-    first = cast(models.Article, SimpleNamespace(id=1))
-    second = cast(models.Article, SimpleNamespace(id=2))
+    first = models.Article.virtual(name="first.pdf")
+    second = models.Article.virtual(name="second.pdf")
     entries: list[lib.CEDict] = [
         {"article": first, "page": "1", "name": "Rattus", "rank": Rank.genus},
         {

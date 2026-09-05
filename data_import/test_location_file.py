@@ -1,6 +1,4 @@
 from pathlib import Path
-from types import SimpleNamespace
-from typing import cast
 from unittest.mock import MagicMock
 
 import pytest
@@ -20,9 +18,9 @@ def test_companion_path() -> None:
 def test_serialize_location() -> None:
     proposal: location_file.LocationDict = {
         "name": "Port locality, Ecuador",
-        "region": cast(Region, type("Region", (), {"name": "Ecuador"})()),
-        "period": cast(Period, type("Period", (), {"name": "Recent"})()),
-        "source": cast(Article, type("Article", (), {"name": "gazetteer.pdf"})()),
+        "region": Region.virtual(name="Ecuador"),
+        "period": Period.virtual(name="Recent"),
+        "source": Article.virtual(name="gazetteer.pdf"),
         "latitude": "1°S",
         "longitude": "80°W",
     }
@@ -38,7 +36,7 @@ def test_serialize_location() -> None:
 
 
 def test_build_plan_reports_missing_proposal(monkeypatch: pytest.MonkeyPatch) -> None:
-    article = cast(Article, object())
+    article = Article.virtual(name="source.pdf")
     entries: list[lib.CEDict] = [
         {
             "article": article,
@@ -66,8 +64,8 @@ def test_build_plan_reports_missing_proposal(monkeypatch: pytest.MonkeyPatch) ->
 def test_existing_location_allows_formatted_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    location = cast(
-        Location, SimpleNamespace(deleted=LocationStatus.valid, parent=None)
+    location = Location.virtual(
+        name="Mary's Fancy, Sint Maarten", deleted=LocationStatus.valid, parent=None
     )
     calls = []
 
@@ -84,20 +82,17 @@ def test_existing_location_allows_formatted_name(
 def test_build_plan_restores_deleted_general_location(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    article = cast(Article, object())
-    region = cast(Region, SimpleNamespace(name="Carbon County, Montana"))
-    period = cast(Period, SimpleNamespace(name="Recent"))
-    deleted = cast(
-        Location,
-        SimpleNamespace(
-            name="Carbon County, Montana",
-            deleted=LocationStatus.deleted,
-            region=region,
-            min_period=period,
-            max_period=period,
-            latitude=None,
-            longitude=None,
-        ),
+    article = Article.virtual(name="source.pdf")
+    region = Region.virtual(name="Carbon County, Montana")
+    period = Period.virtual(name="Recent")
+    deleted = Location.virtual(
+        name="Carbon County, Montana",
+        deleted=LocationStatus.deleted,
+        region=region,
+        min_period=period,
+        max_period=period,
+        latitude=None,
+        longitude=None,
     )
     entries: list[lib.CEDict] = [
         {
@@ -131,28 +126,26 @@ def test_build_plan_restores_deleted_general_location(
     assert plan.is_clean
 
 
-def test_apply_plan_restores_deleted_location() -> None:
-    article = cast(Article, object())
-    region = cast(Region, SimpleNamespace(name="Carbon County, Montana"))
-    period = cast(Period, SimpleNamespace(name="Recent"))
+def test_apply_plan_restores_deleted_location(monkeypatch: pytest.MonkeyPatch) -> None:
+    article = Article.virtual(name="source.pdf")
+    region = Region.virtual(name="Carbon County, Montana")
+    period = Period.virtual(name="Recent")
     format_location = MagicMock()
     edit_until_clean = MagicMock()
-    deleted = cast(
-        Location,
-        SimpleNamespace(
-            deleted=LocationStatus.deleted,
-            region=region,
-            min_period=period,
-            max_period=period,
-            latitude=None,
-            longitude=None,
-            comment=None,
-            source=None,
-            location_detail=None,
-            tags=(),
-            format=format_location,
-            edit_until_clean=edit_until_clean,
-        ),
+    monkeypatch.setattr(Location, "format", format_location)
+    monkeypatch.setattr(Location, "edit_until_clean", edit_until_clean)
+    deleted = Location.virtual(
+        name="Carbon County, Montana",
+        deleted=LocationStatus.deleted,
+        region=region,
+        min_period=period,
+        max_period=period,
+        latitude=None,
+        longitude=None,
+        comment=None,
+        source=None,
+        location_detail=None,
+        tags=(),
     )
     proposal: location_file.LocationDict = {
         "name": "Carbon County, Montana",
@@ -182,17 +175,10 @@ def test_apply_plan_restores_deleted_location() -> None:
 
 
 def test_print_plan_lists_each_location(capsys: pytest.CaptureFixture[str]) -> None:
-    region = cast(Region, SimpleNamespace(name="Ecuador"))
-    period = cast(Period, SimpleNamespace(name="Recent"))
-    existing = cast(
-        Location,
-        SimpleNamespace(
-            id=42,
-            name="Port locality",
-            region=region,
-            min_period=period,
-            max_period=period,
-        ),
+    region = Region.virtual(name="Ecuador")
+    period = Period.virtual(name="Recent")
+    existing = Location.virtual(
+        name="Port locality", region=region, min_period=period, max_period=period
     )
     plan = location_file.LocationPlan(
         used_names={"Old port name", "New site", "Unknown site"},
@@ -220,7 +206,7 @@ def test_print_plan_lists_each_location(capsys: pytest.CaptureFixture[str]) -> N
     assert capsys.readouterr().out.splitlines() == [
         "Occurrence locations: existing=1, restore=0, create=1, unresolved=1",
         "  [create] New site; Ecuador; Recent; 1.0°S 80.0°W",
-        "  [existing] Old port name -> Port locality (#42); Ecuador; Recent",
+        f"  [existing] Old port name -> Port locality (#{existing.id}); Ecuador; Recent",
         "  [unresolved] Unknown site",
     ]
 

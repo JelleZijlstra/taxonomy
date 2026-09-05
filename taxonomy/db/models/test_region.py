@@ -1,5 +1,4 @@
 from io import StringIO
-from types import SimpleNamespace
 from typing import cast
 from unittest.mock import Mock
 
@@ -12,6 +11,7 @@ from taxonomy.db.constants import RegionKind
 from taxonomy.db.models import region_lint
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint_types import LintIssue
+from taxonomy.db.models.location import Location
 from taxonomy.db.models.region import Region, RegionTag
 
 
@@ -20,32 +20,17 @@ def _region(
     kind: RegionKind,
     parent: Region | None = None,
     *,
-    region_id: int = 1,
     tags: tuple[RegionTag, ...] = (),
 ) -> Region:
-    def all_parents() -> tuple[Region, ...]:
-        if parent is None:
-            return ()
-        return (parent, *parent.all_parents())
-
-    region = SimpleNamespace(
-        id=region_id,
-        name=name,
-        kind=kind,
-        parent=parent,
-        tags=tags,
-        all_parents=all_parents,
-    )
-    region.get_tags = lambda values, tag_type: (
-        tag for tag in values if isinstance(tag, tag_type)
-    )
-    region.add_tag = lambda tag: setattr(region, "tags", (*region.tags, tag))
-    return cast(Region, region)
+    return Region.virtual(name=name, kind=kind, parent=parent, tags=tags)
 
 
-def test_display_type_localities_uses_concise_recursive_display() -> None:
+def test_display_type_localities_uses_concise_recursive_display(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     display = Mock()
-    region = cast(Region, SimpleNamespace(display=display))
+    monkeypatch.setattr(Region, "display", display)
+    region = _region("Example", RegionKind.country)
     output = StringIO()
 
     Region.display_type_localities(region, depth=4, file=output)
@@ -55,28 +40,28 @@ def test_display_type_localities_uses_concise_recursive_display() -> None:
     )
 
 
-def test_concise_region_display_recurses_through_subregions() -> None:
-    child = Mock()
-    region = cast(
-        Region,
-        SimpleNamespace(
-            comment=None,
-            is_empty=Mock(return_value=False),
-            sorted_locations=Mock(return_value=[]),
-            sorted_children=Mock(return_value=[child]),
-        ),
-    )
+def test_concise_region_display_recurses_through_subregions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    region = _region("Parent", RegionKind.country)
+    child = _region("Child", RegionKind.state, region)
+    monkeypatch.setattr(Region, "is_empty", Mock(return_value=False))
+    monkeypatch.setattr(Region, "sorted_locations", Mock(return_value=[]))
+    monkeypatch.setattr(Region, "sorted_children", Mock(return_value=[child]))
+    original_display = Region.display
+    display = Mock()
+    monkeypatch.setattr(Region, "display", display)
     output = StringIO()
 
-    Region.display(region, full=False, children=True, locations=True, file=output)
+    original_display(region, full=False, children=True, locations=True, file=output)
 
-    child.display.assert_called_once_with(
+    display.assert_called_once_with(
         full=False, depth=4, file=output, children=True, skip_empty=True, locations=True
     )
 
 
 def test_display_type_localities_is_adt_callback() -> None:
-    region = object.__new__(Region)
+    region = _region("Example", RegionKind.country)
 
     callbacks = region.get_adt_callbacks()
 
@@ -84,11 +69,10 @@ def test_display_type_localities_is_adt_callback() -> None:
 
 
 def test_region_has_tag() -> None:
-    region = cast(
-        Region,
-        SimpleNamespace(
-            tags=(RegionTag.IncompletelyDivided, RegionTag.MustHavePreciseTypeLocality)
-        ),
+    region = _region(
+        "Example",
+        RegionKind.country,
+        tags=(RegionTag.IncompletelyDivided, RegionTag.MustHavePreciseTypeLocality),
     )
 
     assert Region.has_tag(region, RegionTag.IncompletelyDivided)
@@ -96,9 +80,9 @@ def test_region_has_tag() -> None:
 
 
 def test_region_redirect_and_deleted_are_invalid() -> None:
-    target = _region("Target", RegionKind.country, region_id=2)
-    redirect = _region("Old name", RegionKind.redirect, target, region_id=3)
-    deleted = _region("Removed", RegionKind.deleted, region_id=4)
+    target = _region("Target", RegionKind.country)
+    redirect = _region("Old name", RegionKind.redirect, target)
+    deleted = _region("Removed", RegionKind.deleted)
 
     assert Region.get_redirect_target(redirect) is target
     assert Region.is_invalid(redirect)
@@ -114,31 +98,18 @@ def test_region_redirect_and_deleted_are_invalid() -> None:
     )
 
 
-def test_region_merge_reassigns_references_and_creates_redirect() -> None:
-    reference = SimpleNamespace(id=10, region=None)
-    field = SimpleNamespace(attribute_name="region")
-    target = cast(
-        Region,
-        SimpleNamespace(
-            id=2,
-            name="Target",
-            kind=RegionKind.country,
-            is_invalid=Mock(return_value=False),
-            has_parent=Mock(return_value=False),
-        ),
+def test_region_merge_reassigns_references_and_creates_redirect(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = _region(
+        "Source", RegionKind.country, tags=(RegionTag.IncompletelyDivided,)
     )
-    source = cast(
-        Region,
-        SimpleNamespace(
-            id=1,
-            name="Source",
-            kind=RegionKind.country,
-            parent=None,
-            tags=(RegionTag.IncompletelyDivided,),
-            is_invalid=Mock(return_value=False),
-            get_direct_backrefs=Mock(return_value=iter(((field, reference),))),
-        ),
+    target = _region("Target", RegionKind.country)
+    reference = Location.virtual(name="Referenced locality", region=source, tags=())
+    get_direct_backrefs = Mock(
+        return_value=iter(((Location.clirm_fields["region"], reference),))
     )
+    monkeypatch.setattr(Region, "get_direct_backrefs", get_direct_backrefs)
 
     Region.merge(source, target)
 
@@ -146,48 +117,34 @@ def test_region_merge_reassigns_references_and_creates_redirect() -> None:
     assert source.parent is target
     assert source.kind is RegionKind.redirect
     assert source.tags == (RegionTag.IncompletelyDivided,)
-    source.get_direct_backrefs.assert_called_once_with(include_invalid=True)  # type: ignore[attr-defined]
+    get_direct_backrefs.assert_called_once_with(include_invalid=True)
 
 
 def test_region_merge_rejects_descendant_target() -> None:
-    target = cast(
-        Region,
-        SimpleNamespace(
-            is_invalid=Mock(return_value=False), has_parent=Mock(return_value=True)
-        ),
-    )
-    source = cast(Region, SimpleNamespace(is_invalid=Mock(return_value=False)))
+    source = _region("Source", RegionKind.country)
+    target = _region("Descendant", RegionKind.state, source)
 
     with pytest.raises(ValueError, match="descendants"):
         Region.merge(source, target)
 
 
-def test_region_remove_requires_no_references() -> None:
-    referenced = cast(
-        Region,
-        SimpleNamespace(
-            kind=RegionKind.country,
-            tags=(),
-            is_invalid=Mock(return_value=False),
-            get_direct_backrefs=Mock(
-                return_value=[
-                    (SimpleNamespace(attribute_name="region"), SimpleNamespace(id=10))
-                ]
-            ),
-        ),
+def test_region_remove_requires_no_references(monkeypatch: pytest.MonkeyPatch) -> None:
+    referenced = _region("Referenced", RegionKind.country)
+    reference = Location.virtual(name="Referenced locality", region=referenced, tags=())
+    unreferenced = _region(
+        "Unreferenced", RegionKind.country, tags=(RegionTag.IncompletelyDivided,)
     )
+
+    def get_direct_backrefs(region: Region) -> list[tuple[object, Location]]:
+        if region is referenced:
+            return [(Location.clirm_fields["region"], reference)]
+        return []
+
+    monkeypatch.setattr(Region, "get_direct_backrefs", get_direct_backrefs)
+
     with pytest.raises(ValueError, match="valid references"):
         Region.remove(referenced)
 
-    unreferenced = cast(
-        Region,
-        SimpleNamespace(
-            kind=RegionKind.country,
-            tags=(RegionTag.IncompletelyDivided,),
-            is_invalid=Mock(return_value=False),
-            get_direct_backrefs=Mock(return_value=[]),
-        ),
-    )
     Region.remove(unreferenced)
     assert unreferenced.kind is RegionKind.deleted
     assert unreferenced.tags == (RegionTag.IncompletelyDivided,)
@@ -219,8 +176,8 @@ def test_region_lint_uses_and_adds_ignore_tags() -> None:
 def test_openstreetmap_parent_containment_reports_outside_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    parent = _region("Parent", RegionKind.state, region_id=1)
-    child = _region("Child", RegionKind.county, parent, region_id=2)
+    parent = _region("Parent", RegionKind.state)
+    child = _region("Child", RegionKind.county, parent)
     outer = coordinates.parse_geojson_geometry(
         {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]]}
     )
@@ -263,8 +220,8 @@ def test_openstreetmap_parent_containment_reports_outside_child(
 def test_openstreetmap_parent_containment_accepts_contained_child(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    parent = _region("Parent", RegionKind.state, region_id=1)
-    child = _region("Child", RegionKind.county, parent, region_id=2)
+    parent = _region("Parent", RegionKind.state)
+    child = _region("Child", RegionKind.county, parent)
     outer = coordinates.parse_geojson_geometry(
         {"type": "Polygon", "coordinates": [[[0, 0], [4, 0], [4, 4], [0, 4], [0, 0]]]}
     )
@@ -321,20 +278,15 @@ def test_openstreetmap_parent_containment_accepts_contained_child(
 
 
 def test_redirect_names_are_region_aliases(monkeypatch: pytest.MonkeyPatch) -> None:
-    united_states = _region("United States", RegionKind.country, region_id=2)
-    rhode_island = _region(
-        "Rhode Island", RegionKind.state, united_states, region_id=465
-    )
+    united_states = _region("United States", RegionKind.country)
+    rhode_island = _region("Rhode Island", RegionKind.state, united_states)
     washington = _region(
-        "Washington County, Rhode Island",
-        RegionKind.county,
-        rhode_island,
-        region_id=3550,
+        "Washington County, Rhode Island", RegionKind.county, rhode_island
     )
     monkeypatch.setattr(
         region_lint,
         "_get_redirect_alias_names_by_target_id",
-        lambda: {3550: frozenset({"South County, Rhode Island"})},
+        lambda: {washington.id: frozenset({"South County, Rhode Island"})},
     )
     monkeypatch.setattr(region_lint, "_OSM_NAME_ALIASES", {})
 
@@ -820,14 +772,12 @@ def test_validate_openstreetmap_accepts_matching_boundary(
     country = _region(
         "Ecuador",
         RegionKind.country,
-        region_id=51,
         tags=(RegionTag.OpenStreetMap("relation", 108089, "boundary"),),
     )
     province = _region(
         "Pichincha Province",
         RegionKind.province,
         country,
-        region_id=4551,
         tags=(RegionTag.OpenStreetMap("relation", 113722, "boundary"),),
     )
     result = nominatim.SearchResult(
@@ -872,8 +822,8 @@ def test_validate_openstreetmap_reports_wrong_name_and_duplicate(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tag = RegionTag.OpenStreetMap("relation", 2202162, "boundary")
-    france = _region("France", RegionKind.country, region_id=60, tags=(tag,))
-    guadeloupe = _region("Guadeloupe", RegionKind.country, region_id=234, tags=(tag,))
+    france = _region("France", RegionKind.country, tags=(tag,))
+    guadeloupe = _region("Guadeloupe", RegionKind.country, tags=(tag,))
     result = nominatim.SearchResult(
         latitude="46",
         longitude="2",
@@ -908,7 +858,7 @@ def test_validate_openstreetmap_reports_wrong_name_and_duplicate(
     )
 
     assert len(messages) == 2
-    assert "also linked to [(60, 'France')]" in str(messages[0])
+    assert f"also linked to [({france.id!r}, 'France')]" in str(messages[0])
     assert "is named 'France'" in str(messages[1])
 
 
@@ -919,11 +869,7 @@ def test_validate_openstreetmap_rejects_city_linked_as_us_county(
     united_states = _region("United States", RegionKind.country)
     connecticut = _region("Connecticut", RegionKind.state, united_states)
     county = _region(
-        "Hartford County, Connecticut",
-        RegionKind.county,
-        connecticut,
-        region_id=3539,
-        tags=(tag,),
+        "Hartford County, Connecticut", RegionKind.county, connecticut, tags=(tag,)
     )
     result = nominatim.SearchResult(
         latitude="41.76",
@@ -977,11 +923,7 @@ def test_validate_openstreetmap_accepts_historic_us_county(
     united_states = _region("United States", RegionKind.country)
     connecticut = _region("Connecticut", RegionKind.state, united_states)
     county = _region(
-        "Middlesex County, Connecticut",
-        RegionKind.county,
-        connecticut,
-        region_id=3541,
-        tags=(tag,),
+        "Middlesex County, Connecticut", RegionKind.county, connecticut, tags=(tag,)
     )
     result = nominatim.SearchResult(
         latitude="41.45",
@@ -1029,16 +971,12 @@ def test_validate_openstreetmap_accepts_ceremonial_english_county(
 ) -> None:
     england_tag = RegionTag.OpenStreetMap("relation", 58447, "boundary")
     shropshire_tag = RegionTag.OpenStreetMap("relation", 57511, "boundary")
-    united_kingdom = _region("United Kingdom", RegionKind.country, region_id=340)
+    united_kingdom = _region("United Kingdom", RegionKind.country)
     england = _region(
-        "England",
-        RegionKind.subnational,
-        united_kingdom,
-        region_id=341,
-        tags=(england_tag,),
+        "England", RegionKind.subnational, united_kingdom, tags=(england_tag,)
     )
     shropshire = _region(
-        "Shropshire", RegionKind.county, england, region_id=4209, tags=(shropshire_tag,)
+        "Shropshire", RegionKind.county, england, tags=(shropshire_tag,)
     )
     england_result = nominatim.SearchResult(
         latitude="52.79",
@@ -1112,10 +1050,8 @@ def test_validate_openstreetmap_accepts_region_address_type_for_hokkaido(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tag = RegionTag.OpenStreetMap("relation", 3792634, "boundary")
-    japan = _region("Japan", RegionKind.country, region_id=84)
-    hokkaido = _region(
-        "Hokkaido", RegionKind.prefecture, japan, region_id=4354, tags=(tag,)
-    )
+    japan = _region("Japan", RegionKind.country)
+    hokkaido = _region("Hokkaido", RegionKind.prefecture, japan, tags=(tag,))
     result = nominatim.SearchResult(
         latitude="43.45",
         longitude="142.82",
@@ -1155,7 +1091,7 @@ def test_validate_openstreetmap_accepts_region_address_type_for_hokkaido(
 
 
 def test_prefecture_address_types_exclude_city() -> None:
-    japan = _region("Japan", RegionKind.country, region_id=84)
+    japan = _region("Japan", RegionKind.country)
     prefecture = _region("Aichi Prefecture", RegionKind.prefecture, japan)
 
     assert region_lint._expected_address_types(prefecture) == frozenset(
@@ -1268,7 +1204,7 @@ def test_validate_openstreetmap_reports_missing_lookup(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tag = RegionTag.OpenStreetMap("relation", 999, "boundary")
-    region = _region("Missing", RegionKind.state, region_id=99, tags=(tag,))
+    region = _region("Missing", RegionKind.state, tags=(tag,))
     monkeypatch.setattr(
         region_lint,
         "_get_openstreetmap_tag_owners",
@@ -1306,11 +1242,7 @@ def test_validate_openstreetmap_accepts_direct_osm_fallback(
     united_states = _region("United States", RegionKind.country)
     connecticut = _region("Connecticut", RegionKind.state, united_states)
     county = _region(
-        "New London County, Connecticut",
-        RegionKind.county,
-        connecticut,
-        region_id=3543,
-        tags=(tag,),
+        "New London County, Connecticut", RegionKind.county, connecticut, tags=(tag,)
     )
     monkeypatch.setattr(
         region_lint,
@@ -1350,8 +1282,8 @@ def test_validate_openstreetmap_runs_duplicate_check_offline(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tag = RegionTag.OpenStreetMap("relation", 123, "boundary")
-    first = _region("First", RegionKind.state, region_id=1, tags=(tag,))
-    second = _region("Second", RegionKind.state, region_id=2, tags=(tag,))
+    first = _region("First", RegionKind.state, tags=(tag,))
+    second = _region("Second", RegionKind.state, tags=(tag,))
     monkeypatch.setattr(
         region_lint,
         "_get_openstreetmap_tag_owners",
@@ -1369,7 +1301,9 @@ def test_validate_openstreetmap_runs_duplicate_check_offline(
         )
     )
 
-    assert messages == ["OpenStreetMap relation 123 is also linked to [(2, 'Second')]"]
+    assert messages == [
+        f"OpenStreetMap relation 123 is also linked to [({second.id!r}, 'Second')]"
+    ]
     lookup.assert_not_called()
 
 
@@ -1379,9 +1313,7 @@ def test_validate_openstreetmap_accepts_exact_search_when_lookup_lags(
     tag = RegionTag.OpenStreetMap("relation", 2390843, "boundary")
     indonesia = _region("Indonesia", RegionKind.country)
     sumatra = _region("Sumatra", RegionKind.other, indonesia)
-    north_sumatra = _region(
-        "North Sumatra", RegionKind.province, sumatra, region_id=4508, tags=(tag,)
-    )
+    north_sumatra = _region("North Sumatra", RegionKind.province, sumatra, tags=(tag,))
     result = nominatim.GeocodeResult(
         name="North Sumatra",
         display_name="North Sumatra, Indonesia",
@@ -1421,15 +1353,9 @@ def test_validate_openstreetmap_accepts_parent_iso_for_disputed_address(
 ) -> None:
     argentina_tag = RegionTag.OpenStreetMap("relation", 286393, "boundary")
     province_tag = RegionTag.OpenStreetMap("relation", 153550, "boundary")
-    argentina = _region(
-        "Argentina", RegionKind.country, region_id=7, tags=(argentina_tag,)
-    )
+    argentina = _region("Argentina", RegionKind.country, tags=(argentina_tag,))
     province = _region(
-        "Tierra del Fuego",
-        RegionKind.province,
-        argentina,
-        region_id=366,
-        tags=(province_tag,),
+        "Tierra del Fuego", RegionKind.province, argentina, tags=(province_tag,)
     )
     argentina_result = nominatim.SearchResult(
         latitude="-34",

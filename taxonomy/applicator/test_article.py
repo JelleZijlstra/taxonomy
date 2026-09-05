@@ -25,6 +25,14 @@ def _pdf_bytes() -> bytes:
     return b"%PDF-1.4\nminimal test fixture\n%%EOF\n"
 
 
+_CITATION_GROUP = CitationGroup.virtual(
+    name="Journal of Mollusks", type=ArticleType.JOURNAL, tags=()
+)
+_BOOK_CITATION_GROUP = CitationGroup.virtual(
+    name="Riga", type=ArticleType.BOOK, tags=()
+)
+
+
 def _row(pdf: bytes) -> dict[str, Any]:
     return {
         "schema_version": 1,
@@ -38,7 +46,7 @@ def _row(pdf: bytes) -> dict[str, Any]:
             "name": "Endodontidae.pdf",
             "doi": "10.1234/example",
             "fields": {"title": "Reviewed title"},
-            "citation_group": {"id": 12, "name": "Journal of Mollusks"},
+            "citation_group": {"id": _CITATION_GROUP.id, "name": "Journal of Mollusks"},
         },
         "file": {
             "source_path": "download.pdf",
@@ -50,25 +58,11 @@ def _row(pdf: bytes) -> dict[str, Any]:
 
 
 def _citation_group() -> CitationGroup:
-    return cast(
-        CitationGroup,
-        SimpleNamespace(
-            id=12,
-            name="Journal of Mollusks",
-            type=ArticleType.JOURNAL,
-            tags=(),
-            is_invalid=lambda: False,
-        ),
-    )
+    return _CITATION_GROUP
 
 
 def _book_citation_group() -> CitationGroup:
-    return cast(
-        CitationGroup,
-        SimpleNamespace(
-            id=22, name="Riga", type=ArticleType.BOOK, tags=(), is_invalid=lambda: False
-        ),
-    )
+    return _BOOK_CITATION_GROUP
 
 
 def _volume_row() -> dict[str, Any]:
@@ -94,7 +88,7 @@ def _volume_row() -> dict[str, Any]:
                 {"family_name": "Barclay", "given_names": "Maxwell V. L."},
                 {"family_name": "Pauwels", "given_names": "Olivier S. G."},
             ],
-            "citation_group": {"id": 22, "name": "Riga"},
+            "citation_group": {"id": _BOOK_CITATION_GROUP.id, "name": "Riga"},
         },
     }
 
@@ -275,10 +269,11 @@ def test_virtual_article_includes_legacy_string_defaults(tmp_path: Path) -> None
 
         def create(self, model: type[Any], *, context: str, **values: Any) -> Any:
             if model is Person:
-                return cast(Person, SimpleNamespace(**values))
+                return Person.virtual(**values)
             if model is Article:
                 self.article_values = values
-            return cast(Any, SimpleNamespace(**values))
+                return Article.virtual(**values)
+            raise AssertionError(f"unexpected model {model}")
 
     builder = RecordingBuilder()
     recommendations.add_virtual_models(plan, cast(Any, builder))
@@ -482,7 +477,7 @@ def test_execute_installs_pdf_then_runs_auxiliary_and_removes_source(
     recommendations.execute_plan(
         plan,
         apply=True,
-        get_or_create_person=lambda **_kwargs: cast(Person, object()),
+        get_or_create_person=lambda **_kwargs: Person.virtual(),
         create_article=create_article,
         run_auxiliary=lambda article, *, add_history: auxiliary.append(
             (article, add_history)
@@ -542,7 +537,7 @@ def test_inline_citation_group_is_planned_and_created(tmp_path: Path) -> None:
     )
     created_groups: list[recommendations.PlannedCitationGroup] = []
     created_articles: list[str] = []
-    fake_group = cast(CitationGroup, SimpleNamespace(name="New Journal of Mollusks"))
+    fake_group = CitationGroup.virtual(name="New Journal of Mollusks")
 
     def create_citation_group(
         planned: recommendations.PlannedCitationGroup,
@@ -552,7 +547,7 @@ def test_inline_citation_group_is_planned_and_created(tmp_path: Path) -> None:
 
     def create_article(name: str, values: Mapping[str, Any]) -> Article:
         created_articles.append(name)
-        return cast(Article, SimpleNamespace(name=name, **values))
+        return Article.virtual(name=name, **values)
 
     recommendations.execute_plan(
         plan,
@@ -707,14 +702,14 @@ def test_execute_creates_volume_before_chapter_and_only_installs_chapter_pdf(
     auxiliary: list[Article] = []
 
     def create_article(name: str, values: Mapping[str, Any]) -> Article:
-        article = cast(Article, SimpleNamespace(name=name, **values))
+        article = Article.virtual(name=name, **values)
         created.append((name, dict(values), article))
         return article
 
     recommendations.execute_plan(
         plan,
         apply=True,
-        get_or_create_person=lambda **kwargs: cast(Person, SimpleNamespace(**kwargs)),
+        get_or_create_person=lambda **kwargs: Person.virtual(**kwargs),
         create_article=create_article,
         run_auxiliary=lambda article, *, add_history: auxiliary.append(article),
         add_article_history=histories.append,

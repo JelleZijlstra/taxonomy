@@ -1,58 +1,9 @@
-from dataclasses import dataclass
-from types import SimpleNamespace
-from typing import Any, cast
-
 import pytest
 
 from taxonomy import shell
 from taxonomy.db import models
-from taxonomy.db.constants import AgeClass, Group
+from taxonomy.db.constants import AgeClass, Group, NomenclatureStatus, Status
 from taxonomy.db.models import Name, Taxon, TypeTag
-
-
-@dataclass
-class _FakePeriod:
-    name: str
-
-
-@dataclass
-class _FakeRegion:
-    name: str
-
-
-@dataclass
-class _FakeLocation:
-    name: str
-    region: _FakeRegion
-    min_period: _FakePeriod
-    max_period: _FakePeriod
-    tags: frozenset[Any] = frozenset()
-    latitude: str | None = None
-    longitude: str | None = None
-
-    def has_tag(self, tag: Any) -> bool:
-        return tag in self.tags
-
-
-@dataclass
-class _FakeName:
-    type_locality: _FakeLocation | None
-    age: AgeClass
-    locality_required: bool = True
-    imprecise: bool = False
-    group: Group = Group.species
-
-    @property
-    def taxon(self) -> SimpleNamespace:
-        return SimpleNamespace(age=self.age)
-
-    def get_required_fields(self) -> tuple[str, ...]:
-        if self.locality_required:
-            return ("type_locality",)
-        return ()
-
-    def has_type_tag(self, tag: Any) -> bool:
-        return tag is TypeTag.ImpreciseLocality and self.imprecise
 
 
 def _location(
@@ -60,13 +11,13 @@ def _location(
     *,
     region_name: str = "Country",
     recent: bool = True,
-    tags: frozenset[Any] = frozenset(),
+    tags: tuple[models.tags.LocationTag, ...] = (),
     coordinates: bool = False,
-) -> _FakeLocation:
-    period = _FakePeriod("Recent" if recent else "Jurassic")
-    return _FakeLocation(
+) -> models.Location:
+    period = models.Period.virtual(name="Recent" if recent else "Jurassic")
+    return models.Location.virtual(
         name=name,
-        region=_FakeRegion(region_name),
+        region=models.Region.virtual(name=region_name),
         min_period=period,
         max_period=period,
         tags=tags,
@@ -75,24 +26,46 @@ def _location(
     )
 
 
-def test_type_locality_summary_labels_are_independent_of_tree() -> None:
-    missing = cast(Name, _FakeName(None, AgeClass.fossil, locality_required=False))
-    regionwide = cast(
-        Name,
-        _FakeName(
-            _location("Country", coordinates=True), AgeClass.extant, imprecise=True
+def _name(
+    type_locality: models.Location | None,
+    age: AgeClass,
+    *,
+    locality_required: bool = True,
+    imprecise: bool = False,
+    group: Group = Group.species,
+) -> Name:
+    return Name.virtual(
+        status=Status.valid,
+        nomenclature_status=(
+            NomenclatureStatus.available
+            if locality_required
+            else NomenclatureStatus.informal
         ),
+        group=group,
+        taxon=Taxon.virtual(age=age),
+        type_locality=type_locality,
+        type_tags=(TypeTag.ImpreciseLocality(),) if imprecise else (),
+        original_name=None,
+        corrected_original_name=None,
+        author_tags=(),
+        year=None,
+        original_citation=None,
+        verbatim_citation=None,
+        collection=None,
+        type_specimen=None,
     )
-    fossil_unplaced = cast(
-        Name,
-        _FakeName(
-            _location(
-                "Unknown bed",
-                recent=False,
-                tags=frozenset({models.tags.LocationTag.Unplaced}),
-            ),
-            AgeClass.fossil,
+
+
+def test_type_locality_summary_labels_are_independent_of_tree() -> None:
+    missing = _name(None, AgeClass.fossil, locality_required=False)
+    regionwide = _name(
+        _location("Country", coordinates=True), AgeClass.extant, imprecise=True
+    )
+    fossil_unplaced = _name(
+        _location(
+            "Unknown bed", recent=False, tags=(models.tags.LocationTag.Unplaced(),)
         ),
+        AgeClass.fossil,
     )
 
     assert shell._type_locality_summary_labels(missing) == {
@@ -117,45 +90,32 @@ def test_type_locality_summary_labels_are_independent_of_tree() -> None:
 
 
 def test_type_locality_summary_lines() -> None:
-    names = cast(
-        list[Name],
-        [
-            _FakeName(None, AgeClass.extant, locality_required=False),
-            _FakeName(None, AgeClass.fossil, locality_required=False),
-            _FakeName(None, AgeClass.extant),
-            _FakeName(_location("Country"), AgeClass.extant, imprecise=True),
-            _FakeName(
-                _location(
-                    "Broad area", tags=frozenset({models.tags.LocationTag.General})
-                ),
-                AgeClass.extant,
+    names = [
+        _name(None, AgeClass.extant, locality_required=False),
+        _name(None, AgeClass.fossil, locality_required=False),
+        _name(None, AgeClass.extant),
+        _name(_location("Country"), AgeClass.extant, imprecise=True),
+        _name(
+            _location("Broad area", tags=(models.tags.LocationTag.General,)),
+            AgeClass.extant,
+        ),
+        _name(
+            _location("Unknown site", tags=(models.tags.LocationTag.Unplaced(),)),
+            AgeClass.extant,
+        ),
+        _name(_location("Exact site", coordinates=True), AgeClass.extant),
+        _name(
+            _location("Country", recent=False, tags=(models.tags.LocationTag.General,)),
+            AgeClass.fossil,
+        ),
+        _name(
+            _location(
+                "Unknown bed", recent=False, tags=(models.tags.LocationTag.Unplaced(),)
             ),
-            _FakeName(
-                _location(
-                    "Unknown site", tags=frozenset({models.tags.LocationTag.Unplaced})
-                ),
-                AgeClass.extant,
-            ),
-            _FakeName(_location("Exact site", coordinates=True), AgeClass.extant),
-            _FakeName(
-                _location(
-                    "Country",
-                    recent=False,
-                    tags=frozenset({models.tags.LocationTag.General}),
-                ),
-                AgeClass.fossil,
-            ),
-            _FakeName(
-                _location(
-                    "Unknown bed",
-                    recent=False,
-                    tags=frozenset({models.tags.LocationTag.Unplaced}),
-                ),
-                AgeClass.fossil,
-            ),
-            _FakeName(_location("Country", recent=False), AgeClass.fossil),
-        ],
-    )
+            AgeClass.fossil,
+        ),
+        _name(_location("Country", recent=False), AgeClass.fossil),
+    ]
 
     assert shell._type_locality_summary_lines(names) == [
         "Of 10 names (100.0% of total):",
@@ -191,13 +151,14 @@ def test_type_locality_summary_lines_empty() -> None:
 
 
 def test_type_locality_summary_filters_taxon_names_to_species_group(
-    capsys: pytest.CaptureFixture[str],
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    species_name = _FakeName(None, AgeClass.extant, locality_required=False)
-    genus_name = _FakeName(
+    species_name = _name(None, AgeClass.extant, locality_required=False)
+    genus_name = _name(
         None, AgeClass.extant, locality_required=False, group=Group.genus
     )
-    taxon = cast(Taxon, SimpleNamespace(all_names=lambda: [species_name, genus_name]))
+    taxon = Taxon.virtual(age=AgeClass.extant)
+    monkeypatch.setattr(Taxon, "all_names", lambda _self: {species_name, genus_name})
 
     shell.type_locality_summary(taxon)
 

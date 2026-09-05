@@ -1,6 +1,5 @@
 from collections.abc import Iterator
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 
@@ -25,17 +24,20 @@ class _FakeQuery:
 
 
 def _issue(*, issue: str, start: str, end: str, date: str) -> IssueDate:
-    return cast(
-        IssueDate,
-        SimpleNamespace(issue=issue, start_page=start, end_page=end, date=date),
-    )
+    return IssueDate.virtual(issue=issue, start_page=start, end_page=end, date=date)
 
 
-def _install_issues(monkeypatch: pytest.MonkeyPatch, issues: list[IssueDate]) -> None:
+def _install_issues(
+    monkeypatch: pytest.MonkeyPatch,
+    citation_group: CitationGroup,
+    issues: list[IssueDate],
+) -> None:
     monkeypatch.setattr(
         IssueDate, "select_valid", classmethod(lambda cls: _FakeQuery(issues))
     )
-    monkeypatch.setattr(issue_date_module, "_get_cgs_with_issue_dates", lambda: {1})
+    monkeypatch.setattr(
+        issue_date_module, "_get_cgs_with_issue_dates", lambda: {citation_group.id}
+    )
 
 
 def test_parse_page_number() -> None:
@@ -55,12 +57,13 @@ def test_page_range_contains_requires_same_variant() -> None:
 def test_find_matching_issue_uses_article_issue(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    citation_group = CitationGroup.virtual(name="Example journal")
     first = _issue(issue="1", start="1", end="50", date="1900-01-01")
     second = _issue(issue="2", start="40", end="90", date="1900-02-01")
-    _install_issues(monkeypatch, [first, second])
+    _install_issues(monkeypatch, citation_group, [first, second])
 
     result = IssueDate.find_matching_issue(
-        cast(CitationGroup, SimpleNamespace(id=1)), None, "1", "45", "48", issue="2"
+        citation_group, None, "1", "45", "48", issue="2"
     )
 
     assert result is second
@@ -69,12 +72,11 @@ def test_find_matching_issue_uses_article_issue(
 def test_find_matching_issue_accepts_equivalent_duplicates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    citation_group = CitationGroup.virtual(name="Example journal")
     first = _issue(issue="1", start="1", end="50", date="1900-01-01")
     duplicate = _issue(issue="1", start="1", end="50", date="1900-01-01")
-    _install_issues(monkeypatch, [first, duplicate])
+    _install_issues(monkeypatch, citation_group, [first, duplicate])
 
-    result = IssueDate.find_matching_issue(
-        cast(CitationGroup, SimpleNamespace(id=1)), None, "1", "10", "20"
-    )
+    result = IssueDate.find_matching_issue(citation_group, None, "1", "10", "20")
 
     assert result is first
