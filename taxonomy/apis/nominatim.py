@@ -78,6 +78,18 @@ class GeocodeResult:
     osm_id: int | None = None
 
 
+def get_name_variants(result: SearchResult | BoundaryResult) -> set[str]:
+    """Return the ordinary OSM names that can identify a lookup result."""
+    return {
+        result.name,
+        *(
+            value
+            for key, value in result.names.items()
+            if key == "name" or key.startswith(("name:", "official_name", "short_name"))
+        ),
+    }
+
+
 _GEOCODEJSON_ADDRESS_FIELDS = frozenset(
     {
         "housenumber",
@@ -175,6 +187,7 @@ def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
                     "osm_ids": f"{type_code}{osm_id}",
                     "format": "jsonv2",
                     "addressdetails": "1",
+                    "namedetails": "1",
                     "accept-language": "en",
                 }
             )

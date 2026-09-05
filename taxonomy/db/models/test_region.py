@@ -190,7 +190,7 @@ def test_region_remove_requires_no_references() -> None:
     )
     Region.remove(unreferenced)
     assert unreferenced.kind is RegionKind.deleted
-    assert unreferenced.tags == ()
+    assert unreferenced.tags == (RegionTag.IncompletelyDivided,)
 
 
 def test_openstreetmap_tag_round_trip() -> None:

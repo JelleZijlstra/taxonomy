@@ -53,7 +53,8 @@ involve:
   locality for e.g. the whole country. Those should be reassigned to more precise
   Locations representing precise sites where possible. If there is not enough evidence
   to place them more precisely, they can stay in the higher-level Location. See
-  `docs/location.md` for more information on how to organize locations.
+  `docs/location.md` for more information on how to organize locations. Make sure to
+  follow the naming conventions in that file.
 
 Before researching individual rows, inventory ordinary references with
 `region.get_direct_backrefs()`. In addition to the common objects above, this catches

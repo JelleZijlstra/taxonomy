@@ -178,6 +178,7 @@ def test_lookup_uses_stable_osm_object_identifier(
                     "osm_type": "relation",
                     "osm_id": 1234,
                     "address": {"country": "United States"},
+                    "namedetails": {"name": "Nicasio", "name:es": "Nicasio"},
                 }
             ]
         )
@@ -188,9 +189,16 @@ def test_lookup_uses_stable_osm_object_identifier(
 
     assert result is not None
     assert (result.osm_type, result.osm_id) == ("relation", 1234)
+    assert result.names == {"name": "Nicasio", "name:es": "Nicasio"}
     url = get_data.call_args.args[0]
     assert urlparse(url).path == "/lookup"
-    assert parse_qs(urlparse(url).query)["osm_ids"] == ["R1234"]
+    assert parse_qs(urlparse(url).query) == {
+        "osm_ids": ["R1234"],
+        "format": ["jsonv2"],
+        "addressdetails": ["1"],
+        "namedetails": ["1"],
+        "accept-language": ["en"],
+    }
 
 
 def test_lookup_many_batches_and_returns_metadata(

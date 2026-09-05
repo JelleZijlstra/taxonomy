@@ -209,7 +209,6 @@ _REGION_KIND_DESIGNATORS = {
     RegionKind.territory: "Territory",
 }
 _ADMINISTRATIVE_DESIGNATORS = frozenset(_REGION_KIND_DESIGNATORS.values())
-_OSM_QUERY_OMITTED_DESIGNATORS = {"Department"}
 _REVERSE_ADMINISTRATIVE_ADDRESS_KEYS = (
     "state",
     "province",
@@ -3501,7 +3500,7 @@ def assess_nominatim_result(
         checked_region = True
         expected_names = {
             _normalize_nominatim_region_name(name)
-            for name in _get_region_name_aliases(region)
+            for name in _get_nominatim_region_name_aliases(region)
         }
         if address_names.isdisjoint(expected_names):
             issues.append(
@@ -3559,6 +3558,27 @@ def _get_osm_region_name_translations(region: Region) -> tuple[str, ...]:
     )
 
 
+def _get_linked_nominatim_region_result(
+    region: Region,
+) -> nominatim.SearchResult | None:
+    tags = tuple(
+        tag
+        for tag in getattr(region, "tags", ())
+        if isinstance(tag, RegionTag.OpenStreetMap)
+    )
+    if len(tags) != 1:
+        return None
+    tag = tags[0]
+    return nominatim.lookup(tag.osm_type, tag.osm_id)
+
+
+def _get_linked_nominatim_region_names(region: Region) -> set[str]:
+    result = _get_linked_nominatim_region_result(region)
+    if result is None:
+        return set()
+    return nominatim.get_name_variants(result)
+
+
 def _get_undesignated_region_name(region: Region, name: str) -> str | None:
     matching_designators = (
         _ADMINISTRATIVE_DESIGNATORS
@@ -3583,17 +3603,21 @@ def _get_undesignated_region_name(region: Region, name: str) -> str | None:
 
 
 def _get_nominatim_region_query_name(region: Region) -> str:
+    """Prefer the current name of the Region's exact linked OSM object."""
+    linked_result = _get_linked_nominatim_region_result(region)
+    if linked_result is not None:
+        return linked_result.name
     translations = _get_osm_region_name_translations(region)
     if translations:
         return translations[0]
-    name = _get_unqualified_region_name(region)
-    undesignated_name = _get_undesignated_region_name(region, name)
-    if undesignated_name is not None and any(
-        name.casefold().endswith(f" {designator.casefold()}")
-        for designator in _OSM_QUERY_OMITTED_DESIGNATORS
-    ):
-        return undesignated_name
-    return name
+    return _get_unqualified_region_name(region)
+
+
+def _get_nominatim_region_name_aliases(region: Region) -> set[str]:
+    return {
+        *_get_region_name_aliases(region),
+        *_get_linked_nominatim_region_names(region),
+    }
 
 
 def _get_region_name_aliases(region: Region) -> set[str]:

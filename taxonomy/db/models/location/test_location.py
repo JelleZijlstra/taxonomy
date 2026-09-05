@@ -4549,20 +4549,6 @@ def test_nominatim_search_removes_location_disambiguator(
     ("locality_name", "region_name", "region_kind", "country_name", "query"),
     [
         (
-            "Valdivia",
-            "Antioquia Department",
-            RegionKind.department,
-            "Colombia",
-            "Valdivia, Antioquia, Colombia",
-        ),
-        (
-            "Chachapoyas",
-            "Amazonas Department (Peru)",
-            RegionKind.subnational,
-            "Peru",
-            "Chachapoyas, Amazonas, Peru",
-        ),
-        (
             "Lahore",
             "Punjab (Pakistan)",
             RegionKind.province,
@@ -4611,6 +4597,83 @@ def test_nominatim_query_uses_osm_region_names(
     location = _location_without_coordinates(name=locality_name, region=region)
 
     assert location_lint.get_nominatim_query(location) == query
+
+
+def test_nominatim_query_uses_name_from_linked_osm_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Cuba", RegionKind.country)
+    region = _make_region("Artemisa Province", RegionKind.subnational, country)
+    region.tags = (RegionTag.OpenStreetMap("relation", 2576644, "boundary"),)  # type: ignore[assignment]
+    lookup_result = nominatim.SearchResult(
+        latitude="22.8265226",
+        longitude="-82.9259320",
+        name="Artemisa",
+        display_name="Artemisa, Cuba",
+        category="boundary",
+        feature_type="administrative",
+        address={"state": "Artemisa", "country": "Cuba"},
+        osm_type="relation",
+        osm_id=2576644,
+        names={"name": "Artemisa", "name:es": "Artemisa"},
+    )
+    lookup = Mock(return_value=lookup_result)
+    monkeypatch.setattr(nominatim, "lookup", lookup)
+    location = _location_without_coordinates(name="Loma del Taburete", region=region)
+
+    assert (
+        location_lint.get_nominatim_query(location)
+        == "Loma del Taburete, Artemisa, Cuba"
+    )
+    lookup.assert_called_once_with("relation", 2576644)
+
+
+def test_nominatim_query_does_not_guess_name_for_unlinked_region() -> None:
+    country = _make_region("Colombia", RegionKind.country)
+    region = _make_region("Antioquia Department", RegionKind.department, country)
+    location = _location_without_coordinates(name="Valdivia", region=region)
+
+    assert (
+        location_lint.get_nominatim_query(location)
+        == "Valdivia, Antioquia Department, Colombia"
+    )
+
+
+def test_forward_geocoding_accepts_name_from_linked_osm_region(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    country = _make_region("Exampleland", RegionKind.country)
+    region = _make_region("Database Province", RegionKind.subnational, country)
+    region.tags = (RegionTag.OpenStreetMap("relation", 1234, "boundary"),)  # type: ignore[assignment]
+    linked_region = nominatim.SearchResult(
+        latitude="10",
+        longitude="10",
+        name="Official OSM Name",
+        display_name="Official OSM Name, Exampleland",
+        category="boundary",
+        feature_type="administrative",
+        address={"state": "Official OSM Name", "country": "Exampleland"},
+        osm_type="relation",
+        osm_id=1234,
+        names={"name": "Official OSM Name", "name:local": "Local OSM Name"},
+    )
+    monkeypatch.setattr(nominatim, "lookup", Mock(return_value=linked_region))
+    location = _location_without_coordinates(name="Site", region=region)
+    result = nominatim.SearchResult(
+        latitude="10",
+        longitude="10",
+        name="Site",
+        display_name="Site, Local OSM Name, Exampleland",
+        category="place",
+        feature_type="village",
+        address={
+            "village": "Site",
+            "state": "Local OSM Name",
+            "country": "Exampleland",
+        },
+    )
+
+    assert location_lint.is_sane_nominatim_result(location, result)
 
 
 @pytest.mark.parametrize(

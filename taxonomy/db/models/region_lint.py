@@ -572,17 +572,6 @@ def _get_openstreetmap_lookup_results() -> (
     return nominatim.lookup_many(_get_openstreetmap_tag_owners())
 
 
-def _result_names(result: nominatim.SearchResult) -> set[str]:
-    return {
-        result.name,
-        *(
-            value
-            for key, value in result.names.items()
-            if key == "name" or key.startswith(("name:", "official_name", "short_name"))
-        ),
-    }
-
-
 def _names_overlap(first: Iterable[str], second: Iterable[str]) -> bool:
     first_normalized = {_normalize_name(name) for name in first}
     second_normalized = {_normalize_name(name) for name in second}
@@ -659,7 +648,9 @@ def _validate_openstreetmap_result(
             f"{sorted(_EXPECTED_ADMIN_LEVELS[region.kind])!r} for "
             f"RegionKind.{region.kind.name}"
         )
-    if not _names_overlap(get_region_name_aliases(region), _result_names(result)):
+    if not _names_overlap(
+        get_region_name_aliases(region), nominatim.get_name_variants(result)
+    ):
         yield (
             f"OpenStreetMap {tag.osm_type} {tag.osm_id} is named {result.name!r}, "
             f"which does not match Region aliases {sorted(get_region_name_aliases(region))!r}"
