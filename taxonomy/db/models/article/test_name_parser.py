@@ -9,7 +9,7 @@ def check(
     raw_name: str,
     *,
     base_name: Mapping[str, Any] = {},
-    authorship: tuple[None | str | list[str], str | None] = (None, None),
+    authorship: tuple[str | list[str] | None, str | None] = (None, None),
     modifier: str = "",
     extension: str = "pdf",
     expect_errors: bool = False,
