@@ -34,6 +34,17 @@ type locality cannot be made more precise from the available evidence. It does n
 replace the linked general Location and should not be used for a specific but
 geographically unresolved locality.
 
+When sources consistently identify a named place, it is sufficient to represent that
+place even if its modern identity or exact position is unknown. Use an _Unplaced_
+Location under the narrowest Region supported by the evidence, retaining the source name
+according to the Location naming conventions. Coordinates are not required. Do not leave
+such a Name in a regionwide Location merely because the place has not yet been found on
+a map.
+
+`TypeTag.NoLocation` records that a particular source supplies no locality information.
+It does not imply that other sources lack that information and is not a substitute for
+`TypeTag.ImpreciseLocality`.
+
 If a neotype has been validly designated, the type locality is the origin of the
 neotype, and evidence prior to the designation of the neotype is not relevant.
 Similarly, if a lectotype has been designated, the type locality is the origin of the
@@ -46,6 +57,10 @@ distinct partial localities are required, and this representation is allowed onl
 `species_type_kind` is `syntypes` or unset. A later lectotype designation replaces this
 arrangement with the locality of the lectotype.
 
+Conflicting accounts of the origin of a single type are not multiple type localities. Do
+not represent competing interpretations with `PartialTypeLocality` tags; resolve the
+conflict from the type evidence or leave it explicitly unresolved.
+
 Many older names lack explicitly designated type specimens. In that case, the best
 evidence for the type locality is the stated distribution of the animal. Sometimes later
 authors will have "restricted" the type locality to a more specific area. Occasionally
@@ -54,14 +69,41 @@ or collected; at other times it is pure guesswork or convenience. The former cat
 valid; the latter category is questionable but we often accept such "restrictions" for
 convenience.
 
+A documented, generally accepted restriction may be followed without repeating the
+historical investigation when there is no conflicting type evidence. Cite the source and
+identify the assignment as a later restriction, rather than presenting it as the
+locality stated in the original description. A restriction does not override the origin
+of a validly designated neotype or lectotype.
+
+For names based on domestic breeds without a more specific type origin, it is acceptable
+to use the primary breeding area mentioned in the source, or the area suggested by the
+scientific name. Record the basis of the choice; an exhaustive reconstruction of breed
+history is unnecessary for this purpose.
+
 ## Evidence
 
-The first evidence for the type locality that should be consulted is the original
-description of the animal. Other useful sources are those that are based directly on
+Begin with evidence already stored on the Name, including sourced `LocationDetail` and
+`SpecimenDetail` quotations and type-designation information. These can be sufficient to
+assign a Location without reopening the cited publication. Preserve quotations as source
+data and record geographic interpretations separately. Consult the publication or
+additional sources when the stored evidence is incomplete, ambiguous, conflicting, or
+depends on missing context; research should address a question that could change the
+assignment.
+
+This research order does not change the relative weight of evidence. The original
+description is the starting point for the original type locality, subject to subsequent
+neotype or lectotype designations. Other useful sources are those based directly on
 information associated with the type specimens (such as museum catalogs), those that
 refine the type locality based on explicitly cited primary information, and geographical
 sources such as gazetteers that reflect expert study. Sources that merely refine or
-restate a type locality without evidence are less persuasive.
+restate a type locality without evidence are less persuasive, apart from accepted
+restrictions used as described above.
+
+For marine animals, follow the source's named geographic feature when assigning the
+Location to a land or sea Region; see
+[Coasts and offshore localities](location#coasts-and-offshore-localities). For
+archaeological or subfossil types, represent the age of the material even when the taxon
+is extant; see [Temporal context](location#temporal-context).
 
 ## Legacy and imprecise data
 

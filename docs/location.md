@@ -36,17 +36,24 @@ disambiguators, and modifiers follow a colon and a space.
 ### name
 
 The name should preferably be a geographic feature such as a town, river, mountain,
-cave, or collecting site. Use modern names, even when the source material uses obsolete
-names. An established fossil-site name may be retained when it remains the stable name
-of the site in paleontological literature, even if the corresponding modern place has
-been renamed. In particular, avoid names now considered offensive. Expand abbreviations
-such as "Mt.", "Ft.", or "St.", unless the abbreviated form is actually part of the
-official name. Use concise names, ideally the name of a single geographical feature,
-even if the source may use a more elaborate description. Preserve diacritics in the
-modern spelling of proper names (for example, `Valparaíso`); do not reduce a name to
-ASCII merely because a source or legacy database record omits the diacritics.
-Established English names for countries and broad regions may retain their conventional
-English spelling.
+cave, or collecting site. Use modern names when the place has been identified, even when
+the source material uses obsolete names. An established fossil-site name may be retained
+when it remains the stable name of the site in paleontological literature, even if the
+corresponding modern place has been renamed. In particular, avoid names now considered
+offensive. Expand abbreviations such as "Mt.", "Ft.", or "St.", unless the abbreviated
+form is actually part of the official name. Use concise names, ideally the name of a
+single geographical feature, even if the source may use a more elaborate description.
+Preserve diacritics in the modern spelling of proper names (for example, `Valparaíso`);
+do not reduce a name to ASCII merely because a source or legacy database record omits
+the diacritics. Established English names for countries and broad regions may retain
+their conventional English spelling.
+
+If a source consistently names a place whose modern identity is unknown, retain the
+attested name and mark the Location _Unplaced_. Do not invent a modern equivalent or
+require exact coordinates before representing the place. Preserve uncertain spelling and
+identification in the supporting evidence; apply the usual disambiguator and modifier
+conventions to the canonical name. Place the Location in the narrowest Region supported
+by the evidence.
 
 Locations should preferably denote precise locations (at the scale of a few kilometers
 at most), but if necessary a general location can be used encompassing a larger area if
@@ -157,12 +164,27 @@ _Offshore_ may remain when it is part of a quantified locality description, as i
 `Petit Manan Lighthouse: 40 mi offshore`; there it expresses the recorded offset, not a
 separate category of marine Location.
 
-The word _coast_ in a source does not by itself decide between these interpretations.
-Use the description of the occurrence or specimen to distinguish an animal inhabiting a
-coastal strip from one taken in nearby water; an explicitly stranded or beached marine
-animal is terrestrial for this purpose. If the evidence still does not resolve the
-distinction, use a _General_ Location under the lowest Region that contains both
-possibilities rather than silently choosing land or water.
+Follow the geographic feature named by the source: a land feature, including a named
+coast, belongs in the corresponding land Region; a sea feature or explicitly marine
+waters belongs in the appropriate sea or ocean Region. A marine animal recorded simply
+from a named town, island, or coast can use that land feature without first determining
+whether the specimen was captured offshore or stranded. Do not infer _coastal waters_
+solely from the animal's ecology. Preserve explicit offshore wording and offsets when
+the source supplies them.
+
+## Temporal context
+
+The age of a Location reflects the material found there, even if the animal belongs to
+an extant taxon. Archaeological and subfossil material should not be assigned to a
+Recent Location merely because the species is living. Use the most specific supported
+Period or range of Periods, retaining explicit dates and stratigraphic evidence.
+
+When the context clearly indicates relatively recent archaeological or subfossil
+material but no exact dating is available, it is acceptable to set both period fields to
+_Quaternary_. This records a broad age, not an inferred precise date. Do not replace
+supported Holocene, Pleistocene, older ages, or explicit age ranges with this fallback.
+Check temporal compatibility before reusing an existing Location with the same place
+name.
 
 ## Fields
 

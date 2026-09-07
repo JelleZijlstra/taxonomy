@@ -344,9 +344,52 @@ safer; generic actions are not a reason to discard those guardrails.
 
 ## Standard of work
 
-When asked to generate recommendations for a category of issues, do not stop halfway,
-but review all issues in the category and attempt to generate recommendations. You have
-the option to leave some issues for manual review, but use this option sparingly. If
-there is a large number of issues for which you'd like to ask for manual review,
-consider if there is any general policy that could resolve many of the issues, and ask
-the user for a decision on that policy.
+For a campaign covering a category of issues, inventory the complete requested set
+before extended research. Record the selection criteria and object IDs so coverage is
+explicit. For geographic campaigns, state whether scope follows the database Region
+subtree or physical geography; use the user's choice, including any outlying
+descendants. Scope selects the records to inspect, not necessarily the destinations of
+corrections.
+
+Review straightforward cases across the inventory before spending substantial time on
+individual difficult cases. Group records sharing a source or target place to reuse
+research, while checking each record's evidence and relevant context. Do not let one
+uncertain place or unavailable publication block unrelated recommendations. Continue
+through the requested scope unless the user narrows or stops the work; producing a batch
+is not itself a reason to stop.
+
+Use evidence already stored on the objects before seeking more literature. A sourced
+quotation can support a recommendation without reopening its publication. Consult the
+underlying source when the quotation is ambiguous, incomplete, conflicting, or depends
+on context it does not preserve. Further research should address a specific uncertainty
+that could change the recommendation. If research stalls, record the evidence examined,
+the unresolved question, and a useful next step, then continue with other candidates.
+
+For type-locality campaigns, read `docs/type-locality.md` and `docs/location.md`,
+including the Location naming conventions. Start with stored `LocationDetail`,
+`SpecimenDetail`, and type-designation evidence. Exact coordinates or identification
+with a modern mapped place are not prerequisites for a useful recommendation: a
+consistently named but unidentified locality may support an `Unplaced` Location in the
+narrowest evidenced Region. Distinguish this from a known broad area (`General`) and a
+type locality for which no meaningfully narrower evidence is available
+(`ImpreciseLocality`). Check existing Locations, aliases, and deleted records before
+proposing a new Location, and match temporal as well as geographic context. Preserve
+source wording in evidence while reviewing proposed Location names separately for
+naming-convention compliance.
+
+Keep a coverage ledger with a disposition for each candidate: recommended change,
+reviewed with no change needed, reviewed but deferred, or not yet reviewed. Unreviewed
+records are not evidence that the remainder is difficult. Give deferred records specific
+reasons, such as conflicting type evidence, uncertain regional placement, or a missing
+source; do not use lack of coordinates alone as a reason. Where one policy decision
+would resolve many cases, first check the documentation and the user's existing
+instructions, then ask only if a material policy question remains unanswered.
+
+For successive batches, refresh the candidate set and guarded snapshots from live state
+to incorporate the user's intervening fixes; preserve previously applied manifests as
+described above. Hand off the manifest, a compact review table, and the remaining queue
+with reasons. Report counts by disposition and useful categories such as country,
+distinguishing affected Names from action rows and newly proposed Locations. State
+whether remaining counts describe live state or the expected state after application.
+Report review, dry-run, and complete-proposal virtual-lint results, identifying checks
+skipped because network access or other resources were unavailable.
