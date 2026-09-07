@@ -2662,6 +2662,7 @@ class Name(BaseModel):
 
 class NameComment(BaseModel):
     call_sign = "NCO"
+    label_field = "id"
     grouping_field = "kind"
     fields_may_be_invalid: ClassVar[set[str]] = {"name"}
     clirm_table_name = "name_comment"

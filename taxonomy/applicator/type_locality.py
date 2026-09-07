@@ -145,6 +145,7 @@ class Target:
     stratigraphic_unit_id: int | None = None
     stratigraphic_unit_name: str | None = None
     serialized_location_tags: tuple[LocationTag, ...] = ()
+    restore_deleted_location_id: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -469,7 +470,13 @@ def _parse_target(
             raise RecommendationError(
                 f"line {line_number}: {field} ID and name must both be set or null"
             )
+    restore_id = _optional_int(data, "restore_deleted_location_id", line_number)
+    if restore_id is not None and location_id is not None:
+        raise RecommendationError(
+            f"line {line_number}: restore_deleted_location_id requires location_id=null"
+        )
     return Target(
+        restore_deleted_location_id=restore_id,
         location_id=location_id,
         location_name=_required_str(data, "location_name", line_number),
         region_id=_required_int(data, "region_id", line_number),
@@ -1087,8 +1094,17 @@ def build_plan(
         ):
             use_general_factory = True
         found_location = find_location(target.location_name)
+        if target.restore_deleted_location_id is not None and (
+            found_location is None
+            or found_location.id != target.restore_deleted_location_id
+        ):
+            raise RecommendationError(
+                f"expected Location {target.restore_deleted_location_id} "
+                f"for restoration of {target.location_name!r}"
+            )
         if found_location is not None and not (
-            use_general_factory and found_location.deleted is LocationStatus.deleted
+            (use_general_factory or target.restore_deleted_location_id is not None)
+            and found_location.deleted is LocationStatus.deleted
         ):
             _validate_target_location(target, found_location)
             add_location_tags(
@@ -1652,15 +1668,24 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                 context=f"revived Location {target.location_name!r}",
             )
             new_location.deleted = LocationStatus.valid
-            new_location.min_period = min_period
-            new_location.max_period = max_period
-            new_location.min_age = target.min_age
-            new_location.max_age = target.max_age
-            new_location.stratigraphic_unit = stratigraphic_unit
-            new_location.region = definition.region
-            new_location.comment = _coordinate_comment(target)
-            new_location.latitude = target.latitude
-            new_location.longitude = target.longitude
+            if target.restore_deleted_location_id is None:
+                new_location.min_period = min_period
+                new_location.max_period = max_period
+                new_location.min_age = target.min_age
+                new_location.max_age = target.max_age
+                new_location.stratigraphic_unit = stratigraphic_unit
+                new_location.region = definition.region
+            if (
+                target.restore_deleted_location_id is None
+                or _coordinate_comment(target) is not None
+            ):
+                new_location.comment = _coordinate_comment(target)
+            if (
+                target.restore_deleted_location_id is None
+                or target.latitude is not None
+            ):
+                new_location.latitude = target.latitude
+                new_location.longitude = target.longitude
             new_location.tags = tuple(sorted(set(new_location.tags or ()) | set(tags)))  # type: ignore[assignment]
         else:
             new_location = builder.create(
@@ -1798,7 +1823,11 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
         operation = (
             "GET_OR_CREATE_GENERAL_LOCATION"
             if definition.use_general_factory
-            else "CREATE_LOCATION"
+            else (
+                "RESTORE_LOCATION"
+                if definition.deleted_location is not None
+                else "CREATE_LOCATION"
+            )
         )
         print(
             f"{operation if apply else f'WOULD_{operation}'} "
@@ -1810,7 +1839,18 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
             region = cast(Region, definition.region)
             period = definition.min_period or recent
             assert period is not None
-            if definition.use_general_factory:
+            if (
+                target.restore_deleted_location_id is not None
+                and definition.deleted_location is not None
+            ):
+                location = cast(Location, definition.deleted_location)
+                _validate_target_location(
+                    target, definition.deleted_location, allow_deleted=True
+                )
+                location.deleted = LocationStatus.valid
+                if (comment := _coordinate_comment(target)) is not None:
+                    location.comment = comment
+            elif definition.use_general_factory:
                 location = Location.get_or_create_general(region, cast(Period, period))
                 location.comment = _coordinate_comment(target)
                 location.stratigraphic_unit = cast(
@@ -1828,8 +1868,9 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
                 )
             if definition.max_period is not None:
                 location.max_period = cast(Period, definition.max_period)
-            location.min_age = target.min_age
-            location.max_age = target.max_age
+            if target.restore_deleted_location_id is None:
+                location.min_age = target.min_age
+                location.max_age = target.max_age
             if target.latitude is not None and target.longitude is not None:
                 location.latitude = target.latitude
                 location.longitude = target.longitude
@@ -1966,9 +2007,16 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
         applied += 1
 
     mode = "Applied" if apply else "Dry run"
+    restored_count = sum(
+        definition.deleted_location is not None for definition in plan.new_locations
+    )
+    restoration_summary = (
+        f"{restored_count} restored Location(s), " if restored_count else ""
+    )
     print(
         f"{mode}: {applied} update(s), {already_applied} already applied, "
-        f"{len(plan.new_locations)} new Location(s), "
+        f"{len(plan.new_locations) - restored_count} new Location(s), "
+        f"{restoration_summary}"
         f"{len(plan.location_tag_updates)} existing Location tag update(s), "
         f"{len(plan.serialized_location_tag_updates)} serialized Location tag "
         "update(s), "

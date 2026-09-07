@@ -47,8 +47,10 @@ _REGION_KIND_DESIGNATORS = {
 _OSM_NAME_ALIASES = {
     "Adygea": {"Republic of Adygea"},
     "Alpes-Maritimes": {"Maritime Alps"},
+    "Arica and Parinacota Region": {"Arica y Parinacota Region"},
     "Ascension": {"Ascension Island"},
     "Asunción": {"Distrito Capital"},
+    "Aysén Region": {"Aysen del General Carlos Ibanez del Campo Region"},
     "Bangka-Belitung": {"Bangka-Belitung Islands"},
     "Basel-Stadt": {"Basel-City"},
     "Basque Country": {"Autonomous Community of the Basque Country"},
@@ -65,8 +67,10 @@ _OSM_NAME_ALIASES = {
     "Distrito Federal (Brazil)": {"Federal District"},
     "Distrito Federal (Mexico)": {"Mexico City"},
     "De Soto Parish, Louisiana": {"DeSoto Parish"},
+    "Emberá-Wounaan Comarca": {"Emberá-Wounaan"},
     "Friesland": {"Frisia"},
     "Graubünden": {"Grisons"},
+    "Guna Yala Comarca": {"Guna Yala"},
     "Haute-Corse": {"Upper Corsica"},
     "Haute-Savoie": {"Upper Savoy"},
     "Ionian Islands": {"Ioanian Islands"},
@@ -81,8 +85,12 @@ _OSM_NAME_ALIASES = {
     "Luzern": {"Lucerne"},
     "Mari El": {"Mari El Republic"},
     "Madrid": {"Community of Madrid", "Autonomous Community of Madrid"},
+    "Magallanes Region": {"Magallanes and Chilean Antarctica Region"},
     "Mordovia": {"Republic of Mordovia"},
+    "Naso Tjër Di Comarca": {"Naso Tjër Di"},
+    "Ngäbe-Buglé Comarca": {"Ngäbe-Buglé"},
     "North Aegean": {"Northern Aegean"},
+    "North Caribbean Coast Autonomous Region": {"North Caribbean Coast"},
     "North Ossetia": {"Republic of North Ossetia – Alania"},
     "Orissa": {"Odisha"},
     "Palestine": {"Palestinian Territories"},
@@ -92,6 +100,7 @@ _OSM_NAME_ALIASES = {
     },
     "Callao Province": {"Callao"},
     "Savoie": {"Savoy"},
+    "South Caribbean Coast Autonomous Region": {"South Caribbean Coast"},
     "Tibet": {"Xizang"},
     "Trentino-Alto Adige": {"Trentino – Alto Adige/Südtirol"},
     "Tuva": {"Tuva Republic"},
@@ -292,6 +301,15 @@ def _get_structured_nominatim_query(region: Region) -> dict[str, str] | None:
 
 
 def _expected_address_types(region: Region) -> frozenset[str]:
+    if region.parent is not None and region.parent.kind is RegionKind.country:
+        if region.parent.name == "Chile" and region.kind is RegionKind.region:
+            # Chilean regions are states in both Nominatim schemas. Accepting
+            # cities here selects the communes named Aysén and O'Higgins when
+            # lookup omits admin_level.
+            return frozenset({"region", "state"})
+        if region.parent.name == "Panama" and region.kind is RegionKind.province:
+            # Bocas del Toro names both a province and a smaller district.
+            return frozenset({"province", "state"})
     if region.kind is RegionKind.country:
         # Overseas territories represented as country-like Regions in this
         # database may be lower-level administrative objects in OSM. Nominatim

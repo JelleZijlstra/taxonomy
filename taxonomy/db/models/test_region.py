@@ -510,6 +510,155 @@ def test_inference_tries_explicit_osm_name_alias(
     ]
 
 
+@pytest.mark.parametrize(
+    ("country", "name", "kind", "osm_name", "osm_id"),
+    [
+        (
+            "Nicaragua",
+            "North Caribbean Coast Autonomous Region",
+            RegionKind.region,
+            "North Caribbean Coast",
+            2195034,
+        ),
+        (
+            "Nicaragua",
+            "South Caribbean Coast Autonomous Region",
+            RegionKind.region,
+            "South Caribbean Coast",
+            2195081,
+        ),
+        (
+            "Panama",
+            "Emberá-Wounaan Comarca",
+            RegionKind.subnational,
+            "Emberá-Wounaan",
+            5740657,
+        ),
+        ("Panama", "Guna Yala Comarca", RegionKind.subnational, "Guna Yala", 5740658),
+        (
+            "Panama",
+            "Naso Tjër Di Comarca",
+            RegionKind.subnational,
+            "Naso Tjër Di",
+            13458933,
+        ),
+        (
+            "Panama",
+            "Ngäbe-Buglé Comarca",
+            RegionKind.subnational,
+            "Ngäbe-Buglé",
+            5740663,
+        ),
+        (
+            "Chile",
+            "Arica and Parinacota Region",
+            RegionKind.region,
+            "Arica y Parinacota Region",
+            238392,
+        ),
+        (
+            "Chile",
+            "Magallanes Region",
+            RegionKind.region,
+            "Magallanes and Chilean Antarctica Region",
+            301542,
+        ),
+        (
+            "Chile",
+            "Aysén Region",
+            RegionKind.region,
+            "Aysen del General Carlos Ibanez del Campo Region",
+            305693,
+        ),
+        ("Chile", "O'Higgins Region", RegionKind.region, "O'Higgins Region", 206487),
+    ],
+)
+def test_inference_accepts_reviewed_central_american_and_chilean_names(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    country: str,
+    name: str,
+    kind: RegionKind,
+    osm_name: str,
+    osm_id: int,
+) -> None:
+    parent = _region(country, RegionKind.country)
+    region = _region(name, kind, parent)
+    result = nominatim.GeocodeResult(
+        name=osm_name,
+        display_name=f"{osm_name}, {country}",
+        category="boundary",
+        feature_type="administrative",
+        address_type="state",
+        address={"state": osm_name, "country": country},
+        administrative={"level4": osm_name},
+        osm_type="relation",
+        osm_id=osm_id,
+    )
+    monkeypatch.setattr(nominatim, "search_geocodejson", Mock(return_value=[result]))
+    issues = list(
+        region_lint.infer_openstreetmap.linter(
+            region, LintConfig(autofix=False, interactive=False)
+        )
+    )
+    assert len(issues) == 1
+    assert isinstance(issues[0], LintIssue) and issues[0].fix is not None
+    wrong_parent = _region("Other country", RegionKind.country)
+    assert not region_lint._is_matching_result(
+        _region(name, kind, wrong_parent), result
+    )
+
+
+@pytest.mark.parametrize(
+    ("country", "name", "kind", "osm_name", "address_type"),
+    [
+        ("Chile", "Aysén Region", RegionKind.region, "Aysén", "city"),
+        ("Chile", "O'Higgins Region", RegionKind.region, "O’Higgins", "city"),
+        (
+            "Panama",
+            "Bocas del Toro Province",
+            RegionKind.province,
+            "Bocas del Toro",
+            "county",
+        ),
+    ],
+)
+def test_first_level_regions_reject_smaller_namesakes_without_admin_level(
+    country: str, name: str, kind: RegionKind, osm_name: str, address_type: str
+) -> None:
+    region = _region(name, kind, _region(country, RegionKind.country))
+    geocode = nominatim.GeocodeResult(
+        name=osm_name,
+        display_name=f"{osm_name}, {country}",
+        category="boundary",
+        feature_type="administrative",
+        address_type=address_type,
+        address={"country": country},
+        administrative={},
+        osm_type="relation",
+        osm_id=1,
+    )
+    assert not region_lint._is_matching_result(region, geocode)
+    lookup = nominatim.SearchResult(
+        latitude="0",
+        longitude="0",
+        name=osm_name,
+        display_name=f"{osm_name}, {country}",
+        category="boundary",
+        feature_type="administrative",
+        address_type=address_type,
+        address={"country": country},
+        osm_type="relation",
+        osm_id=1,
+    )
+    issues = list(
+        region_lint._validate_openstreetmap_result(
+            region, RegionTag.OpenStreetMap("relation", 1, "boundary"), lookup, {}
+        )
+    )
+    assert any("address type" in issue for issue in issues)
+
+
 def test_infer_openstreetmap_prefers_shallow_overseas_relation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

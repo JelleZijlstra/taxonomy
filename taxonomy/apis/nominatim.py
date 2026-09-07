@@ -10,7 +10,7 @@ from typing import Any
 import httpx
 
 from taxonomy import coordinates
-from taxonomy.db.url_cache import CacheDomain, cached, get_cached_value
+from taxonomy.db.url_cache import CacheDomain, cached, dirty_cache, get_cached_value
 
 UA = "taxonomy (https://github.com/JelleZijlstra/taxonomy)"
 BASE_URL = os.environ.get(
@@ -106,9 +106,8 @@ _GEOCODEJSON_ADDRESS_FIELDS = frozenset(
 )
 
 
-def search(query: str, *, limit: int = 5) -> list[SearchResult]:
-    """Search for named geographic features using Nominatim."""
-    url = str(
+def _search_url(query: str, *, limit: int) -> str:
+    return str(
         httpx.URL(f"{BASE_URL}/search").copy_with(
             params=httpx.QueryParams(
                 {
@@ -121,10 +120,20 @@ def search(query: str, *, limit: int = 5) -> list[SearchResult]:
             )
         )
     )
+
+
+def search(query: str, *, limit: int = 5) -> list[SearchResult]:
+    """Search for named geographic features using Nominatim."""
+    url = _search_url(query, limit=limit)
     data = json.loads(get_nominatim_data(url))
     if not isinstance(data, list):
         raise TypeError(data)
     return [_parse_search_result(row) for row in data]
+
+
+def clear_search_cache(query: str, *, limit: int = 5) -> None:
+    """Discard the cached response for an exact free-form search."""
+    dirty_cache(CacheDomain.nominatim, _search_url(query, limit=limit))
 
 
 def search_geocodejson(query: str, *, limit: int = 5) -> list[GeocodeResult]:
@@ -175,12 +184,11 @@ def _search_geocodejson(
     return [_parse_geocodejson_search_result(feature) for feature in features]
 
 
-def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
-    """Look up a stable OpenStreetMap object reference through Nominatim."""
+def _lookup_url(osm_type: str, osm_id: int) -> str | None:
     type_code = {"node": "N", "way": "W", "relation": "R"}.get(osm_type)
     if type_code is None:
         return None
-    url = str(
+    return str(
         httpx.URL(f"{BASE_URL}/lookup").copy_with(
             params=httpx.QueryParams(
                 {
@@ -193,6 +201,13 @@ def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
             )
         )
     )
+
+
+def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
+    """Look up a stable OpenStreetMap object reference through Nominatim."""
+    url = _lookup_url(osm_type, osm_id)
+    if url is None:
+        return None
     data = json.loads(get_nominatim_data(url))
     if not isinstance(data, list):
         raise TypeError(data)
@@ -205,6 +220,13 @@ def lookup(osm_type: str, osm_id: int) -> SearchResult | None:
         ),
         None,
     )
+
+
+def clear_lookup_cache(osm_type: str, osm_id: int) -> None:
+    """Discard the cached stable-object lookup response, if the type is valid."""
+    url = _lookup_url(osm_type, osm_id)
+    if url is not None:
+        dirty_cache(CacheDomain.nominatim, url)
 
 
 def lookup_many(

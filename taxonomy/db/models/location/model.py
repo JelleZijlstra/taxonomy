@@ -724,6 +724,24 @@ class Location(BaseModel):
         if not found_occurrence_evidence:
             print("    none")
 
+    def refresh_nominatim(self) -> None:
+        from taxonomy.apis import nominatim
+
+        query = models.location.lint.get_nominatim_query(self)
+        nominatim.clear_search_cache(query)
+        references = {
+            (tag.osm_type, tag.osm_id)
+            for tag in self.get_tags(
+                self.tags, models.tags.LocationTag.CoordinatesFromNominatim
+            )
+        }
+        for osm_type, osm_id in references:
+            nominatim.clear_lookup_cache(osm_type, osm_id)
+        print(
+            f"Cleared the Nominatim search cache for {query!r} and "
+            f"{len(references)} provenance lookup(s); the next lookup will fetch fresh data"
+        )
+
     def _get_coordinate_choices(self) -> list[_CoordinateChoice]:
         choices: dict[tuple[str, str], _CoordinateChoice] = {}
 
@@ -799,6 +817,33 @@ class Location(BaseModel):
                 ),
             )
 
+        resolved_nominatim_provenance: set[tuple[str, int, bool]] = set()
+        for provenance in self.get_tags(
+            self.tags, models.tags.LocationTag.CoordinatesFromNominatim
+        ):
+            result, extents, issue = (
+                models.location.lint._get_nominatim_provenance_extents(self, provenance)
+            )
+            if issue is not None:
+                print(f"Nominatim provenance lookup failed: {issue}")
+                continue
+            if result is None or len(extents) != 1:
+                continue
+            extent = extents[0]
+            source_type = (
+                "bounding box" if provenance.use_bounding_box else "coordinates"
+            )
+            add_choice(
+                extent.latitude.standardized_text,
+                extent.longitude.standardized_text,
+                f"Nominatim {result.category}/{result.feature_type} {source_type} "
+                f"from existing provenance for {result.display_name!r}",
+                provenance,
+            )
+            resolved_nominatim_provenance.add(
+                (provenance.osm_type, provenance.osm_id, provenance.use_bounding_box)
+            )
+
         try:
             if self.is_general():
                 nominatim_candidates = (
@@ -814,6 +859,12 @@ class Location(BaseModel):
             print(f"Nominatim lookup failed: {exc}")
         else:
             for result, (latitude, longitude, _) in nominatim_candidates:
+                if (
+                    result.osm_type,
+                    result.osm_id,
+                    self.is_general(),
+                ) in resolved_nominatim_provenance:
+                    continue
                 provenance = models.location.lint._nominatim_provenance_tag(
                     result, use_bounding_box=self.is_general()
                 )
@@ -850,7 +901,8 @@ class Location(BaseModel):
             for provenance in dict.fromkeys(
                 tag for choice in choices for tag in choice.provenance_tags
             ):
-                self.add_tag(provenance)
+                if provenance not in (self.tags or ()):
+                    self.add_tag(provenance)
             print(f"Combined coordinates: {self.latitude}, {self.longitude}")
             raise CoordinatesCombined
 
@@ -870,7 +922,8 @@ class Location(BaseModel):
         self.latitude = choice.latitude
         self.longitude = choice.longitude
         for provenance in choice.provenance_tags:
-            self.add_tag(provenance)
+            if provenance not in (self.tags or ()):
+                self.add_tag(provenance)
         print(f"Selected coordinates: {self.latitude}, {self.longitude}")
 
     def infer_coordinates(self) -> None:
@@ -946,6 +999,7 @@ class Location(BaseModel):
             "merge": self.merge,
             "display_occurrences": self.display_occurrences,
             "coordinate_evidence": self.coordinate_evidence,
+            "refresh_nominatim": self.refresh_nominatim,
             "pick_coordinates": self.pick_coordinates,
             "infer_coordinates": self.infer_coordinates,
             "generalize": self.generalize,

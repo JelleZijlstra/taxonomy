@@ -91,6 +91,7 @@ def test_open_coordinates_is_adt_callback(monkeypatch: pytest.MonkeyPatch) -> No
     assert callbacks["infer_coordinates"] == loc.infer_coordinates
     assert callbacks["generalize"] == loc.generalize
     assert callbacks["coordinate_evidence"] == loc.coordinate_evidence
+    assert callbacks["refresh_nominatim"] == loc.refresh_nominatim
     assert callbacks["pick_coordinates"] == loc.pick_coordinates
     assert callbacks["source_callback"] is source_callback
 
@@ -290,6 +291,142 @@ def test_coordinate_choices_include_linked_geonames_and_nominatim_sources(
     assert "verbatim coordinates" in choices[2].sources[0]
     assert "GeoNames P/PPL" in choices[3].sources[0]
     assert "Nominatim place/hamlet coordinates" in choices[4].sources[0]
+
+
+def test_pick_coordinates_refreshes_existing_nominatim_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provenance = LocationTag.CoordinatesFromNominatim(
+        "node", 1234, "place", use_bounding_box=False
+    )
+    loc = Location.virtual(
+        name="Soave",
+        region=Region.virtual(name="Veneto", kind=RegionKind.region),
+        min_period=None,
+        max_period=None,
+        stratigraphic_unit=None,
+        latitude="45.4202303°N",
+        longitude="11.247722°E",
+        tags=(provenance,),
+    )
+    current_result = _nominatim_result(
+        latitude="45.420691",
+        longitude="11.2475529",
+        name="Soave",
+        display_name="Soave, Verona, Veneto, 37038, Italy",
+        osm_type="node",
+        osm_id=1234,
+    )
+    stale_search_result = dataclasses.replace(
+        current_result, latitude="45.4202303", longitude="11.247722"
+    )
+    current_parsed = location_lint.get_nominatim_result_coordinates(stale_search_result)
+    assert current_parsed is not None
+    monkeypatch.setattr(Location, "type_localities", ())
+    monkeypatch.setattr(Location, "occurrence_records", ())
+    monkeypatch.setattr(
+        location_lint, "_get_linked_coordinate_evidence", Mock(return_value=[])
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_accepted_geonames_coordinate_candidates",
+        Mock(return_value=[]),
+    )
+    lookup_cache_was_cleared = False
+
+    def clear_lookup_cache(osm_type: str, osm_id: int) -> None:
+        nonlocal lookup_cache_was_cleared
+        assert (osm_type, osm_id) == ("node", 1234)
+        lookup_cache_was_cleared = True
+
+    clear_search_cache = Mock()
+    monkeypatch.setattr(nominatim, "clear_search_cache", clear_search_cache)
+    monkeypatch.setattr(nominatim, "clear_lookup_cache", clear_lookup_cache)
+    monkeypatch.setattr(
+        nominatim,
+        "lookup",
+        lambda osm_type, osm_id: (
+            current_result if lookup_cache_was_cleared else stale_search_result
+        ),
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_coordinate_candidates",
+        Mock(return_value=[(stale_search_result, current_parsed)]),
+    )
+
+    def choose_current_provenance(
+        choices: list[location_model._CoordinateChoice], **kwargs: object
+    ) -> location_model._CoordinateChoice:
+        assert len(choices) == 1
+        assert "existing provenance" in choices[0].sources[0]
+        return choices[0]
+
+    monkeypatch.setattr(getinput, "choose_one", choose_current_provenance)
+
+    Location.refresh_nominatim(loc)
+    Location.pick_coordinates(loc)
+
+    clear_search_cache.assert_called_once_with(location_lint.get_nominatim_query(loc))
+    assert loc.latitude == "45.420691°N"
+    assert loc.longitude == "11.2475529°E"
+    assert loc.tags == (provenance,)
+
+
+def test_pick_coordinates_refreshes_existing_nominatim_bounding_box(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    provenance = LocationTag.CoordinatesFromNominatim(
+        "relation", 7174336, "place", use_bounding_box=True
+    )
+    loc = Location.virtual(
+        name="Waigeo",
+        region=Region.virtual(name="Southwest Papua", kind=RegionKind.province),
+        min_period=None,
+        max_period=None,
+        stratigraphic_unit=None,
+        latitude="0.4430482°S-0.0051445°S",
+        longitude="130.2186942°E-131.3403243°E",
+        tags=(provenance, LocationTag.General),
+    )
+    current_result = _nominatim_result(
+        latitude="-0.2",
+        longitude="130.8",
+        name="Pulau Waigeo",
+        display_name="Pulau Waigeo, Raja Ampat, Southwest Papua, Indonesia",
+        osm_type="relation",
+        osm_id=7174336,
+        bounding_box=("-0.4430482", "-0.0051445", "130.2187398", "131.3403243"),
+    )
+    stale_search_result = dataclasses.replace(
+        current_result,
+        bounding_box=("-0.4430482", "-0.0051445", "130.2186942", "131.3403243"),
+    )
+    stale_parsed = location_lint.get_nominatim_result_bounding_box(stale_search_result)
+    assert stale_parsed is not None
+    monkeypatch.setattr(Location, "type_localities", ())
+    monkeypatch.setattr(Location, "occurrence_records", ())
+    monkeypatch.setattr(
+        location_lint, "_get_linked_coordinate_evidence", Mock(return_value=[])
+    )
+    monkeypatch.setattr(
+        location_lint,
+        "_get_accepted_geonames_coordinate_candidates",
+        Mock(return_value=[]),
+    )
+    monkeypatch.setattr(nominatim, "lookup", Mock(return_value=current_result))
+    monkeypatch.setattr(
+        location_lint,
+        "_get_nominatim_bounding_box_candidates",
+        Mock(return_value=[(stale_search_result, stale_parsed)]),
+    )
+    monkeypatch.setattr(getinput, "choose_one", lambda choices, **kwargs: choices[0])
+
+    Location.pick_coordinates(loc)
+
+    assert loc.latitude == "0.4430482°S-0.0051445°S"
+    assert loc.longitude == "130.2187398°E-131.3403243°E"
+    assert loc.tags == (provenance, LocationTag.General)
 
 
 def test_neotype_coordinate_choices_ignore_original_location_detail(

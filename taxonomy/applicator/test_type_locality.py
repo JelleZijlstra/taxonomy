@@ -1020,3 +1020,142 @@ def test_applies_existing_incidental_and_introduced_tags(
     output = capsys.readouterr().out
     assert "ADD_TYPE_LOCALITY_VALIDITY" in output
     assert "ADD_REGIONAL_ORIGIN" in output
+
+
+def test_explicitly_restore_deleted_named_location() -> None:
+    target = _schema_four_target(
+        location_id=None,
+        location_name="Neschers",
+        region_id=20,
+        region_name="Puy-de-Dôme",
+    )
+    target["restore_deleted_location_id"] = 202
+    row = _row(action=recommendations.CREATE_LOCATION, target=target)
+    row.update(schema_version=4, current_location_tags=[])
+    region = FakeRegion(20, "Puy-de-Dôme")
+    period = FakeRegion(10, "Pleistocene")
+    current = FakeLocation(1176, "Africa", FakeRegion(629, "Africa"))
+    deleted = FakeLocation(
+        202,
+        "Neschers",
+        region,
+        min_period=period,
+        max_period=period,
+        deleted=LocationStatus.deleted,
+    )
+    name = FakeName(1, "Name 1", current)
+
+    def build(data: dict[str, object]) -> recommendations.RecommendationPlan:
+        return recommendations.build_plan(
+            [recommendations.parse_recommendation(data, 1)],
+            get_name=lambda _: name,
+            get_location=lambda _: current,
+            get_region=lambda _: region,
+            get_period=lambda _: period,
+            find_location=lambda _: deleted,
+            label_name=lambda item: item.label,  # type: ignore[attr-defined]
+        )
+
+    plan = build(row)
+    assert plan.new_locations[0].deleted_location is deleted
+    recommendations.execute_plan(plan, apply=False)
+    assert deleted.deleted is LocationStatus.deleted
+    recommendations.execute_plan(plan, apply=True)
+    assert name.type_locality is deleted
+    assert int(deleted.deleted) == LocationStatus.valid
+    assert deleted.id == 202
+    # A matching record restored by an earlier run is reused.
+    name.type_locality = current
+    assert not build(row).new_locations
+    target["location_id"] = 202
+    row["action"] = recommendations.MOVE_EXISTING_LOCATION
+    with pytest.raises(
+        recommendations.RecommendationError, match="requires location_id=null"
+    ):
+        build(row)
+    target["location_id"] = None
+    row["action"] = recommendations.CREATE_LOCATION
+
+    deleted.deleted = LocationStatus.deleted
+    name.type_locality = current
+    target["restore_deleted_location_id"] = 999
+    with pytest.raises(
+        recommendations.RecommendationError, match="expected Location 999"
+    ):
+        build(row)
+    del target["restore_deleted_location_id"]
+    with pytest.raises(recommendations.RecommendationError, match="is invalid"):
+        build(row)
+    target["restore_deleted_location_id"] = 202
+    deleted.deleted = LocationStatus.alias
+    with pytest.raises(recommendations.RecommendationError, match="is invalid"):
+        build(row)
+
+
+def test_virtual_restore_preserves_existing_location_data() -> None:
+    target = _schema_four_target(
+        location_id=None,
+        location_name="Neschers",
+        region_id=20,
+        region_name="Puy-de-Dôme",
+    )
+    target["restore_deleted_location_id"] = 202
+    data = _row(action=recommendations.CREATE_LOCATION, target=target)
+    data.update(schema_version=4, current_location_tags=[])
+    row = recommendations.parse_recommendation(data, 1)
+    assert row.target is not None
+    region = Region.virtual(name="Puy-de-Dôme", kind=RegionKind.other, tags=())
+    period = Period.virtual(name="Pleistocene")
+    deleted = Location.virtual(
+        name="Neschers",
+        region=region,
+        min_period=period,
+        max_period=period,
+        deleted=LocationStatus.deleted,
+        comment="Existing source note",
+        min_age=100,
+        max_age=200,
+        latitude="45°N",
+        longitude="3°E",
+        tags=(LocationTag.General,),
+    )
+    current = Location.virtual(name="Africa", region=region, tags=())
+    name = Name.virtual(type_locality=current, type_tags=())
+    plan = recommendations.RecommendationPlan(
+        updates=(
+            recommendations.PlannedUpdate(
+                row,
+                cast(recommendations.NameLike, name),
+                target=None,
+                new_location_name="Neschers",
+                already_applied=False,
+            ),
+        ),
+        new_locations=(
+            recommendations.NewLocationDefinition(
+                row.target,
+                cast(recommendations.RegionLike, region),
+                min_period=period,
+                max_period=period,
+                stratigraphic_unit=None,
+                deleted_location=cast(recommendations.LocationLike, deleted),
+            ),
+        ),
+        location_tag_updates=(),
+        serialized_location_tag_updates=(),
+        type_locality_validity_updates=(),
+        regional_origin_updates=(),
+        action_counts=Counter({recommendations.CREATE_LOCATION: 1}),
+    )
+    builder = ProposalBuilder()
+    recommendations.add_virtual_models(plan, builder)
+    restored = builder.replacement(deleted)
+    assert restored is not deleted
+    assert restored.deleted is LocationStatus.valid
+    assert (restored.min_age, restored.max_age) == (100, 200)
+    assert restored.comment == deleted.comment
+    assert (restored.latitude, restored.longitude) == ("45°N", "3°E")
+    assert restored.tags == deleted.tags
+    assert builder.replacement(name).type_locality is restored
+    assert deleted.deleted is LocationStatus.deleted
+    assert name.type_locality is current

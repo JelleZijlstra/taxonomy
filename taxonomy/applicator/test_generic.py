@@ -14,10 +14,12 @@ from taxonomy.db.models import (
     IssueDate,
     Location,
     Name,
+    NameComment,
     OccurrenceRecord,
     Person,
     Region,
 )
+from taxonomy.db.models.location import LocationStatus
 from taxonomy.db.models.name import NameTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.region import RegionTag
@@ -281,6 +283,50 @@ def test_create_object_allows_auto_generated_id_label() -> None:
     assert matches[0]["citation_group"] is citation_group
     assert matches[0]["date"] == "1878-02"
     assert matches[0]["tags"] == ()
+
+
+def test_create_name_comment_without_source() -> None:
+    name = Name.virtual(corrected_original_name="Mus testus")
+    match = {
+        "name": {"model": "Name", "ref": "name", "label": "Mus testus"},
+        "kind": {"enum": "CommentKind", "name": "type_specimen"},
+        "text": "Two catalogued specimens match the original type data.",
+    }
+    row = recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": recommendations.CREATE_OBJECT,
+            "confidence": "high",
+            "reason": "Retain unresolved specimen alternatives.",
+            "evidence": [{"kind": "catalogue", "text": "Matching specimen data."}],
+            "object": {
+                "model": "NameComment",
+                "ref": "comment",
+                "label": "Type alternatives for Mus testus",
+            },
+            "match": match,
+            "values": {**match, "date": 1788609600, "source": None, "page": None},
+        },
+        1,
+    )
+    plan = recommendations.build_plan(
+        [row],
+        model_registry={"NameComment": NameComment},
+        find_objects_by_match=lambda _model, _match: [],
+        initial_references={"name": name},
+    )
+    comment = plan.actions[0].object
+    assert isinstance(comment, NameComment)
+    assert comment.name is name
+    assert comment.text == match["text"]
+    assert comment.source is None
+    resumed = recommendations.build_plan(
+        [row],
+        model_registry={"NameComment": NameComment},
+        find_objects_by_match=lambda _model, _match: [comment],
+        initial_references={"name": name},
+    )
+    assert resumed.actions[0].already_applied
 
 
 def test_review_expands_create_object_fields_and_match_guards(
@@ -1862,3 +1908,76 @@ def test_review_prints_manual_review_evidence(
     assert "requires manual review" in output
     assert "    - evidence (source_page): First line of exact evidence." in output
     assert "      Second line of exact evidence." in output
+
+
+@pytest.mark.parametrize(
+    "action", [recommendations.SET_FIELD, recommendations.UPDATE_OBJECT]
+)
+@pytest.mark.parametrize("status", [LocationStatus.deleted, LocationStatus.alias])
+def test_rename_rejects_name_reserved_by_invalid_location(
+    action: str, status: LocationStatus
+) -> None:
+    current = _make_location(name="Old spelling")
+    reserved = _make_location(name="Modern spelling")
+    reserved.deleted = status
+    data = _common(action, "name")
+    data["object"] = {"model": "Location", "id": 2300, "label": "Old spelling"}
+    if action == recommendations.SET_FIELD:
+        data.update(old_value="Old spelling", new_value="Modern spelling")
+    else:
+        data.pop("field")
+        data.update(
+            schema_version=2,
+            changes=[
+                {
+                    "operation": "set",
+                    "field": "latitude",
+                    "old_value": "37°10'N",
+                    "new_value": "38°N",
+                },
+                {
+                    "operation": "set",
+                    "field": "name",
+                    "old_value": "Old spelling",
+                    "new_value": "Modern spelling",
+                },
+            ],
+        )
+    with pytest.raises(
+        recommendations.RecommendationError, match=r"UNIQUE constraint Location\(name\)"
+    ):
+        recommendations.build_plan(
+            [recommendations.parse_recommendation(data, 1)],
+            model_registry={"Location": Location},
+            get_object=lambda _model, _id: current,
+            get_unique_constraints=lambda _model: (("name",),),
+            find_objects_by_unique_constraint=lambda _model, _fields, _values: [
+                reserved
+            ],
+        )
+    assert current.name == "Old spelling"
+    assert current.latitude == "37°10'N"
+
+
+def test_rename_rejects_name_taken_by_earlier_manifest_create() -> None:
+    current = _make_location(name="Old spelling")
+    rename = _common(recommendations.SET_FIELD, "name")
+    rename.update(
+        object={"model": "Location", "id": 2300, "label": "Old spelling"},
+        old_value="Old spelling",
+        new_value="Precise site",
+    )
+    with pytest.raises(
+        recommendations.RecommendationError, match=r"UNIQUE constraint Location\(name\)"
+    ):
+        recommendations.build_plan(
+            [
+                recommendations.parse_recommendation(row, index)
+                for index, row in enumerate([_create_location_row(), rename], 1)
+            ],
+            model_registry={"Location": Location},
+            get_object=lambda _model, _id: current,
+            find_objects_by_label=lambda _model, _label: [],
+            get_unique_constraints=lambda _model: (("name",),),
+            find_objects_by_unique_constraint=lambda _model, _fields, _values: [],
+        )

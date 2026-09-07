@@ -294,6 +294,12 @@ stratigraphic context; legacy `General` or `Unplaced` tags; and
 `serialized_location_tags` for PLSS, coordinate provenance, external IDs, ignores, and
 other tags. Preserve exact source wording in evidence.
 
+To restore a reviewed deleted named Location, use a fully described target with
+`location_id: null` and `restore_deleted_location_id` set to its existing ID. The
+applicator validates the ID, name, Region, temporal context, and supplied coordinates,
+then restores that record instead of creating another. Aliases cannot be restored this
+way. A matching record already restored is reused, so retries preserve its identity.
+
 ## Extending the action set
 
 This list describes the actions currently implemented, not a closed schema. If a task

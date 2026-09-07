@@ -8,6 +8,7 @@ import pytest
 
 from taxonomy import coordinates
 from taxonomy.apis import nominatim
+from taxonomy.db.url_cache import CacheDomain
 
 
 def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -71,6 +72,26 @@ def test_search_requests_address_metadata(monkeypatch: pytest.MonkeyPatch) -> No
         "format": ["jsonv2"],
         "addressdetails": ["1"],
         "limit": ["3"],
+        "accept-language": ["en"],
+    }
+
+
+def test_clear_search_cache_targets_search_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dirty_cache = Mock()
+    monkeypatch.setattr(nominatim, "dirty_cache", dirty_cache)
+
+    nominatim.clear_search_cache("Soave, Veneto, Italy")
+
+    domain, url = dirty_cache.call_args.args
+    assert domain is CacheDomain.nominatim
+    assert urlparse(url).path == "/search"
+    assert parse_qs(urlparse(url).query) == {
+        "q": ["Soave, Veneto, Italy"],
+        "format": ["jsonv2"],
+        "addressdetails": ["1"],
+        "limit": ["5"],
         "accept-language": ["en"],
     }
 
@@ -191,6 +212,26 @@ def test_lookup_uses_stable_osm_object_identifier(
     assert (result.osm_type, result.osm_id) == ("relation", 1234)
     assert result.names == {"name": "Nicasio", "name:es": "Nicasio"}
     url = get_data.call_args.args[0]
+    assert urlparse(url).path == "/lookup"
+    assert parse_qs(urlparse(url).query) == {
+        "osm_ids": ["R1234"],
+        "format": ["jsonv2"],
+        "addressdetails": ["1"],
+        "namedetails": ["1"],
+        "accept-language": ["en"],
+    }
+
+
+def test_clear_lookup_cache_targets_stable_object_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dirty_cache = Mock()
+    monkeypatch.setattr(nominatim, "dirty_cache", dirty_cache)
+
+    nominatim.clear_lookup_cache("relation", 1234)
+
+    domain, url = dirty_cache.call_args.args
+    assert domain is CacheDomain.nominatim
     assert urlparse(url).path == "/lookup"
     assert parse_qs(urlparse(url).query) == {
         "osm_ids": ["R1234"],

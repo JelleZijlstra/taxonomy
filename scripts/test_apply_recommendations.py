@@ -2051,8 +2051,15 @@ def test_apply_cleanup_and_manual_edit_can_be_disabled(
 
 
 @pytest.mark.parametrize("edit_each", [False, True])
+@pytest.mark.parametrize(
+    ("has_issues", "discover_on_edit"), [(False, False), (True, False), (True, True)]
+)
 def test_cleanup_includes_objects_created_by_autofix(
-    monkeypatch: pytest.MonkeyPatch, *, edit_each: bool
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    edit_each: bool,
+    has_issues: bool,
+    discover_on_edit: bool,
 ) -> None:
     events: list[str] = []
     active_recorder: list[Any] = []
@@ -2070,19 +2077,32 @@ def test_cleanup_includes_objects_created_by_autofix(
         def reload(self) -> None:
             events.append(f"reload:{self.label}")
 
-        def format(self, *, quiet: bool) -> None:
-            events.append(f"format:{self.label}")
+        def general_lint(self, cfg: Any) -> list[str]:
+            assert cfg.autofix
+            assert not cfg.interactive
+            events.append(f"automatic:{self.label}")
+            if self.discovered is not None and not discover_on_edit:
+                active_recorder[0]._objects.append(self.discovered)
+                self.discovered = None
+            return [f"issue:{self.label}"] if has_issues else []
+
+        def display(self) -> None:
+            events.append(f"display:{self.label}")
+
+        def edit_until_clean(self, *, cfg: Any) -> None:
+            assert cfg.autofix
+            assert cfg.interactive
+            events.append(f"edit:{self.label}")
             if self.discovered is not None:
                 active_recorder[0]._objects.append(self.discovered)
                 self.discovered = None
-
-        def edit_until_clean(self) -> None:
-            events.append(f"edit:{self.label}")
 
         def edit(self) -> None:
             events.append(f"interactive:{self.label}")
 
         def is_lint_clean(self, *, cfg: Any) -> bool:
+            assert not cfg.autofix
+            assert not cfg.interactive
             events.append(f"lint:{self.label}")
             return True
 
@@ -2109,12 +2129,58 @@ def test_cleanup_includes_objects_created_by_autofix(
     assert apply_recommendations.edit_applied_objects(
         apply_recommendations.ExecutionResult((cast(Any, parent),)), edit_each=edit_each
     )
-    expected = ["reload:parent", "format:parent", "edit:parent"]
-    if edit_each:
-        expected.append("interactive:parent")
-    expected.extend(["reload:parent", "lint:parent"])
-    expected.extend(["reload:child", "format:child", "edit:child"])
-    if edit_each:
-        expected.append("interactive:child")
-    expected.extend(["reload:child", "lint:child"])
+    expected = ["reload:parent", "automatic:parent"]
+    if not discover_on_edit:
+        expected.extend(["reload:child", "automatic:child"])
+    if has_issues or edit_each:
+        for label in ("parent", "child"):
+            if label == "child" and discover_on_edit:
+                expected.extend(["reload:child", "automatic:child"])
+            expected.append(f"reload:{label}")
+            if has_issues:
+                expected.extend([f"display:{label}", f"edit:{label}"])
+            if edit_each:
+                expected.append(f"interactive:{label}")
+            expected.extend([f"reload:{label}", f"lint:{label}"])
     assert events == expected
+
+
+def test_cleanup_continues_after_lint_failure_and_reports_residual_issues(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    events: list[str] = []
+
+    class CleanupObject:
+        label_field = "id"
+
+        def __init__(self, object_id: int) -> None:
+            self.id = object_id
+
+        def reload(self) -> None:
+            pass
+
+        def general_lint(self, cfg: Any) -> list[str]:
+            events.append(f"automatic:{self.id}")
+            if self.id == 1:
+                raise ValueError("broken lint")
+            return ["unresolved"]
+
+        def display(self) -> None:
+            pass
+
+        def edit_until_clean(self, *, cfg: Any) -> None:
+            # Returning without fixing models a user leaving the editor.
+            events.append(f"edit:{self.id}")
+
+        def is_lint_clean(self, *, cfg: Any) -> bool:
+            return self.id == 3
+
+    objects = tuple(cast(Any, CleanupObject(i)) for i in (1, 2, 3))
+    assert not apply_recommendations.edit_applied_objects(
+        apply_recommendations.ExecutionResult(objects)
+    )
+    assert events == ["automatic:1", "automatic:2", "automatic:3", "edit:2", "edit:3"]
+    captured = capsys.readouterr()
+    assert "CleanupObject:1: broken lint" in captured.out
+    assert "CleanupObject:2 has residual lint" in captured.out
+    assert "total=3 clean=1 incomplete=2" in captured.out

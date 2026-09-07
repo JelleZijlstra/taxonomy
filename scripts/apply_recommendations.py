@@ -9,7 +9,9 @@ to open every manual-review object in the database editor after printing its com
 note. ``--review-classification`` validates the manifest against the database and
 prints the affected ClassificationEntry hierarchy, including existing ancestor entries
 and proposed creations and updates, grouped by Article. ``--apply`` performs both
-post-apply cleanup and manual-review editing by default;
+post-apply cleanup and manual-review editing by default. Cleanup first runs
+noninteractive lint with autofixes on all affected objects, then interactively
+resolves the objects with remaining issues;
 use ``--no-edit-applied`` or ``--no-edit-manual`` to skip either phase. Use
 ``--edit-each`` to call ``edit()`` on every affected object during post-apply
 cleanup, after its automatic formatting and lint cleanup. Use
@@ -61,6 +63,7 @@ from taxonomy.db.models import (
     Name,
 )
 from taxonomy.db.models.base import BaseModel, LintConfig
+from taxonomy.db.models.lint_types import LintResult
 
 
 class RecommendationError(Exception):
@@ -301,42 +304,74 @@ def _declared_affected_objects(
 
 
 def edit_applied_objects(result: ExecutionResult, *, edit_each: bool = False) -> bool:
-    """Clean affected objects and optionally edit each one interactively."""
+    """Batch automatic lint before prompting for unresolved issues."""
     failures: list[str] = []
     objects = list(result.affected_objects)
     seen = {_persistent_identity(obj) for obj in objects}
     # Structured lint may create related models (notably CE materialization). Keep
     # recording during cleanup and append those models in deterministic event order.
     with AppliedObjectRecorder() as recorder:
-        index = 0
-        while index < len(objects):
-            obj = objects[index]
-            label = getattr(obj, type(obj).label_field, None)
-            print(
-                f"POST_APPLY_CLEANUP {index + 1}/{len(objects)} object={type(obj).__name__}:{obj.id} label={label!r}"
-            )
-            try:
-                obj.reload()
-                obj.format(quiet=True)
-                obj.edit_until_clean()
-                if edit_each:
-                    obj.edit()
-                obj.reload()
-                if not obj.is_lint_clean(
-                    cfg=LintConfig(interactive=False, autofix=False)
-                ):
-                    failures.append(f"{type(obj).__name__}:{obj.id} has residual lint")
-            except Exception as exc:
-                traceback.print_exc()
-                failures.append(f"{type(obj).__name__}:{obj.id}: {exc}")
-            for discovered in recorder.objects:
-                if getattr(discovered, "id", None) is None:
-                    continue
+
+        def collect_discovered() -> None:
+            for discovered in _deduplicate_objects(recorder.objects):
                 key = _persistent_identity(discovered)
                 if key not in seen:
                     seen.add(key)
                     objects.append(discovered)
-            index += 1
+
+        index = 0
+        while index < len(objects):
+            pending: list[tuple[BaseModel, list[LintResult]]] = []
+            # Drain automatic work, including related objects created by lint,
+            # before starting any interactive cleanup.
+            while index < len(objects):
+                obj = objects[index]
+                label = getattr(obj, type(obj).label_field, None)
+                print(
+                    f"POST_APPLY_CLEANUP {index + 1}/{len(objects)} object={type(obj).__name__}:{obj.id} label={label!r}"
+                )
+                try:
+                    obj.reload()
+                    messages = list(
+                        obj.general_lint(LintConfig(interactive=False, autofix=True))
+                    )
+                    if messages or edit_each:
+                        pending.append((obj, messages))
+                except Exception as exc:
+                    traceback.print_exc()
+                    failures.append(f"{type(obj).__name__}:{obj.id}: {exc}")
+                collect_discovered()
+                index += 1
+
+            print(
+                f"POST_APPLY_CLEANUP objects_with_issues={sum(bool(messages) for _, messages in pending)}"
+            )
+            for obj, messages in pending:
+                try:
+                    obj.reload()
+                    if messages:
+                        getinput.print_header(obj)
+                        obj.display()
+                        for message in messages:
+                            print(message)
+                        obj.edit_until_clean(
+                            cfg=LintConfig(interactive=True, autofix=True)
+                        )
+                    if edit_each:
+                        obj.edit()
+                    obj.reload()
+                    if not obj.is_lint_clean(
+                        cfg=LintConfig(interactive=False, autofix=False)
+                    ):
+                        failures.append(
+                            f"{type(obj).__name__}:{obj.id} has residual lint"
+                        )
+                except Exception as exc:
+                    traceback.print_exc()
+                    failures.append(f"{type(obj).__name__}:{obj.id}: {exc}")
+            # Objects created during editing get their own batch of automatic
+            # lint after the current prompts have finished.
+            collect_discovered()
     print(
         f"POST_APPLY_CLEANUP total={len(objects)} clean={len(objects) - len(failures)} incomplete={len(failures)}"
     )
@@ -2235,7 +2270,7 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "after successful --apply or accepted --review-each selections, run format() and edit_until_clean() on every created or modified object, including related objects created by structured lint autofixes; enabled by default with --apply"
+            "after successful --apply or accepted --review-each selections, run noninteractive lint with autofixes on all created or modified objects, then interactively resolve objects with remaining issues, including related objects created by structured lint autofixes; enabled by default with --apply"
         ),
     )
     parser.add_argument(

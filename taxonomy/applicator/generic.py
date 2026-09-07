@@ -1286,6 +1286,56 @@ def build_plan(
     references: dict[str, BaseModel] = dict(initial_references or {})
     planned_creates: list[tuple[Recommendation, BaseModel]] = []
     object_identities: dict[int, str] = {}
+    unique_constraints: dict[type[BaseModel], tuple[tuple[str, ...], ...]] = {}
+
+    def check_unique_assignment(
+        model: type[BaseModel], obj: BaseModel, identity: str, field: str, value: Any
+    ) -> None:
+        if model not in unique_constraints:
+            unique_constraints[model] = get_unique_constraints(model)
+        for constraint in unique_constraints[model]:
+            if field not in constraint:
+                continue
+            values = tuple(
+                (
+                    value
+                    if name == field
+                    else planned_values.get(
+                        (model.__name__, identity, name), getattr(obj, name)
+                    )
+                )
+                for name in constraint
+            )
+            if any(item is None for item in values):
+                continue
+            candidates = find_objects_by_unique_constraint(model, constraint, values)
+            candidates.extend(
+                action.object for action in actions if type(action.object) is model
+            )
+            for candidate in candidates:
+                if candidate is obj or (
+                    obj.id is not None
+                    and candidate.id is not None
+                    and obj.id == candidate.id
+                ):
+                    continue
+                candidate_identity = object_identities.get(
+                    id(candidate), f"id:{candidate.id}"
+                )
+                candidate_values = tuple(
+                    planned_values.get(
+                        (model.__name__, candidate_identity, name),
+                        getattr(candidate, name),
+                    )
+                    for name in constraint
+                )
+                if candidate_values == values:
+                    raise RecommendationError(
+                        f"update violates UNIQUE constraint {model.__name__}"
+                        f"({', '.join(constraint)}) with values {values!r}; "
+                        f"conflicts with {model.__name__} {candidate.id}"
+                    )
+
     for row in rows:
         try:
             model = registry.get(row.object.model)
@@ -2301,6 +2351,10 @@ def build_plan(
                                 f"change {index}: field {field_name!r} is neither "
                                 "the snapshotted old value nor the recommended new value"
                             )
+                        if not change_applied:
+                            check_unique_assignment(
+                                model, obj, identity, field_name, new_value
+                            )
                     else:
                         if not isinstance(field, ADTField):
                             raise RecommendationError(
@@ -2381,6 +2435,8 @@ def build_plan(
                         f"field {row.field!r} is neither the snapshotted old value "
                         "nor the recommended new value"
                     )
+                if not already_applied:
+                    check_unique_assignment(model, obj, identity, row.field, new_value)
             else:
                 if not isinstance(field, ADTField):
                     raise RecommendationError(
@@ -2810,18 +2866,20 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                         planned.object,
                         context=f"generic manifest line {row.line_number}",
                     )
-            for _operation, field_name, _old_value, new_value in planned.changes:
-                setattr(
-                    proposal,
-                    field_name,
-                    _replace_created_models(
+            for operation, field_name, old_value, new_value in planned.changes:
+                replacements = {
+                    id(value): builder.replacement(value)
+                    for value in _iter_model_values((old_value, new_value))
+                }
+                new_value = _replace_created_models(new_value, replacements)
+                if operation in {"add", "remove", "normalize"}:
+                    new_value = _compose_tag_edit(
+                        proposal,
+                        field_name,
+                        _replace_created_models(old_value, replacements),
                         new_value,
-                        {
-                            id(value): builder.replacement(value)
-                            for value in _iter_model_values(new_value)
-                        },
-                    ),
-                )
+                    )
+                setattr(proposal, field_name, new_value)
             continue
         assert row.field is not None
         proposal = builder.replacement(planned.object)
@@ -2830,9 +2888,36 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                 planned.object, context=f"generic manifest line {row.line_number}"
             )
         new_value = planned.new_value
-        if isinstance(new_value, BaseModel):
-            new_value = builder.replacement(new_value)
+        replacements = {
+            id(value): builder.replacement(value)
+            for value in _iter_model_values((planned.old_value, new_value))
+        }
+        new_value = _replace_created_models(new_value, replacements)
+        if row.action in {ADD_TAG, REMOVE_TAG}:
+            new_value = _compose_tag_edit(
+                proposal,
+                row.field,
+                _replace_created_models(planned.old_value, replacements),
+                new_value,
+            )
         setattr(proposal, row.field, new_value)
+
+
+def _compose_tag_edit(
+    obj: BaseModel, field_name: str, old_value: Any, new_value: Any
+) -> tuple[adt.ADT, ...]:
+    """Apply a planned tag delta without erasing earlier recommendation families."""
+    old_tags = tuple(old_value or ())
+    new_tags = tuple(new_value or ())
+    current = tuple(getattr(obj, field_name) or ())
+    removed = set(old_tags) - set(new_tags)
+    result = tuple(tag for tag in current if tag not in removed)
+    result += tuple(
+        tag for tag in new_tags if tag not in old_tags and tag not in result
+    )
+    field = obj.clirm_fields[field_name]
+    assert isinstance(field, ADTField)
+    return result if field.is_ordered else tuple(sorted(set(result)))
 
 
 def _iter_model_values(value: Any) -> Iterable[BaseModel]:
@@ -3064,15 +3149,26 @@ def execute_plan(
         if apply:
             obj = _replace_created_models(planned.object, replacements)
             if row.action == UPDATE_OBJECT:
-                for _operation, field_name, _old_value, new_value in planned.changes:
-                    setattr(
-                        obj,
-                        field_name,
-                        _replace_created_models(new_value, replacements),
-                    )
+                for operation, field_name, old_value, new_value in planned.changes:
+                    new_value = _replace_created_models(new_value, replacements)
+                    if operation in {"add", "remove", "normalize"}:
+                        new_value = _compose_tag_edit(
+                            obj,
+                            field_name,
+                            _replace_created_models(old_value, replacements),
+                            new_value,
+                        )
+                    setattr(obj, field_name, new_value)
             else:
                 assert row.field is not None
                 new_value = _replace_created_models(planned.new_value, replacements)
+                if row.action in {ADD_TAG, REMOVE_TAG}:
+                    new_value = _compose_tag_edit(
+                        obj,
+                        row.field,
+                        _replace_created_models(planned.old_value, replacements),
+                        new_value,
+                    )
                 setattr(obj, row.field, new_value)
         applied += 1
     mode = "Applied" if apply else "Dry run"
