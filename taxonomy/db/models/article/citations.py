@@ -49,7 +49,7 @@ def format_authors(
     separator: str = ";",  # Text between two authors
     last_separator: str | None = None,  # Text between last two authors
     separator_with_two_authors: (
-        None | str
+        str | None
     ) = None,  # Text between authors if there are only two
     capitalize_names: bool = False,  # Whether to capitalize names
     space_initials: bool = False,  # Whether to space initials
