@@ -871,21 +871,19 @@ def _type_locality_summary_labels(name: Name) -> summary_tree.ObjectLabels:
     }
     if name.type_locality is None:
         labels["type_locality_required"] = "type_locality" in name.get_required_fields()
-        labels["taxon_age"] = frozenset(
-            {
-                (
-                    "Recent"
-                    if name.taxon.age in {AgeClass.extant, AgeClass.recently_extinct}
-                    else "fossil"
-                )
-            }
+        labels["taxon_age"] = (
+            "Recent"
+            if name.taxon.age in {AgeClass.extant, AgeClass.recently_extinct}
+            else "fossil"
         )
         return labels
 
     location = name.type_locality
     is_recent = models.location.age.is_recent_location(location)
-    labels["location_age"] = frozenset({"Recent" if is_recent else "fossil"})
-    if is_recent and location.name == location.region.name:
+    labels["location_age"] = "Recent" if is_recent else "fossil"
+    if name.has_type_tag(TypeTag.PartialTypeLocality):
+        location_kind = "partial"
+    elif is_recent and location.name == location.region.name:
         location_kind = "regionwide"
     elif location.has_tag(models.tags.LocationTag.General):
         location_kind = "General"
@@ -893,7 +891,7 @@ def _type_locality_summary_labels(name: Name) -> summary_tree.ObjectLabels:
         location_kind = "Unplaced"
     else:
         location_kind = "precise" if is_recent else "other"
-    labels["location_kind"] = frozenset({location_kind})
+    labels["location_kind"] = location_kind
     labels["imprecise_locality"] = name.has_type_tag(TypeTag.ImpreciseLocality)
     labels["coordinates_set"] = (
         location.latitude is not None and location.longitude is not None
@@ -921,6 +919,7 @@ _TYPE_LOCALITY_SUMMARY_VARIANT_LABELS: Mapping[
         "regionwide": "regionwide location",
         "General": "General location",
         "Unplaced": "Unplaced location",
+        "partial": "partial type localities",
         "precise": "precise location",
         "other": "other location",
     },
@@ -936,14 +935,23 @@ _TYPE_LOCALITY_SUMMARY_TREE = summary_tree.SummarySplit(
     children={
         False: summary_tree.SummarySplit(
             "type_locality_required",
-            children={False: summary_tree.SummarySplit("taxon_age")},
+            children={
+                False: summary_tree.SummarySplit("taxon_age"),
+                True: summary_tree.SummarySplit("taxon_age"),
+            },
         ),
         True: summary_tree.SummarySplit(
             "location_age",
             children={
                 "Recent": summary_tree.SummarySplit(
                     "location_kind",
-                    variants=("regionwide", "General", "Unplaced", "precise"),
+                    variants=(
+                        "regionwide",
+                        "General",
+                        "Unplaced",
+                        "partial",
+                        "precise",
+                    ),
                     children={
                         "regionwide": summary_tree.SummarySplit("imprecise_locality"),
                         "General": summary_tree.SummarySplit("imprecise_locality"),
@@ -951,7 +959,8 @@ _TYPE_LOCALITY_SUMMARY_TREE = summary_tree.SummarySplit(
                     },
                 ),
                 "fossil": summary_tree.SummarySplit(
-                    "location_kind", variants=("General", "Unplaced", "other")
+                    "location_kind",
+                    variants=("General", "Unplaced", "partial", "other"),
                 ),
             },
         ),
@@ -981,6 +990,48 @@ def type_locality_summary(taxon: Taxon | None = None) -> None:
     else:
         names = [name for name in taxon.all_names() if name.group is Group.species]
     print("\n".join(_type_locality_summary_lines(names)))
+
+
+def _regionwide_labels(nam: Name) -> summary_tree.ObjectLabels:
+    if nam.type_locality is None:
+        return {}
+    region = nam.type_locality.region
+    continent = region.parent_of_kind(constants.RegionKind.continent)
+    subcontinent = region.parent_of_kind(constants.RegionKind.supranational)
+    country = region.parent_of_kind(constants.RegionKind.country)
+    return {
+        "continent": continent.name if continent else "(none)",
+        "subcontinent": subcontinent.name if subcontinent else "(none)",
+        "country": country.name if country else "(none)",
+    }
+
+
+@command
+def regionwide_type_localities() -> None:
+    """Summarize remaining regionwide type localities."""
+    names = [
+        nam
+        for nam in Name.select_valid().filter(Name.type_locality != None)
+        if nam.type_locality is not None
+        and nam.type_locality.name == nam.type_locality.region.name
+        and not nam.has_type_tag(TypeTag.PartialTypeLocality)
+        and not nam.has_type_tag(TypeTag.ImpreciseLocality)
+    ]
+    labels = [_regionwide_labels(nam) for nam in names]
+    config = summary_tree.SummaryTreeConfig(
+        singular="name",
+        plural="names",
+        tree=summary_tree.SummarySplit(
+            "continent",
+            children={
+                None: summary_tree.SummarySplit(
+                    "subcontinent",
+                    children={None: summary_tree.SummarySplit("country")},
+                )
+            },
+        ),
+    )
+    print("\n".join(summary_tree.render_summary_tree(labels, config)))
 
 
 def _tl_count(region: models.Region) -> tuple[int, list[str]]:
