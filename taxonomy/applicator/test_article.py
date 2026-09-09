@@ -2,6 +2,7 @@ import copy
 import hashlib
 from collections.abc import Mapping
 from dataclasses import dataclass
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -791,3 +792,82 @@ def test_build_plan_orders_forward_typed_parent_reference(tmp_path: Path) -> Non
         "volume",
         "chapter",
     ]
+
+
+def test_author_refs_share_article_people_in_proposals_and_execution(
+    tmp_path: Path,
+) -> None:
+    from taxonomy.applicator.proposals import ProposalBuilder
+
+    row_data = _volume_row()
+    row_data["article"]["ref"] = "volume"
+    row_data["article"]["authors"][0]["ref"] = "author:telnov"
+    row = recommendations.parse_recommendation(row_data, 1)
+    plan = recommendations.build_plan(
+        [row],
+        options=SimpleNamespace(new_path=tmp_path, library_path=tmp_path),
+        get_article=lambda _name: None,
+        articles_with_doi=lambda _doi: (),
+        get_citation_group=lambda _id: _book_citation_group(),
+        expand_doi=lambda _doi: {},
+    )
+    proposed = recommendations.add_virtual_models(plan, ProposalBuilder())
+    volume = proposed["volume"]
+    assert isinstance(volume, Article)
+    assert proposed["author:telnov"] is volume.get_authors()[0]
+
+    created_people: list[Person] = []
+
+    def person(**kwargs: Any) -> Person:
+        result = Person.virtual(**kwargs)
+        created_people.append(result)
+        return result
+
+    actual = recommendations.execute_plan(
+        plan,
+        apply=True,
+        get_or_create_person=person,
+        create_article=lambda name, values: Article.virtual(name=name, **values),
+        add_article_history=lambda _article: None,
+    )
+    actual_volume = actual["volume"]
+    assert isinstance(actual_volume, Article)
+    assert actual["author:telnov"] is actual_volume.get_authors()[0]
+    assert len(created_people) == 3
+    # A resumed plan must export the already installed Article's People too.
+    resumed = replace(
+        plan,
+        actions=(
+            replace(plan.actions[0], article=actual_volume, already_applied=True),
+        ),
+    )
+    reused = recommendations.execute_plan(resumed, apply=True)
+    assert reused["author:telnov"] is created_people[0]
+    resumed_builder = ProposalBuilder()
+    virtual_reused = recommendations.add_virtual_models(resumed, resumed_builder)
+    resumed_builder.build()
+    reused_volume = virtual_reused["volume"]
+    assert isinstance(reused_volume, Article)
+    assert virtual_reused["author:telnov"] is reused_volume.get_authors()[0]
+    assert row.authors is not None
+    assert "ref" not in row.authors[0].as_kwargs()
+
+
+@pytest.mark.parametrize("conflict", ["volume", "author:duplicate"])
+def test_article_and_author_refs_share_one_namespace(
+    tmp_path: Path, conflict: str
+) -> None:
+    data = _volume_row()
+    data["article"]["ref"] = "volume"
+    data["article"]["authors"][0]["ref"] = conflict
+    data["article"]["authors"][1]["ref"] = conflict
+    row = recommendations.parse_recommendation(data, 1)
+    with pytest.raises(recommendations.RecommendationError, match=r"duplicate .* ref"):
+        recommendations.build_plan(
+            [row],
+            options=SimpleNamespace(new_path=tmp_path, library_path=tmp_path),
+            get_article=lambda _name: None,
+            articles_with_doi=lambda _doi: (),
+            get_citation_group=lambda _id: _book_citation_group(),
+            expand_doi=lambda _doi: {},
+        )

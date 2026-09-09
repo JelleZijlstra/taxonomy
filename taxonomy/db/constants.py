@@ -5,6 +5,11 @@ from functools import cache
 from typing import Annotated
 
 
+class Calendar(enum.IntEnum):
+    gregorian = 1
+    julian = 2
+
+
 class RequirednessLevel(enum.IntEnum):
     required = 1
     optional = 2

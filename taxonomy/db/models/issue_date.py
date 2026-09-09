@@ -9,7 +9,8 @@ from clirm import Field
 
 from taxonomy import events, getinput
 from taxonomy.adt import ADT
-from taxonomy.db import helpers
+from taxonomy.db import dates, helpers
+from taxonomy.db.constants import Calendar as CalendarType
 from taxonomy.db.constants import Markdown
 
 from .article import Article
@@ -18,15 +19,34 @@ from .citation_group import CitationGroup
 from .lint import field_issue
 from .lint_types import LintResult
 
-PageNumber = tuple[int, bool]
+# Number plus (explicit section, numbering system, bis variant).
+PageNumber = tuple[int, tuple[str, str, bool]]
+_ROMAN = re.compile(r"M{0,3}(CM|CD|D?C{0,3})(XC|XL|L?X{0,3})(IX|IV|V?I{0,3})")
 
 
 def parse_page_number(page: str) -> PageNumber | None:
-    """Parse an ordinary page or the second occurrence of a duplicated page."""
+    """Parse distinct pagination sequences; see docs/issue-date.md.
+
+    Examples: 1, 01, i, 160bis, compte-rendu:1. Leading zeroes identify
+    a separate sequence; Roman case is immaterial. Qualified and unqualified
+    pages never match each other, even if their printed numbers coincide.
+    """
+    section = ""
+    if ":" in page:
+        section, page = page.split(":", 1)
+        if re.fullmatch(r"[a-z][a-z0-9]*(?:-[a-z0-9]+)*", section) is None:
+            return None
     match = re.fullmatch(r"([0-9]+)(bis)?", page)
-    if match is None:
-        return None
-    return int(match.group(1)), match.group(2) is not None
+    if match is not None:
+        digits = match[1]
+        system = (
+            "zero-prefixed" if len(digits) > 1 and digits.startswith("0") else "arabic"
+        )
+        return int(digits), (section, system, match[2] is not None)
+    roman = page.upper()
+    if roman and _ROMAN.fullmatch(roman):
+        return helpers.parse_roman_numeral(roman), (section, "roman", False)
+    return None
 
 
 def page_range_contains(
@@ -53,7 +73,7 @@ def page_range_contains(
     return (
         len(variants) == 1
         and outer_start_page[0] <= inner_start_page[0]
-        and inner_end_page[0] <= outer_end_page[0]
+        and inner_start_page[0] <= inner_end_page[0] <= outer_end_page[0]
     )
 
 
@@ -91,8 +111,12 @@ class IssueDate(BaseModel):
         if self.issue is not None and "–" in self.issue:
             message = f"{self}: dash in issue: {self.issue}"
             yield field_issue(message, self, "issue", self.issue.replace("–", "-"))
-        if not helpers.is_valid_date(self.date):
-            yield f"{self}: invalid date {self.date}"
+        try:
+            self.get_gregorian_date()
+        except ValueError as exc:
+            yield f"{self}: {exc}"
+        if (self.start_page is None) != (self.end_page is None):
+            yield f"{self}: start and end page must both be present or absent"
         parsed_start = (
             None if self.start_page is None else parse_page_number(self.start_page)
         )
@@ -107,6 +131,17 @@ class IssueDate(BaseModel):
             elif parsed_end[0] < parsed_start[0]:
                 yield f"{self}: end page is before start page"
 
+    def get_calendar(self) -> CalendarType:
+        calendars = {
+            tag.calendar for tag in self.get_tags(self.tags, IssueDateTag.Calendar)
+        }
+        if len(calendars) > 1:
+            raise ValueError("Conflicting Calendar tags")
+        return next(iter(calendars), CalendarType.gregorian)
+
+    def get_gregorian_date(self) -> str:
+        return dates.to_gregorian(self.date, self.get_calendar())
+
     @classmethod
     def has_data(cls, cg: CitationGroup) -> bool:
         return cg.id in _get_cgs_with_issue_dates()
@@ -120,7 +155,16 @@ class IssueDate(BaseModel):
             parts.append(f"({self.issue})")
         if self.start_page and self.end_page:
             parts += [":", self.start_page, "–", self.end_page]
-        parts += [" (published ", self.date, ")"]
+        parts += [" (published ", self.date]
+        try:
+            calendar = self.get_calendar()
+            if calendar is not CalendarType.gregorian:
+                parts += [
+                    f" {calendar.name}; adopted Gregorian {self.get_gregorian_date()}"
+                ]
+        except ValueError as exc:
+            parts += [f"; {exc}"]
+        parts.append(")")
         return "".join(parts)
 
     @classmethod
@@ -203,6 +247,7 @@ class IssueDate(BaseModel):
                     candidate.start_page,
                     candidate.end_page,
                     candidate.date,
+                    candidate.get_calendar(),
                 )
                 for candidate in matches
             }
@@ -219,13 +264,15 @@ class IssueDate(BaseModel):
         candidates = sorted(
             candidates,
             key=lambda candidate: (
-                parse_page_number(candidate.start_page or "") or (10**9, False)
+                parse_page_number(candidate.start_page or "")
+                or (10**9, ("", "", False))
             ),
         )
         return f"Cannot find matching issue for {start_page}-{end_page}: {candidates}"
 
 
 class IssueDateTag(ADT):
+    Calendar(calendar=CalendarType, tag=2)  # type: ignore[name-defined]
     Comment(text=Markdown, optional_source=NotRequired[Article], tag=1)  # type: ignore[name-defined]
 
 

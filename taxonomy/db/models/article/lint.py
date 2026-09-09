@@ -364,16 +364,20 @@ def infer_publication_date_from_issue_date(
         and parse_page_number(art.start_page) is not None
         and parse_page_number(art.end_page) is not None
     ):
-        issue_date = IssueDate.find_matching_issue(
-            art.citation_group,
-            art.series,
-            art.volume,
-            art.start_page,
-            art.end_page,
-            issue=art.issue,
-        )
-        if isinstance(issue_date, IssueDate):
-            return issue_date.date, issue_date.issue
+        try:
+            issue_date = IssueDate.find_matching_issue(
+                art.citation_group,
+                art.series,
+                art.volume,
+                art.start_page,
+                art.end_page,
+                issue=art.issue,
+            )
+            if isinstance(issue_date, IssueDate):
+                return issue_date.get_gregorian_date(), issue_date.issue
+        except ValueError:
+            # Invalid source dates/calendar tags are reported by IssueDate lint.
+            return None
     return None
 
 
@@ -1859,14 +1863,14 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
     parsed_start_page = parse_page_number(start_page)
     parsed_end_page = None if end_page is None else parse_page_number(end_page)
 
-    # Standard pages: ordinary or ``bis``, at most 4 digits, end >= start.
+    # Standard pages: a recognized pagination sequence, end >= start.
     if (
         allow_standard
         and end_page is not None
         and parsed_start_page is not None
-        and len(start_page.removesuffix("bis")) <= 4
+        and parsed_start_page[0] <= 9999
         and parsed_end_page is not None
-        and len(end_page.removesuffix("bis")) <= 4
+        and parsed_end_page[0] <= 9999
         and parsed_start_page[1] == parsed_end_page[1]
     ):
         if parsed_end_page[0] < parsed_start_page[0]:

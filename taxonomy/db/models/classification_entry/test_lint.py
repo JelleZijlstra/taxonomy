@@ -20,6 +20,7 @@ from taxonomy.db.models.classification_entry.lint import (
     check_parent_rank,
     check_tags,
     check_verbatim_parent,
+    get_species_group_mapped_names,
     infer_duplicate,
     materialize_classification_entry,
 )
@@ -34,6 +35,25 @@ _ARTICLE = Article.virtual(name="classification source")
 class _FakeQuery(list[Any]):
     def filter(self, *conditions: object) -> _FakeQuery:
         return self
+
+
+def test_candidate_search_includes_new_exact_spelling_proposal() -> None:
+    base = _make_name("gracilis")
+    combination = _make_name("gracilis", NameTag.NameCombinationOf(base))
+    combination.corrected_original_name = "Dopasia gracilis"
+    ce = ClassificationEntry.virtual(mapped_name=combination)
+    taxon = Taxon.virtual(base_name=base)
+    with (
+        patch.object(Name, "select_valid", return_value=_FakeQuery()),
+        patch.object(Taxon, "select_valid", return_value=_FakeQuery([taxon])),
+    ):
+        candidates = list(get_species_group_mapped_names(ce, "Dopasia gracilis"))
+        assert [name for name, _ in candidates] == [combination, base]
+        assert all(metadata.is_direct_match for _, metadata in candidates)
+        # An explicitly mapped but differently spelled proposal is not made a
+        # candidate merely because it is virtual.
+        candidates = list(get_species_group_mapped_names(ce, "Dopasia harti"))
+        assert [name for name, _ in candidates] == [base]
 
 
 def _make_ce(

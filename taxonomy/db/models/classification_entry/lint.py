@@ -1422,6 +1422,20 @@ def get_species_group_mapped_names(
     ce: ClassificationEntry, corrected_name: str
 ) -> Iterable[tuple[Name, CandidateMetadata]]:
     count = 0
+    # New proposal Names are absent from database queries. Include an explicitly
+    # mapped, exact-spelling proposal in the usual candidate scoring; persisted
+    # Names (including virtual copies of them) are already returned below.
+    mapped = ce.mapped_name
+    if (
+        mapped is not None
+        and mapped.is_virtual
+        and mapped.virtual_origin is None
+        and mapped.group is Group.species
+        and not mapped.is_invalid()
+        and mapped.corrected_original_name == corrected_name
+    ):
+        count += 1
+        yield mapped, CandidateMetadata(is_direct_match=True)
     for nam in Name.select_valid().filter(
         Name.group == Group.species, Name.corrected_original_name == corrected_name
     ):

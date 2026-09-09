@@ -30,7 +30,7 @@ from taxonomy.applicator.citation_group import (
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db.constants import ArticleKind, ArticleType, NamingConvention, PersonType
 from taxonomy.db.helpers import trimdoi
-from taxonomy.db.models import Article, CitationGroup, Person, Region
+from taxonomy.db.models import Article, BaseModel, CitationGroup, Person, Region
 from taxonomy.db.models.article.api_data import expand_doi_json
 from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.article.lint import is_valid_doi
@@ -98,6 +98,7 @@ class PersonSpec:
     tussenvoegsel: str | None = None
     suffix: str | None = None
     person_id: int | None = None
+    ref: str | None = None
 
     @classmethod
     def from_virtual_person(cls, person: VirtualPerson) -> PersonSpec:
@@ -242,8 +243,15 @@ def _parse_authors(value: Any, line: int) -> tuple[PersonSpec, ...]:
     output = []
     for item in value:
         data = _object(item, "article author", line)
+        author_ref = data.get("ref")
+        if author_ref is not None and (
+            not isinstance(author_ref, str) or not author_ref
+        ):
+            raise RecommendationError(
+                f"line {line}: author ref must be a nonempty string"
+            )
         if "person" in data:
-            if set(data) != {"person"}:
+            if set(data) - {"person", "ref"}:
                 raise RecommendationError(
                     f"line {line}: an existing author accepts only person"
                 )
@@ -256,10 +264,11 @@ def _parse_authors(value: Any, line: int) -> tuple[PersonSpec, ...]:
                 PersonSpec(
                     family_name=_required_str(person_data, "name", line),
                     person_id=_required_int(person_data, "id", line),
+                    ref=author_ref,
                 )
             )
             continue
-        unknown = set(data) - AUTHOR_FIELDS
+        unknown = set(data) - AUTHOR_FIELDS - {"ref"}
         if unknown:
             raise RecommendationError(
                 f"line {line}: unsupported author field(s): {', '.join(sorted(unknown))}"
@@ -282,6 +291,7 @@ def _parse_authors(value: Any, line: int) -> tuple[PersonSpec, ...]:
                 initials=kwargs["initials"],
                 tussenvoegsel=kwargs["tussenvoegsel"],
                 suffix=kwargs["suffix"],
+                ref=author_ref,
             )
         )
     return tuple(output)
@@ -864,6 +874,12 @@ def build_plan(
             authors = ()
         resolved_people: list[Person | None] = []
         for author in authors:
+            if author.ref is not None:
+                if author.ref in seen_refs:
+                    raise RecommendationError(
+                        f"line {line}: duplicate Article or author ref {author.ref!r}"
+                    )
+                seen_refs.add(author.ref)
             if author.person_id is None:
                 resolved_people.append(None)
                 continue
@@ -1072,6 +1088,8 @@ def print_review_table(rows: Iterable[Recommendation]) -> None:
                         for name, value in author.as_kwargs().items()
                         if value is not None
                     )
+                if author.ref is not None:
+                    author_fields += f" ref={author.ref!r}"
                 generic_recommendations._print_review_detail(
                     f"author {index}", author_fields
                 )
@@ -1096,12 +1114,12 @@ def add_virtual_models(
     builder: ProposalBuilder,
     *,
     new_citation_groups: dict[str, CitationGroup] | None = None,
-) -> Mapping[str, Article]:
+) -> Mapping[str, BaseModel]:
     now = datetime.datetime.now(tz=datetime.UTC)
     if new_citation_groups is None:
         new_citation_groups = {}
     planned_articles: dict[str, Article] = {}
-    references: dict[str, Article] = {}
+    references: dict[str, BaseModel] = {}
     for action in plan.actions:
         context = f"line {action.recommendation.line_number} create_article"
         if action.article is not None:
@@ -1109,6 +1127,12 @@ def add_virtual_models(
             planned_articles[action.recommendation.name] = article
             if action.recommendation.ref is not None:
                 references[action.recommendation.ref] = article
+            if any(spec.ref is not None for spec in action.authors):
+                for spec, person in zip(
+                    action.authors, article.get_authors(), strict=True
+                ):
+                    if spec.ref is not None:
+                        references[spec.ref] = builder.copy(person, context=context)
             continue
         cg: CitationGroup | None = None
         if action.citation_group is not None:
@@ -1138,6 +1162,9 @@ def add_virtual_models(
                 action.authors, action.resolved_people, strict=True
             )
         ]
+        for spec, person in zip(action.authors, virtual_people, strict=True):
+            if spec.ref is not None:
+                references[spec.ref] = person
         parent: Article | None = None
         if action.planned_parent_name is not None:
             parent = planned_articles[action.planned_parent_name]
@@ -1234,7 +1261,7 @@ def execute_plan(
     run_auxiliary: Callable[..., None] = _run_auxiliary,
     add_article_history: Callable[[Article], None] = _add_article_history,
     created_citation_groups: dict[str, CitationGroup] | None = None,
-) -> Mapping[str, Article]:
+) -> Mapping[str, BaseModel]:
     if created_citation_groups is None:
         created_citation_groups = {}
     resolved_articles: dict[str, Article] = {}
@@ -1311,9 +1338,16 @@ def execute_plan(
     print(f"{mode}: {len(plan.actions)} create_article recommendation(s).")
     if not apply:
         print("No database or filesystem changes made. Pass --apply to execute.")
-    return {
+    references: dict[str, BaseModel] = {
         action.recommendation.ref: resolved_articles[action.recommendation.name]
         for action in plan.actions
         if action.recommendation.ref is not None
         and action.recommendation.name in resolved_articles
     }
+    for action in plan.actions:
+        article = resolved_articles.get(action.recommendation.name)
+        if article is not None and any(spec.ref is not None for spec in action.authors):
+            for spec, person in zip(action.authors, article.get_authors(), strict=True):
+                if spec.ref is not None:
+                    references[spec.ref] = person
+    return references
