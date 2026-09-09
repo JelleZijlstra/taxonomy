@@ -9,6 +9,7 @@ from taxonomy.db import models
 from taxonomy.db.constants import (
     ArticleKind,
     ArticleType,
+    Calendar,
     DateSource,
     NamingConvention,
     PersonType,
@@ -18,6 +19,131 @@ from taxonomy.db.models.article.publication_date import PublicationDateEvidence
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint_types import LintIssue
 from taxonomy.db.models.person import Person, VirtualPerson
+
+
+def test_publication_date_calendar_serialization() -> None:
+    legacy = ArticleTag.unserialize(
+        [14, DateSource.internal.value, "1910-09", "source"]
+    )
+    assert legacy.calendar is None
+    assert legacy.serialize() == [14, DateSource.internal.value, "1910-09", "source"]
+    tag = ArticleTag.PublicationDate(
+        DateSource.internal, "1910-09", comment="source", calendar=Calendar.julian
+    )
+    assert ArticleTag.unserialize(tag.serialize()) == tag
+    assert tag.serialize()[-1] == Calendar.julian.value
+
+
+@pytest.mark.parametrize(
+    ("date", "calendar", "expected"),
+    [
+        ("1913-12", Calendar.julian, "1914-01-13"),
+        ("12-Brumaire", Calendar.french_republican, "1803-11-22"),
+        ("1805-1807", None, "1805-1807"),
+        ("1910-09", Calendar.gregorian, "1910-09"),
+    ],
+)
+def test_infer_publication_date_calendar(
+    date: str, calendar: Calendar | None, expected: str
+) -> None:
+    tag = ArticleTag.PublicationDate(DateSource.internal, date, calendar=calendar)
+    assert lint.infer_publication_date_from_tags([tag]) == (expected, [])
+
+
+def test_publication_date_conflicts_use_gregorian() -> None:
+    julian = ArticleTag.PublicationDate(
+        DateSource.internal, "1910-09", calendar=Calendar.julian
+    )
+    gregorian = ArticleTag.PublicationDate(DateSource.internal, "1910-10-13")
+    assert lint.infer_publication_date_from_tags([julian, gregorian]) == (
+        "1910-10-13",
+        [],
+    )
+    different = ArticleTag.PublicationDate(DateSource.internal, "1910-09-01")
+    result, errors = lint.infer_publication_date_from_tags([julian, different])
+    assert result is None
+    assert "multiple tags" in errors[0]
+
+
+def test_dual_dated_imprint_intersects_calendars() -> None:
+    tags = [
+        ArticleTag.PublicationDate(
+            DateSource.internal, "14", calendar=Calendar.french_republican
+        ),
+        ArticleTag.PublicationDate(DateSource.internal, "1805"),
+    ]
+    assert lint.infer_publication_date_from_tags(tags) == ("1805-12-31", [])
+
+
+def test_invalid_publication_date_calendar() -> None:
+    tag = ArticleTag.PublicationDate(
+        DateSource.internal, "2-Complémentaires-6", calendar=Calendar.french_republican
+    )
+    result, errors = lint.infer_publication_date_from_tags([tag])
+    assert result is None
+    assert "Invalid date" in errors[0]
+
+
+@pytest.mark.parametrize(
+    ("day", "calendar", "expected"),
+    [
+        ("1910-09-01", Calendar.julian, "1910-09-14"),
+        ("1910-10-01", Calendar.gregorian, "1910-10-01"),
+    ],
+)
+def test_more_precise_calendar_date_refines_month(
+    day: str, calendar: Calendar, expected: str
+) -> None:
+    tags = [
+        ArticleTag.PublicationDate(
+            DateSource.internal, "1910-09", calendar=Calendar.julian
+        ),
+        ArticleTag.PublicationDate(DateSource.internal, day, calendar=calendar),
+    ]
+    assert lint.infer_publication_date_from_tags(tags) == (expected, [])
+
+
+def test_article_inference_returns_gregorian_without_mutating_source() -> None:
+    tag = ArticleTag.PublicationDate(
+        DateSource.internal, "12-Brumaire", calendar=Calendar.french_republican
+    )
+    article = Article.virtual(
+        name="Test calendar", type=ArticleType.BOOK, year="1803", tags=(tag,)
+    )
+    assert lint.infer_publication_date(article) == ("1803-11-22", None, [])
+    assert article.year == "1803"
+    assert article.tags == (tag,)
+
+
+def test_custom_calendar_tag_validation() -> None:
+    tag = ArticleTag.PublicationDate(
+        DateSource.internal, "2-Complémentaires-6", calendar=Calendar.french_republican
+    )
+    art = Article.virtual(name="Invalid calendar", tags=(tag,))
+    issues = list(lint.check_tags.linter(art, LintConfig(autofix=False)))
+    assert any("invalid PublicationDate" in str(issue) for issue in issues)
+
+
+def test_pdf_date_comparison_requires_calendar_provenance(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tag = ArticleTag.PublicationDate(
+        DateSource.internal, "1910-09", calendar=Calendar.julian
+    )
+    article = Article.virtual(name="Test calendar", tags=(tag,))
+    monkeypatch.setattr(
+        lint,
+        "get_pdf_publication_date_evidence",
+        lambda art: (_pdf_date("1910-09-30"),),
+    )
+    assert (
+        list(
+            lint.internal_publication_date_matches_pdf.linter(
+                article, LintConfig(autofix=False)
+            )
+        )
+        == []
+    )
 
 
 def _pdf_date(date: str) -> PublicationDateEvidence:

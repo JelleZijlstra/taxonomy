@@ -8,6 +8,7 @@ from typing import Annotated
 class Calendar(enum.IntEnum):
     gregorian = 1
     julian = 2
+    french_republican = 3
 
 
 class RequirednessLevel(enum.IntEnum):

@@ -36,6 +36,7 @@ from taxonomy.db.constants import (
     ArticleIdentifier,
     ArticleKind,
     ArticleType,
+    Calendar,
     DateSource,
     Managed,
     Markdown,
@@ -351,8 +352,9 @@ class Article(BaseModel):
             elif isinstance(tag, ArticleTag.LSID):
                 tags.append(f"LSID {tag.text}")
             elif isinstance(tag, ArticleTag.PublicationDate):
+                calendar = f", {tag.calendar.name}" if tag.calendar else ""
                 tags.append(
-                    f"Publication date ({tag.source.name}): {tag.date}, {tag.comment}"
+                    f"Publication date ({tag.source.name}{calendar}): {tag.date}, {tag.comment}"
                 )
 
         data = {
@@ -1978,7 +1980,7 @@ class ArticleTag(adt.ADT):
     # Ignore lints with a specific label
     IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=13)  # type: ignore[name-defined]
 
-    PublicationDate(source=DateSource, date=Managed, comment=NotRequired[Markdown], tag=14)  # type: ignore[name-defined]
+    PublicationDate(source=DateSource, date=Managed, comment=NotRequired[Markdown], calendar=NotRequired[Calendar], tag=14)  # type: ignore[name-defined]
     LSID(text=Managed, present_in_article=PresenceStatus, tag=15)  # type: ignore[name-defined]
 
     # All references must be moved to children

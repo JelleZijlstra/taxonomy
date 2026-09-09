@@ -38,7 +38,11 @@ Articles have the following fields:
 - _tags_: Arbitrary information about the article. Important ones include:
   - _PublicationDate_: evidence for when the article was published. Ideally articles
     should have a tag with the "internal" kind indicating internal evidence for when the
-    article was published.
+    article was published. Its optional `calendar` attribute defaults to Gregorian; use
+    `Calendar.julian` or `Calendar.french_republican` to preserve a source date in
+    another calendar. Inference converts these dates to Gregorian for `year`. Preserve
+    the printed wording in the comment. See
+    [calendar conventions](issue-date.md#calendars-and-precision).
   - _InitialsOnly_: indicating that the article's authors are given only with initials,
     not full names.
   - _IgnoreORCIDProfile_: a reviewed exception for one ORCID profile that claims the

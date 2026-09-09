@@ -45,6 +45,10 @@ task.
 
 ### 1. Load the catalog rules
 
+Read the
+[Article recommendation reference](../generate-recommendations/references/models/article.md)
+for manifest mechanics, including author refs shared with dependent rows.
+
 Read these repository documents before choosing values:
 
 - `docs/article.md` for Article semantics;

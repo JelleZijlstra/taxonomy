@@ -54,6 +54,17 @@ def test_parse_page_number() -> None:
     assert parse_page_number("bis160") is None
 
 
+def test_french_republican_issue_date() -> None:
+    from taxonomy.db.constants import Calendar
+    from taxonomy.db.models.base import LintConfig
+    from taxonomy.db.models.issue_date import IssueDateTag
+
+    issue = _issue(issue="1", start="1", end="8", date="3-Complémentaires")
+    issue.tags = (IssueDateTag.Calendar(Calendar.french_republican),)  # type: ignore[assignment]
+    assert issue.get_gregorian_date() == "1795-09-22"
+    assert list(issue.lint(LintConfig(autofix=False))) == []
+
+
 def test_page_range_contains_requires_same_variant() -> None:
     assert page_range_contains("91", "190", "160", "165")
     assert page_range_contains("91bis", "190bis", "160bis", "165bis")

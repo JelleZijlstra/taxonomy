@@ -19,11 +19,12 @@ from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl, orcid, zoobank
 from taxonomy.apis.hdl import is_hdl_valid as api_is_hdl_valid
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data_for_act, is_valid_lsid
-from taxonomy.db import helpers, models
+from taxonomy.db import dates, helpers, models
 from taxonomy.db.constants import (
     ArticleIdentifier,
     ArticleKind,
     ArticleType,
+    Calendar,
     DateSource,
     Group,
     NamingConvention,
@@ -133,6 +134,11 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
                     continue
                 else:
                     yield f"tag has comment but no date: {tag}"
+            elif tag.calendar not in (None, Calendar.gregorian):
+                try:
+                    dates.to_gregorian(tag.date, tag.calendar)
+                except ValueError as exc:
+                    yield f"invalid PublicationDate {tag}: {exc}"
         elif isinstance(tag, ArticleTag.KnownAlternativeYear):
             if not tag.year.isnumeric():
                 yield f"invalid alternative date {tag.year!r}"
@@ -320,15 +326,41 @@ def infer_publication_date_from_tags(
             has_lsid = True
     for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
-            if (
-                len(tags_of_source) > 1
-                and len(_unique_dates(tag.date for tag in tags_of_source)) > 1
-            ):
+            try:
+                converted = _publication_dates_to_compare(tags_of_source)
+            except ValueError as exc:
+                return None, [f"invalid publication date for source {source}: {exc}"]
+            if len(tags_of_source) > 1 and len(_unique_dates(converted)) > 1:
                 return None, [
                     f"has multiple tags for source {source}: {tags_of_source}"
                 ]
-            return max((tag.date for tag in tags_of_source), key=len), []
+            return max(converted, key=len), []
     return None, []
+
+
+def _publication_dates_to_compare(tags: Sequence[Any]) -> list[str]:
+    if all(tag.calendar in (None, Calendar.gregorian) for tag in tags):
+        # Preserve existing Gregorian precision and support for date ranges.
+        return [tag.date for tag in tags]
+    observations = []
+    for tag in tags:
+        calendar = tag.calendar or Calendar.gregorian
+        if calendar is Calendar.gregorian and not re.fullmatch(
+            r"[0-9]{4}(?:-[0-9]{2}(?:-[0-9]{2})?)?", tag.date
+        ):
+            raise ValueError(
+                f"Cannot compare Gregorian range {tag.date!r} with a custom-calendar date"
+            )
+        adopted = dates.to_gregorian(tag.date, calendar)
+        earliest, latest = dates.gregorian_bounds(tag.date, calendar)
+        observations.append((adopted, earliest, latest))
+    # Intersect compatible evidence before taking the latest possible day.
+    # E.g. "an XIV / 1805" constrains the date to September–December 1805.
+    earliest = max(start for _, start, _ in observations)
+    latest = min(end for _, _, end in observations)
+    if earliest <= latest:
+        return [latest]
+    return [adopted for adopted, _, _ in observations]
 
 
 def _unique_dates(dates: Iterable[str]) -> set[str]:
@@ -668,6 +700,10 @@ def internal_publication_date_matches_pdf(
         for item in evidence
     )
     for tag in tags:
+        if tag.calendar not in (None, Calendar.gregorian):
+            # PDF extraction has no calendar provenance. A raw numeric date in
+            # another calendar cannot be compared to its Gregorian candidates.
+            continue
         if tag.date in dates:
             continue
         yield (
