@@ -937,6 +937,89 @@ def test_partial_type_locality_lint_requires_contained_locations() -> None:
     assert "is outside type-locality Region 'Example Region'" in messages[0]
 
 
+@pytest.mark.parametrize("fossil", [False, True])
+@pytest.mark.parametrize("nested", [False, True])
+def test_partial_type_locality_lint_fixes_smallest_enclosing_region(
+    monkeypatch: pytest.MonkeyPatch, *, fossil: bool, nested: bool
+) -> None:
+    continent = models.Region.virtual(name="Continent", parent=None)
+    country = models.Region.virtual(name="Country", parent=continent)
+    first_region = models.Region.virtual(name="First province", parent=country)
+    second_region = models.Region.virtual(name="Second province", parent=country)
+    period = models.Period.virtual(name="Phanerozoic" if fossil else "Recent")
+    suffix = " fossil" if fossil else ""
+    container = Location.virtual(
+        name=f"Continent{suffix}",
+        region=continent,
+        min_period=period,
+        max_period=period,
+    )
+    expected = Location.virtual(
+        name=f"Country{suffix}", region=country, min_period=period, max_period=period
+    )
+    first = Location.virtual(
+        name="First site", region=first_region if nested else country
+    )
+    second = Location.virtual(
+        name="Second site", region=second_region if nested else country
+    )
+    tags = (TypeTag.PartialTypeLocality(first), TypeTag.PartialTypeLocality(second))
+    name = Name.virtual(
+        type_locality=container,
+        species_type_kind=SpeciesGroupType.syntypes,
+        type_tags=tags,
+    )
+    get_period = Mock(return_value=period)
+    get_container = Mock(return_value=expected)
+    monkeypatch.setattr(models.Period, "get", get_period)
+    monkeypatch.setattr(Location, "get_or_create_general", get_container)
+
+    issues = list(check_partial_type_locality.linter(name, LintConfig()))
+
+    assert len(issues) == 1
+    issue = issues[0]
+    assert not isinstance(issue, str)
+    assert "smallest enclosing Region 'Country'" in issue.message
+    assert name.type_locality == container
+    get_period.assert_not_called()
+    get_container.assert_not_called()
+    assert issue.fix is not None
+    assert issue.fix.apply() is True
+    get_period.assert_called_once_with(name="Phanerozoic" if fossil else "Recent")
+    get_container.assert_called_once_with(country, period)
+    assert name.type_locality == expected
+    assert name.type_tags == tags
+    assert issue.fix.apply() is False
+    assert list(check_partial_type_locality.linter(name, LintConfig())) == []
+
+
+def test_partial_type_locality_lint_accepts_lowest_common_ancestor() -> None:
+    root = models.Region.virtual(name="Root", parent=None)
+    first_region = models.Region.virtual(name="First region", parent=root)
+    second_region = models.Region.virtual(name="Second region", parent=root)
+    period = models.Period.virtual(name="Recent")
+    container = Location.virtual(
+        name="Root", region=root, min_period=period, max_period=period
+    )
+    name = Name.virtual(
+        type_locality=container,
+        species_type_kind=SpeciesGroupType.syntypes,
+        type_tags=(
+            TypeTag.PartialTypeLocality(
+                Location.virtual(name="First", region=first_region)
+            ),
+            TypeTag.PartialTypeLocality(
+                Location.virtual(name="Second", region=second_region)
+            ),
+            TypeTag.PartialTypeLocality(
+                Location.virtual(name="Third", region=first_region)
+            ),
+        ),
+    )
+
+    assert list(check_partial_type_locality.linter(name, LintConfig())) == []
+
+
 def _tagged_name(tags: tuple[object, ...]) -> Name:
     name = SimpleNamespace(type_tags=tags)
     name.get_tags = lambda values, tag_type: (

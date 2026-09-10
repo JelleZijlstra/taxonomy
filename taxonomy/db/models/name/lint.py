@@ -7316,7 +7316,7 @@ def _region_is_within(region: models.Region, container: models.Region) -> bool:
 
 
 @LINT.add("partial_type_locality")
-def check_partial_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
+def check_partial_type_locality(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     tags = list(nam.get_tags(nam.type_tags, TypeTag.PartialTypeLocality))
     if not tags:
         return
@@ -7341,12 +7341,41 @@ def check_partial_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
             "Location named for its Region or the '<Region> fossil' Location"
         )
         return
+    outside_region = False
     for tag in tags:
         if not _region_is_within(tag.location.region, nam.type_locality.region):
+            outside_region = True
             yield (
                 f"PartialTypeLocality {tag.location.name!r} is outside type-locality "
                 f"Region {nam.type_locality.region.name!r}"
             )
+    if (
+        outside_region
+        or len(unique_location_ids) < 2
+        or nam.species_type_kind not in (None, SpeciesGroupType.syntypes)
+    ):
+        return
+    region = tags[0].location.region
+    while not all(_region_is_within(tag.location.region, region) for tag in tags):
+        if region.parent is None:
+            return
+        region = region.parent
+    if region == nam.type_locality.region:
+        return
+
+    def get_container() -> models.Location:
+        period = models.Period.get(
+            name="Recent" if container_kind == "Recent" else "Phanerozoic"
+        )
+        return models.Location.get_or_create_general(region, period)
+
+    yield create_related_object_issue(
+        f"type-locality Region {nam.type_locality.region.name!r} is not the "
+        f"smallest enclosing Region {region.name!r} for PartialTypeLocality tags",
+        nam,
+        "type_locality",
+        get_container,
+    )
 
 
 @LINT.add("type_locality_validity")
