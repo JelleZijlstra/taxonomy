@@ -75,9 +75,7 @@ class CountTreeNode:
     def display(
         self,
         min_size: int | None = None,
-        should_include: None | (
-            Callable[["CountTreeNode", Sequence[str]], bool]
-        ) = None,
+        should_include: Callable[["CountTreeNode", Sequence[str]], bool] | None = None,
     ) -> None:
         self.collect_tree_size_data()
 
