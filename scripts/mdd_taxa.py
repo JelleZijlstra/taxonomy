@@ -1609,7 +1609,7 @@ class SpeciesWithSyns:
     species: MDDSpecies
     base_name: Syn
     syns: list[Syn]
-    _hesp_taxon_cache: Taxon | None | object = field(
+    _hesp_taxon_cache: Taxon | object | None = field(
         default=_TAXON_NOT_CACHED, init=False, repr=False
     )
 

@@ -42,7 +42,7 @@ class NameParser:
     # a string with the name of an author if one author is given, an array with
     # multiple elements if multiple authors are given, and an array with a
     # single element if "et al." is given. The second element is the year.
-    authorship: tuple[None | str | list[str], str | None]
+    authorship: tuple[str | list[str] | None, str | None]
 
     # base_name is an array with elements representing parts of the title. The
     # keys may be "nov" or "normal", representing <nov-phrase> and
@@ -189,7 +189,7 @@ class NameParser:
         # year
         year = match[2]
         raw_authors = match[1].strip()
-        authors: None | str | list[str]
+        authors: str | list[str] | None
         if raw_authors:
             # <authors> may be "A", "A & B" or "A et al."
             if raw_authors.endswith(" et al."):
