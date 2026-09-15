@@ -105,6 +105,8 @@ def make_entry(
                 and nam.original_citation == authority_nam.original_citation
             ):
                 post_text = "Part. "
+            elif nam.original_citation is None:
+                post_text = f"Part, not {nam.taxonomic_authority()}. **WARNING: Missing original citation**"
             else:
                 post_text = f"Part, not {{/a/{nam.original_citation.id}}}. "
                 references.append(nam.original_citation)
