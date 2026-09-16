@@ -356,6 +356,8 @@ class Article(BaseModel):
                 tags.append(
                     f"Publication date ({tag.source.name}{calendar}): {tag.date}, {tag.comment}"
                 )
+            elif isinstance(tag, ArticleTag.PublishedBefore):
+                tags.append(f"Published before: {tag.article.name}, {tag.comment}")
 
         data = {
             "name": self.name,
@@ -2043,6 +2045,8 @@ class ArticleTag(adt.ADT):
     IgnoreORCIDProfile(  # type: ignore[name-defined]
         orcid=Managed, comment=NotRequired[Markdown], tag=34
     )
+
+    PublishedBefore(article=Article, comment=Markdown, tag=35)  # type: ignore[name-defined]
 
 
 @lru_cache

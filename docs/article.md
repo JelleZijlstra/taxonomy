@@ -42,10 +42,55 @@ Articles have the following fields:
     `Calendar.julian` or `Calendar.french_republican` to preserve a source date in
     another calendar. Inference converts these dates to Gregorian for `year`. Preserve
     the printed wording in the comment. See
-    [calendar conventions](issue-date.md#calendars-and-precision).
+    [calendar conventions](issue-date.md#calendars-and-precision). Prefix the date with
+    `<` for evidence that publication preceded the date, or `>` for evidence that it
+    followed the date. See [publication bounds](#publication-bounds).
+  - _PublishedBefore_: evidence that this article was published before another Article.
+    Its `article` field references that work; its `comment` explains the evidence and
+    its scope (for example, a citation to an already published installment).
   - _InitialsOnly_: indicating that the article's authors are given only with initials,
     not full names.
   - _IgnoreORCIDProfile_: a reviewed exception for one ORCID profile that claims the
     Article's DOI even though that profile belongs to none of the Article's authors.
     Unlike a general lint ignore, this does not suppress other ORCID profiles that may
     later provide valid author evidence for the same Article.
+
+## Publication bounds
+
+`PublicationDate(external, "<1799-04-14", comment)` records a terminus ante quem;
+`PublicationDate(external, ">1798-07", comment)` records a terminus post quem. The
+prefix remains in the source tag. The `year` field stores the adopted date without a
+prefix. Inference uses the latest possible date consistent with the selected evidence:
+
+| Evidence                     | Inferred `year`                           |
+| ---------------------------- | ----------------------------------------- |
+| `<1799-04-14`                | `1799-04-14`                              |
+| `<1799-04-14`, `<1799-10-06` | `1799-04-14`                              |
+| `>1798-07`, `<1799-04-14`    | `1799-04-14`                              |
+| `>1798-07` alone             | No inferred date; there is no upper bound |
+| `>1800`, `<1799`             | Lint error: contradictory evidence        |
+
+Inference adopts the cutoff itself, rather than manufacturing a preceding day. Dates
+have no time of day: a publication and its witness may occur on the same calendar day.
+Partial dates retain their precision and are compared using their possible calendar
+intervals. For example, `<1799-04` adopts `1799-04`. The optional source calendar also
+applies to bounds; conversion happens before comparison.
+
+The existing source precedence still selects ordinary date evidence (decisions, external
+evidence, internal evidence, then eligible bibliographic metadata). An external upper
+bound can therefore supersede a later title-page year. Explicit `<` and `>` constraints
+from all sources are checked together. Lower bounds alone do not supply an adopted date
+or hide an upper date from the next eligible source. An incompatible stored `year` is
+reported by lint rather than being replaced with a lower bound.
+
+Prefer `PublishedBefore(other_article, comment)` when the witness is another cataloged
+work. For example, an Audebert installment cited by Bechstein can reference the
+Bechstein Article; the installment need not repeat the evidence for Bechstein's date.
+Inference follows that Article's publication evidence, including further
+`PublishedBefore` links, and uses its `year` only when there is no date evidence to
+infer from. The resulting upper bound has external-evidence priority. A witness with
+only a lower bound cannot provide an upper date. Circular references and contradictory
+bounds produce lint errors. Chapter and supplement inference preserves the parent's
+actual bounds when checking local constraints. References are resolved afresh, so a
+witness's corrected evidence changes the inferred date without first requiring its
+stored `year` to be updated.

@@ -61,7 +61,7 @@ from taxonomy.db.models.person.name_matching import (
     format_external_identity,
 )
 
-from . import jstor_db
+from . import date_bounds, jstor_db
 from .article import Article, ArticleComment, ArticleTag, PresenceStatus
 from .lsid import extract_safe_publication_lsid
 from .name_parser import get_name_parser
@@ -134,9 +134,9 @@ def check_tags(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
                     continue
                 else:
                     yield f"tag has comment but no date: {tag}"
-            elif tag.calendar not in (None, Calendar.gregorian):
+            else:
                 try:
-                    dates.to_gregorian(tag.date, tag.calendar)
+                    date_bounds.parse_date(tag.date, tag.calendar)
                 except ValueError as exc:
                     yield f"invalid PublicationDate {tag}: {exc}"
         elif isinstance(tag, ArticleTag.KnownAlternativeYear):
@@ -310,13 +310,52 @@ SOURCE_PRIORITY = {
 def infer_publication_date_from_tags(
     tags: Sequence[ArticleTag] | None,
 ) -> tuple[str | None, list[str]]:
+    result, errors = _infer_publication_bounds_from_tags(tags)
+    return result.adopted if result else None, errors
+
+
+def _infer_publication_bounds_from_tags(
+    tags: Sequence[ArticleTag] | None,
+    *,
+    path: tuple[Article, ...] = (),
+    inherited: date_bounds.DateBounds | None = None,
+) -> tuple[date_bounds.DateBounds | None, list[str]]:
     if not tags:
-        return None, []
+        return inherited, []
     by_source = defaultdict(list)
     has_lsid = False
+    bounds: list[date_bounds.DateBounds] = []
     for tag in tags:
         if isinstance(tag, ArticleTag.PublicationDate):
             by_source[tag.source].append(tag)
+            if tag.date.startswith(("<", ">")):
+                try:
+                    bounds.append(date_bounds.parse_date(tag.date, tag.calendar))
+                except ValueError as exc:
+                    return None, [f"invalid publication date: {exc}"]
+        elif isinstance(tag, ArticleTag.PublishedBefore):
+            result, _, errors = _infer_publication_bounds(tag.article, path=path)
+            if errors:
+                return None, [
+                    f"PublishedBefore {tag.article.name}: {error}" for error in errors
+                ]
+            date = result.adopted if result else None
+            if result is None and not any(
+                isinstance(t, (ArticleTag.PublicationDate, ArticleTag.PublishedBefore))
+                for t in tag.article.tags or ()
+            ):
+                date = tag.article.year
+            if date is None:
+                return None, [
+                    f"PublishedBefore {tag.article.name}: no upper publication date available"
+                ]
+            try:
+                bounds.append(date_bounds.parse_date(f"<{date}"))
+            except ValueError as exc:
+                return None, [f"PublishedBefore {tag.article.name}: {exc}"]
+            by_source[DateSource.external].append(
+                ArticleTag.PublicationDate(DateSource.external, f"<{date}")
+            )
         elif (
             isinstance(tag, ArticleTag.LSID)
             # "inferred" strictly doesn't count but we'll allow it
@@ -324,9 +363,26 @@ def infer_publication_date_from_tags(
             in (PresenceStatus.present, PresenceStatus.inferred)
         ):
             has_lsid = True
+    if inherited is not None:
+        try:
+            return date_bounds.intersect([inherited, *bounds]), []
+        except ValueError as exc:
+            return None, [str(exc)]
     for source in SOURCE_PRIORITY[has_lsid]:
         if tags_of_source := by_source[source]:
             try:
+                if bounds:
+                    observations = bounds + [
+                        date_bounds.parse_date(tag.date, tag.calendar)
+                        for tag in tags_of_source
+                        if not tag.date.startswith(("<", ">"))
+                    ]
+                    result = date_bounds.intersect(observations)
+                    if result.latest is not None:
+                        return result, []
+                    # A lower bound alone does not displace an upper date from
+                    # the next eligible evidence source.
+                    continue
                 converted = _publication_dates_to_compare(tags_of_source)
             except ValueError as exc:
                 return None, [f"invalid publication date for source {source}: {exc}"]
@@ -334,7 +390,23 @@ def infer_publication_date_from_tags(
                 return None, [
                     f"has multiple tags for source {source}: {tags_of_source}"
                 ]
-            return max(converted, key=len), []
+            try:
+                result = date_bounds.intersect(
+                    [date_bounds.parse_date(t.date, t.calendar) for t in tags_of_source]
+                )
+            except ValueError as exc:
+                return None, [f"invalid publication date for source {source}: {exc}"]
+            return (
+                date_bounds.DateBounds(
+                    result.earliest, result.latest, max(converted, key=len)
+                ),
+                [],
+            )
+    if bounds:
+        try:
+            return date_bounds.intersect(bounds), []
+        except ValueError as exc:
+            return None, [str(exc)]
     return None, []
 
 
@@ -373,15 +445,47 @@ def _unique_dates(dates: Iterable[str]) -> set[str]:
 
 
 def infer_publication_date(art: Article) -> tuple[str | None, str | None, list[str]]:
+    result, issue, errors = _infer_publication_bounds(art)
+    return result.adopted if result else None, issue, errors
+
+
+def _infer_publication_bounds(
+    art: Article, *, path: tuple[Article, ...] = ()
+) -> tuple[date_bounds.DateBounds | None, str | None, list[str]]:
+    if art in path:
+        return (
+            None,
+            None,
+            [
+                "circular publication-date reference: "
+                + " -> ".join(a.name for a in (*path, art))
+            ],
+        )
+    path = (*path, art)
+    inherited = None
+    issue = None
     if art.type in (ArticleType.CHAPTER, ArticleType.SUPPLEMENT):
         if parent := art.parent:
-            return parent.year, None, []
-    date: str | None
-    if data := infer_publication_date_from_issue_date(art):
+            inherited, _, errors = _infer_publication_bounds(parent, path=path)
+            if errors:
+                return None, None, errors
+            if inherited is None and parent.year:
+                try:
+                    inherited = date_bounds.parse_date(parent.year)
+                except ValueError as exc:
+                    return None, None, [f"invalid parent publication date: {exc}"]
+    elif data := infer_publication_date_from_issue_date(art):
         date, issue = data
-        return date, issue, []
-    date, errors = infer_publication_date_from_tags(art.tags)
-    return date, None, errors
+        try:
+            inherited = date_bounds.parse_date(date)
+        except ValueError as exc:
+            return None, issue, [f"invalid issue publication date: {exc}"]
+    # Parent/issue dates retain their existing precedence, but their actual
+    # bounds (not merely the adopted cutoff) must satisfy local constraints.
+    result, errors = _infer_publication_bounds_from_tags(
+        art.tags, path=path, inherited=inherited
+    )
+    return result, issue, errors
 
 
 def infer_publication_date_from_issue_date(
@@ -434,8 +538,20 @@ def check_year(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         ):
             yield f"must have MustUseChildren tag because date is a range: {art.year}"
 
-    inferred, issue, messages = infer_publication_date(art)
+    result, issue, messages = _infer_publication_bounds(art)
+    inferred = result.adopted if result else None
     yield from messages
+    if (
+        inferred is None
+        and not messages
+        and result is not None
+        and result.earliest is not None
+        and art.year
+        and helpers.is_valid_date(art.year)
+    ):
+        actual = date_bounds.parse_date(art.year)
+        if actual.latest is not None and actual.latest < result.earliest:
+            yield f"year {art.year} precedes publication lower bound {result.earliest}"
     if issue is not None and issue != art.issue:
         message = f"issue mismatch: inferred {issue}, actual {art.issue}"
         if art.issue is None:
@@ -605,7 +721,9 @@ def check_unsupported_year(art: Article, cfg: LintConfig) -> Iterable[str]:
 def has_unsupported_publication_date(art: Article) -> bool:
     if art.year is None or "-" not in art.year or helpers.is_date_range(art.year):
         return False
-    if art.has_tag(ArticleTag.PublicationDate):
+    if art.has_tag(ArticleTag.PublicationDate) or art.has_tag(
+        ArticleTag.PublishedBefore
+    ):
         return False
     if infer_publication_date_from_issue_date(art) is not None:
         return False
@@ -700,6 +818,9 @@ def internal_publication_date_matches_pdf(
         for item in evidence
     )
     for tag in tags:
+        if tag.date.startswith(("<", ">")):
+            # Bounds are interpreted evidence, not literal issue-date imprints.
+            continue
         if tag.calendar not in (None, Calendar.gregorian):
             # PDF extraction has no calendar provenance. A raw numeric date in
             # another calendar cannot be compared to its Gregorian candidates.
