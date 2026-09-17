@@ -20,6 +20,7 @@ from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db import constants, models
 from taxonomy.db.models import BaseModel
 from taxonomy.db.models.base import ADTField
+from taxonomy.db.models.name.page import parse_page_text
 from taxonomy.db.models.person import AuthorTag, normalize_orcid
 
 SCHEMA_VERSION = 1
@@ -1155,13 +1156,24 @@ def _validate_create_invariants(
 ) -> None:
     if model.__name__ == "ClassificationEntry":
         page = values.get("page")
+        raw_page_is_valid = False
+        if isinstance(page, str) and page.startswith("@"):
+            parts = list(parse_page_text(page))
+            raw_page_is_valid = (
+                len(parts) == 1
+                and parts[0].is_raw
+                and bool(parts[0].text)
+                and str(parts[0]) == page
+                and not any(char in page for char in "\r\n")
+                and not list(parts[0].lint())
+            )
         if (
             not isinstance(page, str)
             or re.fullmatch(r"[1-9][0-9]*(?:, [1-9][0-9]*)*", page) is None
-        ):
+        ) and not raw_page_is_valid:
             raise RecommendationError(
                 f"{context}: ClassificationEntry.page must be one or more "
-                "comma-separated page numbers"
+                "comma-separated page numbers or one valid @-prefixed raw page"
             )
         parent = values.get("parent")
         article = values.get("article")

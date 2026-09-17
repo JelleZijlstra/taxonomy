@@ -82,6 +82,49 @@ def test_classification_entry_create_rejects_page_ranges() -> None:
         )
 
 
+def test_classification_entry_create_preserves_raw_page() -> None:
+    article = Article.virtual(name="Bilderbuch.pdf")
+    page = "@no. 58 unnumbered p. 1"
+    row = recommendations.parse_recommendation(
+        {
+            "schema_version": 2,
+            "action": "create_object",
+            "object": {
+                "model": "ClassificationEntry",
+                "ref": "species",
+                "label": "Simia Sylvatica",
+            },
+            "match": {"name": "Simia Sylvatica", "page": page},
+            "values": {
+                "article": {"model": "Article", "ref": "volume"},
+                "name": "Simia Sylvatica",
+                "rank": "species",
+                "page": page,
+            },
+            "confidence": "high",
+            "reason": "Unnumbered page within a numbered leaf.",
+            "evidence": [{"kind": "source", "text": "Leaf 58, German text."}],
+        },
+        1,
+    )
+    plan = recommendations.build_plan(
+        [row],
+        initial_references={"volume": article},
+        find_objects_by_match=lambda _model, _match: [],
+    )
+    assert plan.actions[0].new_value["page"] == page
+
+
+@pytest.mark.parametrize(
+    "page", ["@", "@ ", "@@no. 58", "@no. 58, @no. 59", "@no. 58\npage 1", "@no. 58 ["]
+)
+def test_classification_entry_create_rejects_malformed_raw_page(page: str) -> None:
+    with pytest.raises(recommendations.RecommendationError, match="raw page"):
+        recommendations._validate_create_invariants(
+            ClassificationEntry, {"page": page}, context="line 1"
+        )
+
+
 def test_create_object_and_reference_it_from_later_action() -> None:
     child = _make_location(name="Broad site", latitude=None)
     set_parent = _common(recommendations.SET_FIELD, "parent")
