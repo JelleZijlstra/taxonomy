@@ -6,6 +6,10 @@ Read this file for Name evidence, enrichment, and type-locality recommendations.
 
 ## Evidence and companion changes
 
+`InterpretedTypeTaxon` is restricted to genus- and family-group names and explains
+type-species or type-genus selection. Do not use it for species identifications or
+synonymies. Preserve those interpretations in NameComments or recommendation evidence.
+
 For every created or newly connected source, enumerate the directly related existing
 Names and include obvious source-backed companion changes such as `original_citation`,
 `LocationDetail`, and `SpecimenDetail`. If a dependency prevents changes from sharing

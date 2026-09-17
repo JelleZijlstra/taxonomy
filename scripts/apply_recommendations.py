@@ -263,6 +263,7 @@ def _declared_affected_objects(
             if generic_action.recommendation.action in {
                 generic_recommendations.MERGE_PERSON,
                 generic_recommendations.REASSIGN_PERSON_REFERENCES,
+                generic_recommendations.SYNONYMIZE_TAXON,
             }:
                 merge_data = generic_action.new_value
                 yield generic_recommendations._replace_created_models(
@@ -1696,6 +1697,18 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             taxon_plan = taxon_recommendations.build_plan(
                 recommendations.taxon_rows, initial_references=references
             )
+            synonymized_ids = {
+                row.object.object_id
+                for row in recommendations.generic_rows
+                if row.action == generic_recommendations.SYNONYMIZE_TAXON
+            }
+            if any(
+                not action.already_applied and action.parent.id in synonymized_ids
+                for action in taxon_plan.actions
+            ):
+                raise generic_recommendations.RecommendationError(
+                    "create_taxon parent overlaps synonymize_taxon source"
+                )
             references.update(taxon_plan.references)
             taxon_recommendations.add_virtual_models(taxon_plan, builder)
             generic_plan = generic_recommendations.build_plan(

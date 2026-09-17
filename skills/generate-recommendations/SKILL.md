@@ -29,6 +29,7 @@ General model semantics and conventions remain in `docs/`.
 | [ItemFile](references/models/item-file.md)    | Retaining whole journal volumes or issues.                               |
 | [Location](references/models/location.md)     | Editing, renaming, merging, or geographically reconciling Locations.     |
 | [Name](references/models/name.md)             | Enriching Names, retaining source evidence, or changing type localities. |
+| [Taxon](references/models/taxon.md)           | Synonymizing taxa through the model's merge semantics.                   |
 
 Read [manifest format](references/manifest-format.md) when writing generic actions,
 values, refs, or guards. Read [review options](references/review-and-validation.md) for
@@ -85,6 +86,13 @@ references; avoid duplicating them in model files.
    dry-run, and virtual-lint results. Leave application to the user.
 
 ## Evidence rules
+
+Preserve existing database comments verbatim when they already establish the evidence.
+Add or revise comment text only to contribute evidence, correct an error, or clarify a
+material ambiguity. Keep procedural rationale and explanations of the proposed change in
+the manifest's `reason`, `evidence`, or `review_note` fields. For example, changing a
+PublicationDate from `1822-04-06` to `<1822-04-06` does not require appending an
+explanation of upper bounds to an adequate source citation.
 
 Every `*Detail` tag must quote its cited source directly. Put paraphrases, normalized
 interpretations, and uncertainty in structured fields, non-Detail comments, or row

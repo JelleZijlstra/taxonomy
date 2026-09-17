@@ -912,8 +912,6 @@ def _check_all_type_tags(
                 yield f"has TextualOriginalRank tag but is of rank that does not need it ({nam.original_rank!r})"
 
         case TypeTag.OriginalTypification():
-            if nam.group is not Group.species:
-                yield "has OriginalTypification tag but is not a species-group name"
             witnesses = [
                 other_tag
                 for other_tag in by_type[TypeTag.OriginalTypification]
@@ -3176,6 +3174,66 @@ ATTRIBUTES_BY_GROUP = {
 }
 
 
+TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
+    **dict.fromkeys(
+        (
+            TypeTag.Date,
+            TypeTag.Gender,
+            TypeTag.Age,
+            TypeTag.Organ,
+            TypeTag.Altitude,
+            TypeTag.Coordinates,
+            TypeTag.TypeLocality,
+            TypeTag.StratigraphyDetail,
+            TypeTag.Habitat,
+            TypeTag.Host,
+            TypeTag.LectotypeDesignation,
+            TypeTag.NeotypeDesignation,
+            TypeTag.SpecimenDetail,
+            TypeTag.LocationDetail,
+            TypeTag.Repository,
+            TypeTag.ProbableRepository,
+            TypeTag.CollectionDetail,
+            TypeTag.CollectedBy,
+            TypeTag.Involved,
+            TypeTag.NoLocation,
+            TypeTag.NoSpecimen,
+            TypeTag.NoDate,
+            TypeTag.NoCollector,
+            TypeTag.NoOrgan,
+            TypeTag.NoGender,
+            TypeTag.NoAge,
+            TypeTag.ImpreciseLocality,
+            TypeTag.TypeSpecimenLink,
+            TypeTag.FormerRepository,
+            TypeTag.ExtraRepository,
+            TypeTag.FutureRepository,
+            TypeTag.TypeSpecimenLinkFor,
+            TypeTag.GuessedRepository,
+            TypeTag.InterpretedTypeLocality,
+            TypeTag.InterpretedTypeSpecimen,
+            TypeTag.AdditionalTypeSpecimen,
+            TypeTag.OriginalTypification,
+            TypeTag.PartialTypeLocality,
+            TypeTag.TypeLocalityValidity,
+        ),
+        (Group.species,),
+    ),
+    **dict.fromkeys(
+        (
+            TypeTag.TypeDesignation,
+            TypeTag.IncludedSpecies,
+            TypeTag.GenusCoelebs,
+            TypeTag.TypeSpeciesDetail,
+            TypeTag.NoOriginalParent,
+        ),
+        (Group.genus,),
+    ),
+    TypeTag.CommissionTypeDesignation: (Group.genus, Group.family),
+    TypeTag.InterpretedTypeTaxon: (Group.genus, Group.family),
+}
+
+
 @LINT.add("disallowed_attributes")
 def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
     for field_name, groups in ATTRIBUTES_BY_GROUP.items():
@@ -3183,6 +3241,14 @@ def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
             value = getattr(nam, field_name)
             if value is not None:
                 yield f"should not have attribute {field_name} (value {value})"
+    for tag in nam.type_tags:
+        tag_groups = TYPE_TAGS_BY_GROUP.get(type(tag))
+        if tag_groups is not None and nam.group not in tag_groups:
+            allowed = ", ".join(group.name for group in tag_groups)
+            yield (
+                f"should not have type tag {type(tag).__name__} in group "
+                f"{nam.group.name} (allowed groups: {allowed})"
+            )
 
 
 def _make_con_messsage(nam: Name, text: str) -> str:

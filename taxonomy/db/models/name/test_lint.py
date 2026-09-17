@@ -1063,3 +1063,56 @@ def test_redirect_rule_flags_name_type_locality() -> None:
 
     assert len(messages) == 1
     assert "where RedirectOccurrences says" in str(messages[0])
+
+
+@pytest.mark.parametrize("group", list(Group))
+@pytest.mark.parametrize(
+    ("tag", "allowed"),
+    [
+        (
+            TypeTag.InterpretedTypeTaxon("Evidence for the type taxon."),
+            {Group.genus, Group.family},
+        ),
+        (
+            TypeTag.InterpretedTypeSpecimen("Evidence for the specimen."),
+            {Group.species},
+        ),
+        (
+            TypeTag.InterpretedTypeLocality("Evidence for the locality."),
+            {Group.species},
+        ),
+        (TypeTag.GenusCoelebs(), {Group.genus}),
+        (
+            TypeTag.SpecimenDetail(
+                "Original specimen.", models.Article.virtual(name="test.pdf")
+            ),
+            {Group.species},
+        ),
+        (
+            TypeTag.TypeSpeciesDetail(
+                "Type species evidence.", models.Article.virtual(name="test.pdf")
+            ),
+            {Group.genus},
+        ),
+        (
+            TypeTag.DescriptionDetail(
+                "Description valid at any rank.",
+                models.Article.virtual(name="test.pdf"),
+            ),
+            set(Group),
+        ),
+    ],
+)
+def test_type_tag_group_restrictions(
+    group: Group, tag: TypeTag, allowed: set[Group]
+) -> None:
+    from .lint import ATTRIBUTES_BY_GROUP, check_disallowed_attributes
+
+    name = Name.virtual(
+        group=group, type_tags=(tag,), **dict.fromkeys(ATTRIBUTES_BY_GROUP)
+    )
+    messages = list(check_disallowed_attributes(name, LintConfig(autofix=True)))
+    assert bool(messages) == (group not in allowed)
+    if messages:
+        assert type(tag).__name__ in str(messages[0])
+    assert name.type_tags == (tag,)

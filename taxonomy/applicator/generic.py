@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from typing import Any, cast
 
 from taxonomy import adt
+from taxonomy.applicator import taxon_synonymy
 from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.db import constants, models
 from taxonomy.db.models import BaseModel
@@ -33,6 +34,7 @@ MERGE_COLLECTION = "merge_collection"
 MERGE_PERSON = "merge_person"
 REASSIGN_PERSON_REFERENCES = "reassign_person_references"
 MERGE_REGION = "merge_region"
+SYNONYMIZE_TAXON = "synonymize_taxon"
 DELETE_REGION = "delete_region"
 ALLOWED_ACTIONS = {
     CREATE_OBJECT,
@@ -45,6 +47,7 @@ ALLOWED_ACTIONS = {
     MERGE_PERSON,
     REASSIGN_PERSON_REFERENCES,
     MERGE_REGION,
+    SYNONYMIZE_TAXON,
     DELETE_REGION,
 }
 ALLOWED_CONFIDENCES = {"high", "medium", "low"}
@@ -294,6 +297,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         MERGE_PERSON,
         REASSIGN_PERSON_REFERENCES,
         MERGE_REGION,
+        SYNONYMIZE_TAXON,
     }:
         if version != SCHEMA_VERSION_2:
             raise RecommendationError(
@@ -304,6 +308,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             MERGE_PERSON: "Person",
             REASSIGN_PERSON_REFERENCES: "Person",
             MERGE_REGION: "Region",
+            SYNONYMIZE_TAXON: "Taxon",
         }[action]
         if object_spec.model != expected_model or object_spec.object_id is None:
             raise RecommendationError(
@@ -322,7 +327,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             )
         person_guard: Mapping[str, Any] | None = None
         person_resolution: Mapping[str, Any] | None = None
-        if action in {MERGE_PERSON, REASSIGN_PERSON_REFERENCES}:
+        if action in {MERGE_PERSON, REASSIGN_PERSON_REFERENCES, SYNONYMIZE_TAXON}:
             guard = data.get("guard")
             if not isinstance(guard, dict):
                 raise RecommendationError(
@@ -363,7 +368,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
                     person_resolution = {
                         "naming_convention": resolved_naming_convention
                     }
-            else:
+            elif action == REASSIGN_PERSON_REFERENCES:
                 person_resolution = {"orcid": _required_str(data, "orcid", line_number)}
         return Recommendation(
             line_number,
@@ -1468,6 +1473,7 @@ def build_plan(
                 MERGE_PERSON,
                 REASSIGN_PERSON_REFERENCES,
                 MERGE_REGION,
+                SYNONYMIZE_TAXON,
                 DELETE_REGION,
             }:
                 mutation = row.action
@@ -1514,6 +1520,13 @@ def build_plan(
                     f"{model.__name__} {obj.id} changed from {row.object.label!r} "
                     f"to {label!r}"
                 )
+            if row.action == SYNONYMIZE_TAXON:
+                assert isinstance(obj, models.Taxon)
+                assert row.target is not None and row.target.object_id is not None
+                target = get_object(model, row.target.object_id)
+                assert isinstance(target, models.Taxon)
+                actions.append(taxon_synonymy.plan(row, obj, target, get_object))
+                continue
             if row.action == MERGE_COLLECTION:
                 assert row.target is not None
                 assert row.target.object_id is not None
@@ -2473,6 +2486,10 @@ def build_plan(
             )
         except RecommendationError as exc:
             errors.append(f"line {row.line_number}: {exc}")
+    try:
+        taxon_synonymy.validate_interactions(actions)
+    except RecommendationError as exc:
+        errors.append(str(exc))
     if errors:
         raise RecommendationError(
             "refusing to continue because database validation failed:\n- "
@@ -2538,6 +2555,12 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
                 f"move guarded references and ORCID {row.values['orcid']} to Person "
                 f"{row.target.object_id} {row.target.label}; retain source Person"
             )
+        elif row.action == SYNONYMIZE_TAXON:
+            assert row.target is not None
+            change = (
+                f"synonymize into Taxon {row.target.object_id} {row.target.label}; "
+                "move Names, children, and occurrences using Taxon.synonymize"
+            )
         elif row.action == MERGE_REGION:
             assert row.target is not None
             change = (
@@ -2591,6 +2614,9 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
                     "guard",
                     f"{field_name}={_format_create_value(model, field_name, value)}",
                 )
+        elif row.action == SYNONYMIZE_TAXON:
+            for key, snapshot in (row.match or {}).items():
+                _print_review_detail("guard", f"{key}={snapshot!r}")
         elif row.action == MERGE_COLLECTION:
             for update in row.object_updates:
                 update_spec = cast(ObjectSpec, update["object"])
@@ -2660,6 +2686,9 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
             or planned.already_applied
             or not isinstance(planned.object, BaseModel)
         ):
+            continue
+        if row.action == SYNONYMIZE_TAXON:
+            taxon_synonymy.add_virtual_models(planned, builder)
             continue
         if row.action == MERGE_COLLECTION:
             assert row.target is not None
@@ -3009,6 +3038,17 @@ def execute_plan(
                 f"SKIP_ALREADY_APPLIED action={row.action} "
                 f"object={row.object.model}:{row.object.object_id} field={row.field!r}"
             )
+            continue
+        if row.action == SYNONYMIZE_TAXON:
+            taxon_source = cast(models.Taxon, planned.object)
+            taxon_target = cast(models.Taxon, planned.new_value["target"])
+            verb = "SYNONYMIZE_TAXON" if apply else "WOULD_SYNONYMIZE_TAXON"
+            print(
+                f"{verb} source=Taxon:{taxon_source.id} target=Taxon:{taxon_target.id}"
+            )
+            if apply:
+                taxon_source.synonymize(taxon_target)
+            applied += 1
             continue
         if row.action == MERGE_COLLECTION:
             merge_data = cast(Mapping[str, Any], planned.new_value)

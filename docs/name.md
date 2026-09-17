@@ -557,6 +557,14 @@ names should have at least one. They fall into several groups:
     confusion about the type species; it should not ordinarily be used for the simple
     selection of a type species when a new genus is named.
   - _DescriptionDetail_: A description of the animal.
+  - _InterpretedTypeTaxon_: Editorial evidence for a difficult type-species or
+    type-genus selection, restricted to genus- and family-group names. This is not a tag
+    for identifying a species or explaining its synonymy; use a NameComment for such
+    interpretations.
+  - _InterpretedTypeSpecimen_: Editorial interpretation of the type specimen of a
+    species-group name.
+  - _InterpretedTypeLocality_: Editorial interpretation of the type locality of a
+    species-group name.
 - Structured information about the type
   - _CollectedBy_: The [person](/docs/person) who collected the type specimen.
   - _Involved_: A [person](/docs/person) who was involved in the history of the type
