@@ -1913,6 +1913,20 @@ def check_type_locality_age(nam: Name, cfg: LintConfig) -> Iterable[str]:
         )
 
 
+@LINT.add("must_have_type_locality")
+def check_must_have_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if (
+        nam.group is not Group.species
+        or nam.type_locality is not None
+        or "type_locality" not in nam.get_required_fields()
+    ):
+        return
+    if nam.has_type_tag(TypeTag.LocationDetail):
+        yield "missing type locality, but has LocationDetail tag"
+    elif nam.original_citation is not None and nam.taxon.age is AgeClass.extant:
+        yield "missing type locality, but has originali citation and is extant"
+
+
 @LINT.add("type_locality_strict")
 def check_type_locality_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if nam.group is not Group.species or not is_valid_mammal(nam):

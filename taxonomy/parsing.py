@@ -468,6 +468,15 @@ ukrainian_given_names = ukrainian_name + Optional(
 )
 ukrainian_initials = ukrainian_initial + L(".") + Optional(ukrainian_initial + L("."))
 
+hungarian_lower = C(
+    sorted(unicode_range("a", "z") | {"á", "é", "í", "ó", "ö", "ő", "ú", "ü", "ű"})
+)
+hungarian_family_name = (
+    upper
+    + OneOrMore(hungarian_lower)
+    + Optional(L("-") + upper + OneOrMore(hungarian_lower))
+)
+
 burmese_name = latin_upper + ZeroOrMore(latin_lower)
 burmese_names = burmese_name + ZeroOrMore(L(" ") + burmese_name)
 
@@ -495,6 +504,7 @@ pinyin_given_names_pattern = pinyin_given_names_cased.compile()
 pinyin_given_names_lowercased_pattern = pinyin_given_names.compile()
 vietnamese_family_name_pattern = vietnamese_family_name.compile()
 vietnamese_given_names_pattern = vietnamese_given_names.compile()
+hungarian_family_name_pattern = hungarian_family_name.compile()
 
 special_collection = OneOf.from_strs(["in situ", "lost", "untraced", "multiple"])
 personal_collection = family_name + L(" collection")
