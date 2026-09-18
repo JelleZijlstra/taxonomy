@@ -138,6 +138,47 @@ def get_type_locality_country_and_subregion(nam: Name) -> tuple[str, str, str]:
             return regions[0], regions[1], regions[-1]
 
 
+TYPE_DATA_TAGS = (
+    NameTag.NomenNovumFor,
+    NameTag.JustifiedEmendationOf,
+    NameTag.UnjustifiedEmendationOf,
+    NameTag.IncorrectOriginalSpellingOf,
+    NameTag.IncorrectSubsequentSpellingOf,
+    NameTag.NameCombinationOf,
+    NameTag.MandatoryChangeOf,
+    NameTag.SubsequentUsageOf,
+    NameTag.RerankingOf,
+)
+
+
+def get_names_for_type_data(name: Name) -> list[Name]:
+    """Trace a nomen novum's type sources, retaining each name's source tags.
+
+    MisidentificationOf and UnavailableVersionOf do not establish shared types,
+    so do not use the default variant resolver's broader set of relationships.
+    """
+    names = [name]
+    if name.nomenclature_status is not NomenclatureStatus.nomen_novum:
+        return names
+    seen = {name}
+    while (target := names[-1].get_variant_base_name(TYPE_DATA_TAGS)) is not None:
+        if target in seen:
+            raise ValueError(f"cycle in type-data links for Name {name.id}")
+        names.append(target)
+        seen.add(target)
+    return names
+
+
+def get_name_for_type_locality(names: Sequence[Name]) -> Name:
+    """Keep an existing locality; otherwise prefer the original name's locality."""
+    immediate = names[1] if len(names) > 1 else names[0]
+    if immediate.type_locality is not None:
+        return immediate
+    return next(
+        (nam for nam in reversed(names[1:]) if nam.type_locality is not None), immediate
+    )
+
+
 def get_authority_link(nam: Name) -> str:
     tags = nam.get_tags(nam.type_tags, TypeTag.AuthorityPageLink)
     return " | ".join(sorted({tag.url for tag in tags}))
@@ -439,16 +480,10 @@ def get_hesp_row(
             unchecked_links = ""
         row["Hesp_unchecked_authority_page_link"] = unchecked_links
 
-    # For nomina nova, get type data from original name
-    names_for_tags = [name]
-    if name.nomenclature_status is NomenclatureStatus.nomen_novum:
-        name_for_types = name.get_tag_target(models.name.NameTag.NomenNovumFor)
-        if name_for_types is None:
-            name_for_types = name
-        else:
-            names_for_tags.append(name_for_types)
-    else:
-        name_for_types = name
+    # Preserve the existing specimen source, but search the full chain for a locality.
+    names_for_tags = get_names_for_type_data(name)
+    name_for_types = names_for_tags[1] if len(names_for_tags) > 1 else name
+    name_for_locality = get_name_for_type_locality(names_for_tags)
 
     # Type locality
     # Omit: MDD_old_type_locality
@@ -457,7 +492,7 @@ def get_hesp_row(
     emended_tl = []
     citation_details = []
     row["Hesp_type_latitude"], row["Hesp_type_longitude"] = (
-        get_type_locality_coordinates(names_for_tags, name_for_types)
+        get_type_locality_coordinates(names_for_tags, name_for_locality)
     )
     for nam in names_for_tags:
         for tag in nam.type_tags:
@@ -482,7 +517,7 @@ def get_hesp_row(
         row["Hesp_type_country"],
         row["Hesp_type_subregion"],
         row["Hesp_type_subregion2"],
-    ) = get_type_locality_country_and_subregion(name_for_types)
+    ) = get_type_locality_country_and_subregion(name_for_locality)
 
     # Type specimen
     row["Hesp_holotype"] = get_type_specimen(name_for_types)

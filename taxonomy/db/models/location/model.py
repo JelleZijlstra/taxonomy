@@ -971,7 +971,10 @@ class Location(BaseModel):
             models.Name.add_validity_check(self.type_localities).filter(
                 ~models.Name.type_tags.contains(
                     f"[{models.name.TypeTag.ImpreciseLocality._tag},"
-                )
+                ),
+                ~models.Name.type_tags.contains(
+                    f"[{models.name.TypeTag.PartialTypeLocality._tag},"
+                ),
             )
         )
         if not nams:
@@ -980,8 +983,10 @@ class Location(BaseModel):
         print(f"{self}: editing {len(nams)} type-locality Names")
         nams = sorted(nams, key=lambda nam: -nam.numeric_year())
         for nam in nams:
-            if nam.type_locality != self or nam.has_type_tag(
-                models.name.TypeTag.ImpreciseLocality
+            if (
+                nam.type_locality != self
+                or nam.has_type_tag(models.name.TypeTag.ImpreciseLocality)
+                or nam.has_type_tag(models.name.TypeTag.PartialTypeLocality)
             ):
                 continue
             nam.display()

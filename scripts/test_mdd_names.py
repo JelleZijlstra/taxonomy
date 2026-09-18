@@ -1,10 +1,181 @@
+import pytest
+
 from scripts import mdd_diff
-from scripts.mdd_names import _mdd_coordinates_match, get_type_locality_coordinates
-from taxonomy.db.constants import ArticleType, NamingConvention, PersonType
-from taxonomy.db.models import Article, Person
+from scripts.mdd_names import (
+    _mdd_coordinates_match,
+    get_name_for_type_locality,
+    get_names_for_type_data,
+    get_type_locality_coordinates,
+    get_type_locality_country_and_subregion,
+)
+from taxonomy.db.constants import (
+    ArticleType,
+    EmendationJustification,
+    NamingConvention,
+    NomenclatureStatus,
+    PersonType,
+    RegionKind,
+)
+from taxonomy.db.models import Article, Person, Region
 from taxonomy.db.models.location import Location
-from taxonomy.db.models.name import Name, TypeTag
+from taxonomy.db.models.name import Name, NameTag, TypeTag
 from taxonomy.db.models.person import AuthorTag
+
+
+@pytest.mark.parametrize(
+    "tag_type",
+    [
+        NameTag.NomenNovumFor,
+        NameTag.JustifiedEmendationOf,
+        NameTag.UnjustifiedEmendationOf,
+        NameTag.IncorrectOriginalSpellingOf,
+        NameTag.IncorrectSubsequentSpellingOf,
+        NameTag.NameCombinationOf,
+        NameTag.MandatoryChangeOf,
+        NameTag.SubsequentUsageOf,
+        NameTag.RerankingOf,
+    ],
+)
+def test_replacement_type_data_follows_multiple_links(tag_type: type[NameTag]) -> None:
+    country = Region.virtual(name="Sweden", kind=RegionKind.country)
+    original = Name.virtual(
+        tags=(),
+        type_tags=(),
+        type_locality=Location.virtual(
+            region=country, latitude="59°N", longitude="18°E"
+        ),
+    )
+    if tag_type is NameTag.JustifiedEmendationOf:
+        tag = NameTag.JustifiedEmendationOf(
+            original, justification=EmendationJustification.inadvertent_error
+        )
+    else:
+        tag = tag_type(original)
+    intermediate = Name.virtual(tags=(tag,), type_tags=())
+    replacement = Name.virtual(
+        nomenclature_status=NomenclatureStatus.nomen_novum,
+        tags=(NameTag.NomenNovumFor(intermediate),),
+        type_tags=(),
+    )
+
+    names = get_names_for_type_data(replacement)
+
+    assert names == [replacement, intermediate, original]
+    assert get_type_locality_country_and_subregion(names[-1]) == ("Sweden", "", "")
+    assert get_type_locality_coordinates(names, names[-1]) == ("59", "18")
+
+
+@pytest.mark.parametrize(
+    "tag_type", [NameTag.MisidentificationOf, NameTag.UnavailableVersionOf]
+)
+def test_replacement_type_data_does_not_cross_unrelated_links(
+    tag_type: type[NameTag],
+) -> None:
+    unrelated = _name(location_coordinates=("1", "2"))
+    target = Name.virtual(tags=(tag_type(unrelated),), type_tags=(), type_locality=None)
+    replacement = Name.virtual(
+        nomenclature_status=NomenclatureStatus.nomen_novum,
+        tags=(NameTag.NomenNovumFor(target),),
+        type_tags=(),
+    )
+
+    names = get_names_for_type_data(replacement)
+
+    assert names == [replacement, target]
+    assert get_type_locality_coordinates(names, names[-1]) == ("", "")
+
+
+def test_replacement_type_data_retains_intermediate_coordinates() -> None:
+    original = Name.virtual(tags=(), type_tags=(), type_locality=None)
+    intermediate = Name.virtual(
+        tags=(NameTag.NameCombinationOf(original),),
+        type_tags=(TypeTag.Coordinates("3°N", "4°E"),),
+    )
+    replacement = Name.virtual(
+        nomenclature_status=NomenclatureStatus.nomen_novum,
+        tags=(NameTag.NomenNovumFor(intermediate),),
+        type_tags=(),
+    )
+
+    names = get_names_for_type_data(replacement)
+
+    assert get_type_locality_coordinates(names, names[-1]) == ("3", "4")
+
+
+def test_replacement_type_data_rejects_cycles() -> None:
+    replacement = Name.virtual(
+        nomenclature_status=NomenclatureStatus.nomen_novum, tags=()
+    )
+    intermediate = Name.virtual(tags=(NameTag.NameCombinationOf(replacement),))
+    replacement.tags = (NameTag.NomenNovumFor(intermediate),)
+
+    with pytest.raises(ValueError, match="cycle in type-data links"):
+        get_names_for_type_data(replacement)
+
+
+def test_replacement_type_data_follows_long_acyclic_chains() -> None:
+    original = Name.virtual(tags=())
+    target = original
+    for _ in range(12):
+        target = Name.virtual(
+            nomenclature_status=NomenclatureStatus.nomen_novum,
+            tags=(NameTag.NomenNovumFor(target),),
+        )
+
+    names = get_names_for_type_data(target)
+
+    assert len(names) == 13
+    assert names[-1] == original
+
+
+def test_type_locality_resolution_preserves_existing_locality() -> None:
+    replacement = _name()
+    immediate = _name(location_coordinates=("1", "2"))
+    original = _name(location_coordinates=("3", "4"))
+
+    assert get_name_for_type_locality([replacement, immediate, original]) == immediate
+
+
+def test_type_locality_resolution_prefers_original_over_intermediate_locality() -> None:
+    replacement = _name()
+    immediate = _name()
+    intermediate = _name(location_coordinates=("1", "2"))
+    original = _name(location_coordinates=("3", "4"))
+
+    assert (
+        get_name_for_type_locality([replacement, immediate, intermediate, original])
+        == original
+    )
+
+
+def test_type_locality_resolution_retains_intermediate_if_original_is_missing() -> None:
+    replacement = _name()
+    immediate = _name()
+    intermediate = _name(location_coordinates=("1", "2"))
+    original = _name()
+
+    assert (
+        get_name_for_type_locality([replacement, immediate, intermediate, original])
+        == intermediate
+    )
+
+
+def test_replacement_type_data_without_target_uses_own_data() -> None:
+    replacement = Name.virtual(
+        nomenclature_status=NomenclatureStatus.nomen_novum, tags=()
+    )
+
+    assert get_names_for_type_data(replacement) == [replacement]
+
+
+def test_non_replacement_type_data_uses_own_data() -> None:
+    original = Name.virtual(tags=())
+    variant = Name.virtual(
+        nomenclature_status=NomenclatureStatus.unjustified_emendation,
+        tags=(NameTag.UnjustifiedEmendationOf(original),),
+    )
+
+    assert get_names_for_type_data(variant) == [variant]
 
 
 def _name(

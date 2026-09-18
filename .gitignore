@@ -22,3 +22,4 @@ taxonomy-public.ini
 taxonomy.sh
 build/
 hsweb/game_data/
+node_modules

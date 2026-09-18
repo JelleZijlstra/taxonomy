@@ -2531,7 +2531,12 @@ def _check_variant_tag(
         yield f"has a tag that points to itself: {tag}"
     if nam.get_date_object() < tag.name.get_date_object():
         yield f"predates supposed original name {tag.name}"
-    if not tag.name.nomenclature_status.can_preoccupy():
+    # An available version need not share types with an attempted replacement
+    # of the unavailable name. Leave this relationship for publication review.
+    if (
+        not isinstance(tag, NameTag.NomenNovumFor)
+        and not tag.name.nomenclature_status.can_preoccupy()
+    ):
         if (
             target := tag.name.get_tag_target(NameTag.UnavailableVersionOf)
         ) and nam.year > target.year:
@@ -3072,6 +3077,120 @@ def check_expected_nomenclature_status(
             f" {expected_status.name}"
         )
         yield field_issue(message, nam, "nomenclature_status", expected_status)
+
+
+_REPLACEMENT_TARGET_LINKS = (
+    NameTag.NomenNovumFor,
+    NameTag.JustifiedEmendationOf,
+    NameTag.UnjustifiedEmendationOf,
+    NameTag.IncorrectOriginalSpellingOf,
+    NameTag.IncorrectSubsequentSpellingOf,
+    NameTag.NameCombinationOf,
+    NameTag.MandatoryChangeOf,
+    NameTag.SubsequentUsageOf,
+    NameTag.RerankingOf,
+)
+_REPLACEMENT_TARGET_LINK_STATUSES = {
+    NomenclatureStatus.nomen_novum,
+    NomenclatureStatus.justified_emendation,
+    NomenclatureStatus.unjustified_emendation,
+    NomenclatureStatus.incorrect_original_spelling,
+    NomenclatureStatus.incorrect_subsequent_spelling,
+    NomenclatureStatus.name_combination,
+    NomenclatureStatus.mandatory_change,
+    NomenclatureStatus.subsequent_usage,
+    NomenclatureStatus.reranking,
+}
+_AVAILABLE_REPLACEMENT_TARGET_STATUSES = {
+    NomenclatureStatus.available,
+    NomenclatureStatus.preoccupied,
+    NomenclatureStatus.as_emended,
+    NomenclatureStatus.partially_suppressed,
+    NomenclatureStatus.hybrid_name,
+    NomenclatureStatus.art_13_nomen_oblitum,
+    NomenclatureStatus.collective_group,
+}
+
+
+@LINT.add("nomen_novum_for_unavailable_name")
+def check_nomen_novum_for_unavailable_name(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
+    """Review replacement targets under Arts. 12.2.3, 13.1.3, and 72.7.
+
+    Availability may follow independently from a description or bibliographic
+    reference (Arts. 72.4.2 and 72.4.4). Do not autofix status or type relationships.
+    """
+    # Retain historical NomenNovumFor tags on names already marked unavailable.
+    # Only skip the name being linted; unavailable intermediate names must still
+    # be reported when checking a later replacement.
+    if nam.nomenclature_status not in (
+        _REPLACEMENT_TARGET_LINK_STATUSES
+        | _AVAILABLE_REPLACEMENT_TARGET_STATUSES
+        | {NomenclatureStatus.variant, NomenclatureStatus.unpublished_pending}
+    ):
+        return
+    targets = {tag.name for tag in nam.get_tags(nam.tags, NameTag.NomenNovumFor)}
+    if len(targets) > 1:
+        ids = ", ".join(
+            str(item.id) for item in sorted(targets, key=lambda item: item.id)
+        )
+        yield f"has ambiguous NomenNovumFor targets: Names {ids}; review which name was replaced"
+        return
+    for target in targets:
+        yield from _check_nomen_novum_target(nam, target)
+
+
+def _check_nomen_novum_target(nam: Name, target: Name) -> Iterable[str]:
+    chain = [nam]
+    seen = {nam}
+    while True:
+        chain.append(target)
+        path = " -> ".join(str(item.id) for item in chain)
+        if target in seen:
+            yield f"NomenNovumFor chain {path} contains a cycle; cannot establish an available replacement target"
+            return
+        seen.add(target)
+        status = target.nomenclature_status
+        label = target.corrected_original_name or target.root_name
+        context = f"NomenNovumFor chain {path} reaches {label} ({status.name})"
+        if status is NomenclatureStatus.fully_suppressed:
+            yield f"{context}; review the Commission decision and its chronology before inferring availability or shared types"
+            return
+        if status in {
+            NomenclatureStatus.variant,
+            NomenclatureStatus.unpublished_pending,
+        }:
+            yield f"{context}; availability is unresolved, so review the publication and relationship before treating it as an available replacement target"
+            return
+        if (
+            status
+            not in _REPLACEMENT_TARGET_LINK_STATUSES
+            | _AVAILABLE_REPLACEMENT_TARGET_STATUSES
+        ):
+            yield (
+                f"{context}; replacement of a name marked unavailable does not itself establish availability or shared types. "
+                "Review the original publication for an independent description, indication, or bibliographic reference and its type basis"
+            )
+            return
+        # Never follow MisidentificationOf or UnavailableVersionOf. In particular,
+        # do not assume an intermediate nomen_novum is independently available.
+        targets = {
+            tag.name
+            for tag in target.tags
+            if isinstance(tag, _REPLACEMENT_TARGET_LINKS)
+        }
+        if len(targets) > 1:
+            ids = ", ".join(
+                str(item.id) for item in sorted(targets, key=lambda item: item.id)
+            )
+            yield f"{context}; ambiguous replacement/variant links to Names {ids}; review which name was replaced"
+            return
+        if not targets:
+            if status in _REPLACEMENT_TARGET_LINK_STATUSES:
+                yield f"{context}; missing replacement/variant link, so cannot establish an available replacement target"
+            return
+        target = targets.pop()
 
 
 @LINT.add("redundant_fields")
@@ -7400,7 +7519,11 @@ def check_partial_type_locality(nam: Name, cfg: LintConfig) -> Iterable[LintResu
     tags = list(nam.get_tags(nam.type_tags, TypeTag.PartialTypeLocality))
     if not tags:
         return
-    if nam.species_type_kind not in (None, SpeciesGroupType.syntypes):
+    if nam.species_type_kind not in (
+        None,
+        SpeciesGroupType.syntypes,
+        SpeciesGroupType.nonexistent,
+    ):
         yield (
             "has PartialTypeLocality tags, but species_type_kind is "
             f"{nam.species_type_kind.name}, not syntypes or unset"

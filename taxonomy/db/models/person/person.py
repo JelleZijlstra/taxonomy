@@ -735,6 +735,8 @@ class Person(BaseModel):
                 grammar = parsing.portuguese_family_name_pattern
             elif self.naming_convention is NamingConvention.vietnamese:
                 grammar = parsing.vietnamese_family_name_pattern
+            elif self.naming_convention is NamingConvention.hungarian:
+                grammar = parsing.hungarian_family_name_pattern
             else:
                 grammar = parsing.family_name_pattern
             if not parsing.matches_grammar(self.family_name, grammar):
