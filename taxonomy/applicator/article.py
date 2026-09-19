@@ -1126,13 +1126,16 @@ def add_virtual_models(
             article = builder.copy(action.article, context=context)
             planned_articles[action.recommendation.name] = article
             if action.recommendation.ref is not None:
-                references[action.recommendation.ref] = article
+                # Retry guards compare these references to persisted field values.
+                # Keep their identity; builder.build() remaps the final proposal.
+                references[action.recommendation.ref] = action.article
             if any(spec.ref is not None for spec in action.authors):
                 for spec, person in zip(
-                    action.authors, article.get_authors(), strict=True
+                    action.authors, action.article.get_authors(), strict=True
                 ):
                     if spec.ref is not None:
-                        references[spec.ref] = builder.copy(person, context=context)
+                        builder.copy(person, context=context)
+                        references[spec.ref] = person
             continue
         cg: CitationGroup | None = None
         if action.citation_group is not None:

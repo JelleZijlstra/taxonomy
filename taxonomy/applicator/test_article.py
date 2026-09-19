@@ -848,6 +848,10 @@ def test_author_refs_share_article_people_in_proposals_and_execution(
     resumed_builder.build()
     reused_volume = virtual_reused["volume"]
     assert isinstance(reused_volume, Article)
+    # A cumulative review compares already applied dependent fields/tags against
+    # these refs. A fresh virtual copy has a different ID and fails those guards.
+    assert reused_volume is actual_volume
+    assert virtual_reused["author:telnov"] is created_people[0]
     assert virtual_reused["author:telnov"] is reused_volume.get_authors()[0]
     assert row.authors is not None
     assert "ref" not in row.authors[0].as_kwargs()
