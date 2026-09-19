@@ -1,9 +1,11 @@
 from collections.abc import Mapping
+from unittest.mock import Mock
 
 import pytest
 
 from taxonomy.applicator import generic as recommendations
 from taxonomy.applicator.proposals import ProposalBuilder
+from taxonomy.db import derived_data
 from taxonomy.db.constants import AltitudeUnit, NamingConvention, PersonType, RegionKind
 from taxonomy.db.models import (
     Article,
@@ -1097,6 +1099,36 @@ def test_merge_person_participates_in_virtual_proposal_graph(
     assert proposed_source.target is proposed_target
     assert proposed_target.birth == "1970"
     assert target.birth is None
+
+
+def test_refresh_person_references_replaces_stale_cache_in_memory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache: derived_data.DerivedData = {"H": {42: {"articles": [100]}}}
+    monkeypatch.setattr(derived_data, "load_derived_data", lambda: cache)
+    field = derived_data.DerivedField(
+        "articles", list[Article], compute_all=lambda: {42: [Article(200)]}
+    )
+    monkeypatch.setattr(Person, "derived_fields", [field])
+    write = Mock()
+    monkeypatch.setattr(derived_data, "write_derived_data", write)
+
+    recommendations.refresh_person_reference_cache()
+
+    assert Person(42).get_raw_derived_field("articles") == [200]
+    write.assert_not_called()
+
+
+def test_merge_person_refreshes_live_references_before_guarding(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    refresh = Mock()
+    monkeypatch.setattr(recommendations, "refresh_person_reference_cache", refresh)
+    monkeypatch.setattr(Person, "is_virtual", property(lambda _self: False))
+
+    _build_person_merge_plan(monkeypatch)
+
+    refresh.assert_called_once_with()
 
 
 def _reassign_person_references_row(

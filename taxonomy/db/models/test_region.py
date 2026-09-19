@@ -1268,7 +1268,37 @@ def test_expected_address_types_include_nominatim_linked_place_variants(
     assert address_type in region_lint._expected_address_types(_region("Example", kind))
 
 
-@pytest.mark.parametrize("address_type", ["city", "suburb", "town"])
+@pytest.mark.parametrize(
+    ("country_name", "admin_level", "accepted"),
+    [
+        ("Japan", "4", True),
+        ("Japan", "8", False),
+        ("Japan", None, False),
+        ("China", "4", False),
+    ],
+)
+def test_prefecture_accepts_linked_city_only_at_japanese_prefectural_level(
+    country_name: str, admin_level: str | None, *, accepted: bool
+) -> None:
+    country = _region(country_name, RegionKind.country)
+    area = _region("Kantō Region", RegionKind.region, country)
+    prefecture = _region("Tokyo Prefecture", RegionKind.prefecture, area)
+    result = nominatim.SearchResult(
+        latitude="35",
+        longitude="139",
+        name="Tokyo",
+        display_name="Tokyo, Japan",
+        category="boundary",
+        feature_type="administrative",
+        address_type="city",
+        address={},
+        extra={} if admin_level is None else {"admin_level": admin_level},
+    )
+
+    assert region_lint._has_acceptable_address_type(prefecture, result) is accepted
+
+
+@pytest.mark.parametrize("address_type", ["city", "city_district", "suburb", "town"])
 def test_us_county_accepts_linked_place_only_at_admin_level_six(
     address_type: str,
 ) -> None:

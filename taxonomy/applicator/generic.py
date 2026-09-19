@@ -1090,6 +1090,19 @@ _PERSON_REASSIGN_REFERENCE_FIELDS = tuple(
 _PERSON_MERGE_TRANSFER_FIELDS = ("birth", "death", "bio", "ol_id")
 
 
+def refresh_person_reference_cache() -> None:
+    """Rebuild reverse references in memory before guarding Person operations.
+
+    The persisted derived-data cache can predate recently imported authors. Both
+    proposal rendering and application use these lists, so refreshing only the
+    guard would still leave those references behind. This does not write the
+    database or persist derived data.
+    """
+    for field in models.Person.derived_fields:
+        if field.name in _PERSON_REASSIGN_REFERENCE_FIELDS:
+            field.compute_and_store_all(models.Person)
+
+
 def _person_reference_snapshot(person: models.Person) -> dict[str, list[int]]:
     snapshot = {
         field_name: sorted(person.get_raw_derived_field(field_name) or ())
@@ -1287,6 +1300,7 @@ def build_plan(
     ] = _find_collection_references,
 ) -> RecommendationPlan:
     original_rows = list(recommendations)
+    person_references_refreshed = False
     try:
         rows = _order_by_dependencies(
             original_rows, available_refs=set(initial_references or {})
@@ -1515,6 +1529,13 @@ def build_plan(
                 assert row.object.object_id is not None
                 obj = get_object(model, row.object.object_id)
                 object_identities[id(obj)] = identity
+            if (
+                row.action in {MERGE_PERSON, REASSIGN_PERSON_REFERENCES}
+                and not obj.is_virtual
+                and not person_references_refreshed
+            ):
+                refresh_person_reference_cache()
+                person_references_refreshed = True
             label = _object_label(model, obj)
             allowed_object_labels = {row.object.label}
             if row.action == UPDATE_OBJECT:

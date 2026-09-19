@@ -81,6 +81,7 @@ from .db.models import (
 from .db.models.base import LintConfig, Linter, LintResource, ModelT
 from .db.models.ignored_doi import IgnoreReason
 from .db.models.item_file import ItemFile
+from .db.models.name import citation_match
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")
@@ -2153,6 +2154,7 @@ def author_report(
 @generator_command
 def enforce_must_have(*, fix: bool = True) -> Iterator[Name]:
     # Also enforced by a lint on Name. This function is helpful since it invokes find_potential_citations_for_group.
+    index: citation_match.CitationIndex | None = None
     for cg in sorted(_must_have_citation_groups(), key=lambda cg: cg.archive or ""):
         after_tag = cg.get_tag(CitationGroupTag.MustHaveAfter)
         found_any = False
@@ -2169,7 +2171,9 @@ def enforce_must_have(*, fix: bool = True) -> Iterator[Name]:
             found_any = True
             yield nam
         if found_any:
-            find_potential_citations_for_group(cg, fix=fix)
+            if index is None:
+                index = citation_match.CitationIndex(Article.select_valid())
+            find_potential_citations_for_group(cg, fix=fix, _index=index)
 
 
 def _must_have_citation_groups() -> list[CitationGroup]:
@@ -2185,19 +2189,35 @@ def _must_have_citation_groups() -> list[CitationGroup]:
 def find_potential_citations(
     *, fix: bool = True, region: models.Region | None = None, aggressive: bool = True
 ) -> int:
+    """Suggest original citations for review; aggressive adds corroborated fallbacks."""
+    cgs: Iterable[CitationGroup]
     if region is None:
         cgs = CitationGroup.select_valid()
     else:
         cgs = region.all_citation_groups()
-    return sum(
-        find_potential_citations_for_group(cg, fix=fix) or 0
+    index = citation_match.CitationIndex(Article.select_valid())
+    count = sum(
+        find_potential_citations_for_group(
+            cg, fix=fix, aggressive=aggressive, _index=index
+        )
         for cg in cgs
         if not cg.has_tag(CitationGroupTag.IgnorePotentialCitations)
     )
+    if aggressive and region is None:
+        count += _find_potential_citations_for_names(
+            Name.select_valid().filter(
+                Name.citation_group == None, Name.original_citation == None
+            ),
+            index,
+            fix=fix,
+            aggressive=aggressive,
+            label="Names without a citation group",
+        )
+    return count
 
 
 def _author_names(obj: Article | Name) -> set[str]:
-    return {helpers.simplify_string(person.family_name) for person in obj.get_authors()}
+    return set(citation_match.author_names(obj))
 
 
 def _page_matches_art(start_page: int | None, end_page: int | None, a: Article) -> bool:
@@ -2209,22 +2229,7 @@ def _page_matches_art(start_page: int | None, end_page: int | None, a: Article) 
 
 
 def _page_or_range(nam: Name) -> tuple[int | None, int | None]:
-    if nam.page_described is not None:
-        if nam.page_described.isdigit():
-            page = int(nam.page_described)
-            return page, None
-        elif m := re.fullmatch(r"(\d+)-(\d+)", nam.page_described):
-            start_page = int(m.group(1))
-            end_page: int | None = int(m.group(2))
-            return start_page, end_page
-    for tag in nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation):
-        if tag.start_page and tag.start_page.isdigit():
-            start_page = int(tag.start_page)
-            end_page = None
-            if tag.end_page and tag.end_page.isdigit():
-                end_page = int(tag.end_page)
-            return start_page, end_page
-    return None, None
+    return citation_match.page_or_range(nam)
 
 
 def is_possible_match(
@@ -2239,7 +2244,11 @@ def is_possible_match(
 
 @command
 def find_potential_citations_for_group(
-    cg: CitationGroup | None = None, *, fix: bool = True
+    cg: CitationGroup | None = None,
+    *,
+    fix: bool = True,
+    aggressive: bool = True,
+    _index: citation_match.CitationIndex | None = None,
 ) -> int:
     if cg is None:
         cg = CitationGroup.getter(None).get_one()
@@ -2248,65 +2257,42 @@ def find_potential_citations_for_group(
     nams = cg.get_names()
     if not nams:
         return 0
-    potential_arts = Article.bfind(
-        Article.kind != constants.ArticleKind.no_copy, citation_group=cg, quiet=True
+    if _index is None:
+        _index = citation_match.CitationIndex(Article.select_valid())
+    return _find_potential_citations_for_names(
+        nams, _index, fix=fix, aggressive=aggressive, label=str(cg)
     )
-    if not potential_arts:
-        return 0
 
+
+def _find_potential_citations_for_names(
+    nams: Iterable[Name],
+    index: citation_match.CitationIndex,
+    *,
+    fix: bool,
+    aggressive: bool,
+    label: str,
+) -> int:
     count = 0
     for nam in nams:
         nam.load()
         if nam.original_citation is not None:
             continue
-        start_page, end_page = _page_or_range(nam)
-        if start_page is None and end_page is None:
-            continue
-        candidates = [
-            art
-            for art in potential_arts
-            if is_possible_match(art, nam, start_page, end_page)
-        ]
-
-        # Supplement with matches based on StructuredVerbatimCitation, if present
-        svc_tags = list(nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation))
-        if svc_tags:
-            svc = svc_tags[0]
-            svc_volume = svc.volume
-            if svc_volume is not None:
-                svc_series = svc.series
-
-                svc_candidates = [
-                    art
-                    for art in potential_arts
-                    if (svc_volume is None or art.volume == svc_volume)
-                    and (svc_series is None or art.series == svc_series)
-                    and _page_matches_art(start_page, end_page, art)
-                    and abs(art.numeric_year() - nam.numeric_year()) <= 5
-                ]
-                candidates = sorted(
-                    set(candidates) | set(svc_candidates), key=lambda a: a.sort_key()
-                )
-
-        candidates = [
-            art
-            for art in candidates
-            if not any(
-                isinstance(tag, TypeTag.IgnorePotentialCitationFrom)
-                and tag.article == art
-                for tag in nam.type_tags
-            )
-            and not art.lacks_full_text()
-        ]
+        matches = index.find(
+            nam,
+            aggressive=aggressive,
+            classification_entries=nam.get_classification_entries(),
+        )
+        candidates = [match.article for match in matches]
 
         if candidates:
             if count == 0:
-                print(f"Trying {cg}...", flush=True)
+                print(f"Trying {label}...", flush=True)
             getinput.print_header(nam)
             count += 1
             nam.display()
-            for candidate in candidates:
-                print(repr(candidate))
+            for match in matches:
+                print(repr(match.article))
+                print(f"    Match: {'; '.join(match.reasons)}")
             if fix:
                 for candidate in candidates:
                     candidate.openf()
@@ -2322,7 +2308,7 @@ def find_potential_citations_for_group(
                             )
                         )
     if count:
-        print(f"{cg} had {count} potential citations", flush=True)
+        print(f"{label} had {count} potential citations", flush=True)
     return count
 
 

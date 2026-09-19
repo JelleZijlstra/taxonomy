@@ -368,7 +368,7 @@ def _has_acceptable_address_type(
 ) -> bool:
     if result.address_type in _preferred_address_types(region):
         return True
-    if region.kind is not RegionKind.county:
+    if region.kind not in {RegionKind.county, RegionKind.prefecture}:
         return False
     country = next(
         (
@@ -378,15 +378,29 @@ def _has_acceptable_address_type(
         ),
         None,
     )
-    if country is None or country.name != "United States":
+    if country is None:
+        return False
+    if region.kind is RegionKind.prefecture:
+        # Tokyo's prefectural boundary is indexed from its linked city. Keep
+        # accepting only the prefectural level, not a same-named municipality.
+        return (
+            country.name == "Japan"
+            and result.address_type == "city"
+            and result.extra.get("admin_level") == "4"
+        )
+    if country.name != "United States":
         return False
     # Consolidated city-counties and county-equivalent independent cities are
     # frequently indexed from their linked place as a city, town, or suburb.
     # Accept those labels only for an admin_level=6 relation, which continues
     # to reject an ordinary same-named municipality (normally admin_level=8).
-    return result.address_type in {"city", "county", "suburb", "town"} and (
-        result.extra.get("admin_level") == "6"
-    )
+    return result.address_type in {
+        "city",
+        "city_district",
+        "county",
+        "suburb",
+        "town",
+    } and (result.extra.get("admin_level") == "6")
 
 
 _EXPECTED_ADMIN_LEVELS = {

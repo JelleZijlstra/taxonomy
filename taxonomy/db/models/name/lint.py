@@ -7456,16 +7456,16 @@ def check_unique_type_locality(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.taxon.age not in (AgeClass.extant, AgeClass.recently_extinct):
         return
-    original_localities = [
-        tag
+    original_localities = dict.fromkeys(
+        tag.text
         for tag in nam.type_tags
         if isinstance(tag, TypeTag.LocationDetail)
         and tag.source == nam.original_citation
-    ]
+    )
     if len(original_localities) > 1:
         message = f"multiple original localities for {nam}:\n"
-        for tag in original_localities:
-            message += f"  {tag.text}\n"
+        for text in original_localities:
+            message += f"  {text}\n"
         yield message
 
 

@@ -70,6 +70,22 @@ def test_vietnamese_compound_family_name_is_valid() -> None:
 
 
 @pytest.mark.parametrize(
+    "family_name", ["Méhelÿ", "Kadić", "Kőrösi Csoma", "Nagy", "Kovács", "Nagy-Kovács"]
+)
+def test_hungarian_family_names(family_name: str) -> None:
+    assert parsing.matches_grammar(family_name, parsing.hungarian_family_name_pattern)
+
+
+@pytest.mark.parametrize(
+    "family_name", ["nagy", "Nagy2", "Nagy-", "Nagy  Csoma", "Nagy, Csoma", ""]
+)
+def test_hungarian_family_names_reject_malformed_names(family_name: str) -> None:
+    assert not parsing.matches_grammar(
+        family_name, parsing.hungarian_family_name_pattern
+    )
+
+
+@pytest.mark.parametrize(
     "naming_convention",
     [
         NamingConvention.pinyin,

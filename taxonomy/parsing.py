@@ -468,14 +468,10 @@ ukrainian_given_names = ukrainian_name + Optional(
 )
 ukrainian_initials = ukrainian_initial + L(".") + Optional(ukrainian_initial + L("."))
 
-hungarian_lower = C(
-    sorted(unicode_range("a", "z") | {"á", "é", "í", "ó", "ö", "ő", "ú", "ü", "ű"})
-)
-hungarian_family_name = (
-    upper
-    + OneOrMore(hungarian_lower)
-    + Optional(L("-") + upper + OneOrMore(hungarian_lower))
-)
+# Hungarian name order also applies to historical and borrowed surnames, whose
+# letters need not belong to the modern Hungarian alphabet (Méhelÿ, Kadić).
+hungarian_name = upper + OneOrMore(lower)
+hungarian_family_name = hungarian_name + ZeroOrMore((L("-") | L(" ")) + hungarian_name)
 
 burmese_name = latin_upper + ZeroOrMore(latin_lower)
 burmese_names = burmese_name + ZeroOrMore(L(" ") + burmese_name)

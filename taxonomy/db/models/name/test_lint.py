@@ -37,12 +37,37 @@ from .lint import (
     check_type_locality_age,
     check_type_locality_distribution_rules,
     check_type_locality_validity,
+    check_unique_type_locality,
     infer_included_species,
     infer_tags_from_mapped_entries,
     parse_date,
     take_over_name_issue,
 )
 from .name import Name, NameTag, TypeTag
+
+
+@pytest.mark.parametrize("second_text", ["At the river", "In the mountains"])
+def test_unique_type_locality_compares_text_not_provenance(second_text: str) -> None:
+    article = models.Article.virtual(name="source.pdf")
+    name = Mock(spec=Name)
+    name.type_locality = Location.virtual(name="Test locality")
+    name.original_citation = article
+    name.status = Status.valid
+    name.taxon = models.Taxon.virtual(age=AgeClass.extant)
+    name.has_type_tag.return_value = False
+    name.type_tags = (
+        TypeTag.LocationDetail("At the river", article),
+        TypeTag.LocationDetail(second_text, article, page="10"),
+    )
+
+    issues = list(
+        check_unique_type_locality.linter(
+            name, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
+    assert len(issues) == (0 if second_text == "At the river" else 1)
+    assert len(name.type_tags) == 2
 
 
 def test_parse_date() -> None:
