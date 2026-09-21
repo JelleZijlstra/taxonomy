@@ -1,7 +1,7 @@
 import pytest
 
 from taxonomy.applicator import taxon as recommendations
-from taxonomy.db.constants import AgeClass, Rank
+from taxonomy.db.constants import AgeClass, Rank, Status
 from taxonomy.db.models import Name, Taxon
 
 
@@ -82,3 +82,59 @@ def test_review_expands_taxon_and_base_name_fields(
     assert "    - base name field: status='valid'" in output
     assert "    - base name field: nomenclature_status='available'" in output
     assert "    - base name field: year='1896'" in output
+
+
+@pytest.mark.parametrize("status", [Status.nomen_dubium, Status.species_inquirenda])
+def test_create_nonvalid_taxon_and_retry(status: Status) -> None:
+    ancestor = Taxon.virtual(
+        valid_name="Pliosaurus", rank=Rank.genus, age=AgeClass.extant
+    )
+    data = _row("dubious", "Pliosaurus grandis", "species", "ancestor")
+    base_name = data["base_name"]
+    assert isinstance(base_name, dict)
+    base_name["values"] = {"status": {"enum": "Status", "name": status.name}}
+    row = recommendations.parse_recommendation(data, 1)
+    refs = {"ancestor": ancestor}
+    plan = recommendations.build_plan(
+        [row], initial_references=refs, find_taxa=lambda _name: []
+    )
+    created: list[Taxon] = []
+
+    def create_taxon(**values: object) -> Taxon:
+        obj = Taxon.virtual(**values)
+        created.append(obj)
+        return obj
+
+    recommendations.execute_plan(
+        plan, apply=True, create_taxon=create_taxon, create_name=Name.virtual
+    )
+    assert len(created) == 1
+    assert created[0].base_name.status is status
+    assert created[0].base_name.taxon is created[0]
+    retry = recommendations.build_plan(
+        [row], initial_references=refs, find_taxa=lambda _name: created
+    )
+    assert retry.actions[0].already_applied
+
+    created[0].base_name.status = Status.valid
+    with pytest.raises(
+        recommendations.RecommendationError, match="conflicting base Name"
+    ):
+        recommendations.build_plan(
+            [row], initial_references=refs, find_taxa=lambda _name: created
+        )
+
+
+def test_create_taxon_rejects_synonym_base_name() -> None:
+    ancestor = Taxon.virtual(
+        valid_name="Pliosaurus", rank=Rank.genus, age=AgeClass.extant
+    )
+    data = _row("synonym", "Pliosaurus grandis", "species", "ancestor")
+    base_name = data["base_name"]
+    assert isinstance(base_name, dict)
+    base_name["values"] = {"status": {"enum": "Status", "name": "synonym"}}
+    row = recommendations.parse_recommendation(data, 1)
+    with pytest.raises(recommendations.RecommendationError, match="base-name status"):
+        recommendations.build_plan(
+            [row], initial_references={"ancestor": ancestor}, find_taxa=lambda _name: []
+        )

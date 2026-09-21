@@ -150,6 +150,13 @@ def _find_taxa(valid_name: str) -> list[Taxon]:
     return list(Taxon.select().filter(Taxon.valid_name == valid_name))
 
 
+def _base_name_status(values: Mapping[str, Any]) -> Status:
+    status = values.get("status", Status.valid)
+    if not isinstance(status, Status) or not status.is_base_name():
+        raise RecommendationError("base_name.values.status must be a base-name status")
+    return status
+
+
 def _order_rows(
     rows: list[Recommendation], references: Mapping[str, BaseModel]
 ) -> list[Recommendation]:
@@ -233,7 +240,7 @@ def build_plan(
                     name.taxon != taxon
                     or name.group is not expected_group
                     or name.root_name != expected_root
-                    or name.status is not Status.valid
+                    or name.status is not _base_name_status(supplied)
                 ):
                     raise RecommendationError(
                         f"existing Taxon {row.valid_name!r} has a conflicting base Name"
@@ -272,7 +279,7 @@ def build_plan(
                     "taxon": taxon,
                     "group": helpers.group_of_rank(row.rank),
                     "root_name": helpers.root_name_of_name(row.valid_name, row.rank),
-                    "status": Status.valid,
+                    "status": _base_name_status(supplied),
                 }
                 conflicting_fixed = [
                     field
