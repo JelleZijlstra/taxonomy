@@ -8,8 +8,8 @@ from clirm import VirtualReferenceError
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AgeClass,
-    ArticleType,
     ArticleKind,
+    ArticleType,
     Group,
     NamingConvention,
     NomenclatureStatus,
