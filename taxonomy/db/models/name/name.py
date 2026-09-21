@@ -899,7 +899,7 @@ class Name(BaseModel):
     def add_type_identical(
         self,
         name: str,
-        page_described: None | int | str = None,
+        page_described: int | str | None = None,
         locality: Location | None = None,
         **kwargs: Any,
     ) -> Taxon:
@@ -2437,7 +2437,7 @@ class Name(BaseModel):
         self,
         *,
         paper: Article | None = None,
-        page_described: None | int | str = None,
+        page_described: int | str | None = None,
         original_name: str | None = None,
         force: bool = False,
         **kwargs: Any,

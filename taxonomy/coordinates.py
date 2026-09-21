@@ -650,6 +650,8 @@ def is_in_polygon_single(p: Point, polygon: list[LineSegment]) -> bool:
                 latitude = ray.a * edge.x + ray.b
             case VerticalLine(), VerticalLine():
                 continue
+            case _:
+                raise AssertionError("unexpected line types")
         if (
             min(line.p1.latitude, line.p2.latitude)
             <= latitude

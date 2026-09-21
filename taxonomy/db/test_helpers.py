@@ -171,17 +171,19 @@ def test_clean_string_preserves_ambiguous_or_invalid_asterisk_uses(text: str) ->
 
 def test_specimen_detail_text_requests_sex_symbol_normalization() -> None:
     assert helpers.get_string_kind(SpecimenDetailText) is constants.StringKind.markdown
-    assert helpers.get_string_cleanup_options(SpecimenDetailText) == {
-        StringCleanupOption.normalize_sex_symbols,
-        StringCleanupOption.normalize_detail_ocr,
-    }
+    assert helpers.get_string_cleanup_options(SpecimenDetailText) == frozenset(
+        {
+            StringCleanupOption.normalize_sex_symbols,
+            StringCleanupOption.normalize_detail_ocr,
+        }
+    )
 
 
 def test_source_detail_text_requests_detail_ocr_normalization() -> None:
     assert helpers.get_string_kind(SourceDetailText) is constants.StringKind.markdown
-    assert helpers.get_string_cleanup_options(SourceDetailText) == {
-        StringCleanupOption.normalize_detail_ocr
-    }
+    assert helpers.get_string_cleanup_options(SourceDetailText) == frozenset(
+        {StringCleanupOption.normalize_detail_ocr}
+    )
 
 
 def test_extract_coordinates_normalizes_typographic_symbols() -> None:

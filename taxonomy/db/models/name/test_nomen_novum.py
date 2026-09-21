@@ -1,5 +1,7 @@
 """Availability review for purported replacement names."""
 
+from collections.abc import Callable
+
 import pytest
 
 from taxonomy.db.constants import (
@@ -109,7 +111,12 @@ def test_unavailable_replacement_target_is_not_autofixed(
     ("status", "tag_type"),
     [
         (NomenclatureStatus.nomen_novum, NameTag.NomenNovumFor),
-        (NomenclatureStatus.justified_emendation, NameTag.JustifiedEmendationOf),
+        (
+            NomenclatureStatus.justified_emendation,
+            lambda name: NameTag.JustifiedEmendationOf(
+                name, EmendationJustification.inadvertent_error
+            ),
+        ),
         (NomenclatureStatus.unjustified_emendation, NameTag.UnjustifiedEmendationOf),
         (
             NomenclatureStatus.incorrect_original_spelling,
@@ -129,15 +136,12 @@ def test_unavailable_replacement_target_is_not_autofixed(
     "base_status", [NomenclatureStatus.preoccupied, NomenclatureStatus.nomen_nudum]
 )
 def test_replacement_chain_checks_underlying_availability(
-    status: NomenclatureStatus, tag_type: type[NameTag], base_status: NomenclatureStatus
+    status: NomenclatureStatus,
+    tag_type: Callable[[Name], NameTag],
+    base_status: NomenclatureStatus,
 ) -> None:
     base = _name(base_status)
-    if tag_type is NameTag.JustifiedEmendationOf:
-        tag = NameTag.JustifiedEmendationOf(
-            base, EmendationJustification.inadvertent_error
-        )
-    else:
-        tag = tag_type(base)
+    tag = tag_type(base)
     intermediate = _name(status, label="intermediate", tags=(tag,))
 
     messages = _messages(_replacement(intermediate))
@@ -215,7 +219,7 @@ def test_no_replacement_relationship() -> None:
     ],
 )
 def test_does_not_cross_non_type_sharing_links(
-    status: NomenclatureStatus, tag_type: type[NameTag]
+    status: NomenclatureStatus, tag_type: Callable[[Name], NameTag]
 ) -> None:
     available = _name()
     target = _name(status, tags=(tag_type(available),))

@@ -2022,6 +2022,12 @@ def test_location_plss_lint_suggests_tag_from_linked_name(
         plss, "resolve_township", lambda description, **_: _resolved_plss(description)
     )
 
+    monkeypatch.setattr(
+        plss,
+        "get_description_geometry",
+        lambda *_: plss.ResolvedGeometry("section", (_plss_polygon(),)),
+    )
+
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
@@ -2070,6 +2076,12 @@ def test_location_plss_lint_uses_common_section_for_distinct_quarters(
         plss, "resolve_township", lambda description, **_: _resolved_plss(description)
     )
 
+    monkeypatch.setattr(
+        plss,
+        "get_description_geometry",
+        lambda *_: plss.ResolvedGeometry("section", (_plss_polygon(),)),
+    )
+
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))
 
     assert len(messages) == 1
@@ -2083,6 +2095,12 @@ def test_location_plss_lint_extracts_location_detail(
     loc.location_detail = 'Reported as "T27S, R31E, Sec. 3".'  # type: ignore[assignment]
     monkeypatch.setattr(
         plss, "resolve_township", lambda description, **_: _resolved_plss(description)
+    )
+
+    monkeypatch.setattr(
+        plss,
+        "get_description_geometry",
+        lambda *_: plss.ResolvedGeometry("section", (_plss_polygon(),)),
     )
 
     messages = list(location_lint.check_plss(loc, LintConfig(autofix=False)))

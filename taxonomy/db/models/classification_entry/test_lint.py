@@ -491,6 +491,7 @@ def test_materialize_original_citation_uses_exact_act_authors() -> None:
             "taxonomy.db.models.classification_entry.lint._materialization_parent_taxon",
             return_value=parent_taxon,
         ),
+        patch.object(Taxon, "get", return_value=parent_taxon),
         patch.object(Taxon, "create", return_value=created_taxon),
         patch.object(Name, "create", side_effect=create_name),
     ):

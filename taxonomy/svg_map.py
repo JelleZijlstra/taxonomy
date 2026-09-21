@@ -64,11 +64,13 @@ def write_svg_map(
         f'role="img" aria-labelledby="map-title map-description">\n<title id="map-title">{escape(title)}</title>\n',
         '<desc id="map-description">Map of coordinate records. Hover over a point to show its label.</desc>\n',
         "<style>\n",
-        ":root{color-scheme:light dark}svg{background:#dcebf2}"
-        ".graticule{fill:none;stroke:#9db5c1;stroke-width:.6}"
-        ".land{fill:#f4f0df;stroke:#788c91;stroke-width:.7;stroke-linejoin:round}"
-        ".point-marker{fill:#c43d36;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}"
-        "@media(prefers-color-scheme:dark){svg{background:#17242a}.graticule{stroke:#40545d}.land{fill:#354239;stroke:#71848a}.point-marker{stroke:#17242a}}\n",
+        (
+            ":root{color-scheme:light dark}svg{background:#dcebf2}"
+            ".graticule{fill:none;stroke:#9db5c1;stroke-width:.6}"
+            ".land{fill:#f4f0df;stroke:#788c91;stroke-width:.7;stroke-linejoin:round}"
+            ".point-marker{fill:#c43d36;stroke:#fff;stroke-width:1.5;vector-effect:non-scaling-stroke}"
+            "@media(prefers-color-scheme:dark){svg{background:#17242a}.graticule{stroke:#40545d}.land{fill:#354239;stroke:#71848a}.point-marker{stroke:#17242a}}\n"
+        ),
         "</style>\n",
         f'<defs><clipPath id="map-clip"><rect x="{SVG_MARGIN}" y="{SVG_MARGIN}" width="{SVG_WIDTH - 2 * SVG_MARGIN}" height="{SVG_HEIGHT - 2 * SVG_MARGIN}"/></clipPath></defs>\n',
         '<g clip-path="url(#map-clip)">\n',

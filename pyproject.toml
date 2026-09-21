@@ -80,6 +80,8 @@ target-version = "py314"
 select = ["ALL"]
 
 ignore = [
+  "CPY001",  # copyright is documented in the repository license
+  "PLR0917", # positional arguments are part of existing APIs
   "B008",    # do not perform function calls in argument defaults
   "B011",    # assert False is fine
   "F821",    # ADT definitions make lots of "undefined" names

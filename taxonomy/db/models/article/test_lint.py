@@ -25,6 +25,7 @@ def test_publication_date_calendar_serialization() -> None:
     legacy = ArticleTag.unserialize(
         [14, DateSource.internal.value, "1910-09", "source"]
     )
+    assert isinstance(legacy, ArticleTag.PublicationDate)
     assert legacy.calendar is None
     assert legacy.serialize() == [14, DateSource.internal.value, "1910-09", "source"]
     tag = ArticleTag.PublicationDate(

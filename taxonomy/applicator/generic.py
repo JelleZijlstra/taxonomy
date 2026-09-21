@@ -1104,8 +1104,10 @@ def refresh_person_reference_cache() -> None:
 
 
 def _person_reference_snapshot(person: models.Person) -> dict[str, list[int]]:
-    snapshot = {
-        field_name: sorted(person.get_raw_derived_field(field_name) or ())
+    snapshot: dict[str, list[int]] = {
+        field_name: sorted(
+            cast(list[int], person.get_raw_derived_field(field_name) or [])
+        )
         for field_name in _PERSON_MERGE_REFERENCE_FIELDS
         if field_name != "targets"
     }
@@ -1118,7 +1120,9 @@ def _person_reference_snapshot(person: models.Person) -> dict[str, list[int]]:
 
 def _person_reassign_reference_snapshot(person: models.Person) -> dict[str, list[int]]:
     return {
-        field_name: sorted(person.get_raw_derived_field(field_name) or ())
+        field_name: sorted(
+            cast(list[int], person.get_raw_derived_field(field_name) or [])
+        )
         for field_name in _PERSON_REASSIGN_REFERENCE_FIELDS
     }
 
@@ -2547,6 +2551,7 @@ def print_review_table(recommendations: Iterable[Recommendation]) -> None:
         obj = f"{row.object.model} {identity} {row.object.label}"
         model = registry.get(row.object.model)
         visible_changes = row.changes
+        visible_values: dict[str, Any] = {}
         if row.action == CREATE_OBJECT:
             assert row.values is not None
             visible_values = {

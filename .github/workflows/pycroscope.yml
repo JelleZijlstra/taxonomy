@@ -2,22 +2,28 @@ name: pycroscope
 
 on: [push, pull_request]
 
+env:
+  CLIRM_READONLY: "1"
+
 jobs:
   main:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v7
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v7
         with:
-          python-version: 3.14
+          python-version: "3.14"
 
       - name: Install
         run: |
-          python -m pip install -e .
-          python -m pip install git+https://github.com/JelleZijlstra/pycroscope.git@main#egg=pycroscope
+          python -m pip install --upgrade uv
+          uv sync --locked
+          uv pip install git+https://github.com/JelleZijlstra/pycroscope.git@main#egg=pycroscope
       - name: Run
         # TODO check additional directories
-        run: PYTHONPATH=. python -m pycroscope --config-file pyproject.toml taxonomy/
+        run:
+          PYTHONPATH=. .venv/bin/python -m pycroscope --config-file pyproject.toml
+          taxonomy/

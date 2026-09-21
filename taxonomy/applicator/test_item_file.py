@@ -9,6 +9,7 @@ import pytest
 
 from taxonomy.applicator import item_file as recommendations
 from taxonomy.applicator.citation_group import PlannedCitationGroup
+from taxonomy.config import Options
 from taxonomy.db.constants import ArticleType
 from taxonomy.db.models import CitationGroup, ItemFile, Region
 from taxonomy.db.models.base import LintConfig
@@ -59,12 +60,12 @@ def _citation_group() -> CitationGroup:
     )
 
 
-def _options(tmp_path: Path) -> SimpleNamespace:
+def _options(tmp_path: Path) -> Options:
     new_path = tmp_path / "new"
     item_file_path = tmp_path / "items"
     (new_path / "Burst" / "Old").mkdir(parents=True)
     item_file_path.mkdir()
-    return SimpleNamespace(new_path=new_path, item_file_path=item_file_path)
+    return Options(new_path=new_path, item_file_path=item_file_path)
 
 
 def _build(tmp_path: Path) -> recommendations.RecommendationPlan:
@@ -311,7 +312,7 @@ def test_existing_item_file_removes_downloads_source_on_apply(tmp_path: Path) ->
     row_data["file"]["source_path"] = "source item.pdf"
     plan = recommendations.build_plan(
         (recommendations.parse_recommendation(row_data, 1),),
-        options=SimpleNamespace(
+        options=Options(
             new_path=options.new_path,
             downloads_path=downloads_path,
             item_file_path=options.item_file_path,

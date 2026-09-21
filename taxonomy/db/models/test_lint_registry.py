@@ -530,7 +530,7 @@ def test_multi_duplicate_finder_checks_each_key() -> None:
             return ("shared", "first-only")
         return ("shared", "second-only")
 
-    issues = list(duplicate_keys.linter(second, LintConfig(autofix=False)))
+    issues = list(duplicate_keys.linter(cast(Any, second), LintConfig(autofix=False)))
 
     assert issues == ["Duplicate of [FakeObject(1)] (key 'shared')"]
 

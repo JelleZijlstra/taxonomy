@@ -88,7 +88,7 @@ def main() -> None:
 def download_and_convert() -> Path:
     tmpdir = Path(tempfile.mkdtemp(prefix="natural-earth-adm1-"))
     zip_path = tmpdir / "natural_earth_adm1.zip"
-    urlretrieve(NATURAL_EARTH_URL, zip_path)  # noqa: S310
+    urlretrieve(NATURAL_EARTH_URL, zip_path)
     with zipfile.ZipFile(zip_path) as zf:
         zf.extractall(tmpdir)
     shapefile_path = tmpdir / "ne_10m_admin_1_states_provinces.shp"

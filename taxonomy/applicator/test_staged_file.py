@@ -1,11 +1,11 @@
 import hashlib
 from pathlib import Path
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from taxonomy.applicator import staged_file as recommendations
+from taxonomy.config import Options
 
 
 def _row(content: bytes) -> dict[str, Any]:
@@ -24,12 +24,12 @@ def _row(content: bytes) -> dict[str, Any]:
     }
 
 
-def _options(tmp_path: Path) -> SimpleNamespace:
+def _options(tmp_path: Path) -> Options:
     new_path = tmp_path / "new"
     downloads_path = tmp_path / "downloads"
     new_path.mkdir()
     downloads_path.mkdir()
-    return SimpleNamespace(new_path=new_path, downloads_path=downloads_path)
+    return Options(new_path=new_path, downloads_path=downloads_path)
 
 
 def test_moves_download_to_not_cataloged(tmp_path: Path) -> None:

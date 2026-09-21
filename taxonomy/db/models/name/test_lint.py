@@ -8,8 +8,8 @@ from clirm import VirtualReferenceError
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AgeClass,
-    ArticleType,
     ArticleKind,
+    ArticleType,
     Group,
     NamingConvention,
     NomenclatureStatus,
@@ -1107,6 +1107,7 @@ def test_redirect_rule_flags_name_type_locality() -> None:
             {Group.species},
         ),
         (TypeTag.GenusCoelebs(), {Group.genus}),
+        (TypeTag.NoOriginalParent, {Group.genus}),
         (
             TypeTag.SpecimenDetail(
                 "Original specimen.", models.Article.virtual(name="test.pdf")

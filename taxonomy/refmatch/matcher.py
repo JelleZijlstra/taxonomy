@@ -553,7 +553,7 @@ def make_article_record(article: Article) -> ArticleRecord:
         authors=authors,
         author_aliases=author_aliases,
         author_key=(
-            sorted(author_aliases[0])[0]
+            min(author_aliases[0])
             if author_aliases
             else (authors[0] if authors else "")
         ),

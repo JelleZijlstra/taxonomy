@@ -8,7 +8,7 @@ from taxonomy.summary_tree import (
 )
 
 
-def test_render_summary_tree_with_boolean_and_collection_labels() -> None:
+def test_render_summary_tree_with_boolean_and_categorical_labels() -> None:
     config = SummaryTreeConfig(
         singular="item",
         plural="items",
@@ -19,9 +19,9 @@ def test_render_summary_tree_with_boolean_and_collection_labels() -> None:
         tree=SummarySplit("enabled", children={True: SummarySplit("colors")}),
     )
     objects: list[ObjectLabels] = [
-        {"enabled": True, "colors": frozenset({"red"})},
-        {"enabled": True, "colors": frozenset({"blue"})},
-        {"enabled": False, "colors": frozenset()},
+        {"enabled": True, "colors": "red"},
+        {"enabled": True, "colors": "blue"},
+        {"enabled": False, "colors": ""},
     ]
 
     assert render_summary_tree(objects, config) == [
@@ -33,17 +33,15 @@ def test_render_summary_tree_with_boolean_and_collection_labels() -> None:
     ]
 
 
-@pytest.mark.parametrize(
-    "objects", [[{"colors": frozenset()}], [{"colors": frozenset({"red", "blue"})}]]
-)
+@pytest.mark.parametrize("objects", [[{"colors": ""}], [{"colors": "green"}]])
 def test_render_summary_tree_requires_variants_to_partition_parent(
     objects: list[ObjectLabels],
 ) -> None:
     config = SummaryTreeConfig(
-        "item",
-        "items",
-        {"colors": {"red": "red", "blue": "blue"}},
-        SummarySplit("colors"),
+        singular="item",
+        plural="items",
+        variant_labels={"colors": {"red": "red", "blue": "blue"}},
+        tree=SummarySplit("colors", children={"red": SummarySplit("enabled")}),
     )
 
     with pytest.raises(ValueError, match="expected exactly one"):
@@ -52,13 +50,13 @@ def test_render_summary_tree_requires_variants_to_partition_parent(
 
 def test_render_summary_tree_can_select_variants_for_a_split() -> None:
     config = SummaryTreeConfig(
-        "item",
-        "items",
-        {"colors": {"red": "red", "blue": "blue", "green": "green"}},
-        SummarySplit("colors", variants=("red", "green")),
+        singular="item",
+        plural="items",
+        variant_labels={"colors": {"red": "red", "blue": "blue", "green": "green"}},
+        tree=SummarySplit("colors", variants=("red", "green")),
     )
 
-    assert render_summary_tree([{"colors": frozenset({"green"})}], config) == [
+    assert render_summary_tree([{"colors": "green"}], config) == [
         "Of 1 item (100.0% of total):",
         "- 0 items (0.0% of total): red",
         "- 1 item (100.0% of total): green",

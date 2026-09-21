@@ -7,10 +7,44 @@ exports released on Zenodo.
 # Unreleased
 
 - Database
-  - Add the `ItemFile` concept for keeping track of full journal volume PDFs.
+  - Add source-backed occurrence records linked to classification entries, with verbatim
+    locality and specimen data, coordinates and uncertainty, and separate source
+    assertions and later assessments of validity, origin, and presence.
+  - Expand geographic data and type-locality documentation, including partial type
+    localities, unplaced localities, administrative subdivisions, and explicit
+    provenance for coordinates inferred from sources, gazetteers, and PLSS surveys.
+  - Record publication dates in Julian and French Republican calendars alongside their
+    Gregorian interpretation, and evidence that one article predates another.
+    Distinguish separate pagination sequences when dating journal issues.
+  - Add the internal `ItemFile` concept for keeping track of full journal volume PDFs.
+  - Extend source transcriptions with etymologies, original descriptions, auxiliary
+    names, and links between quoted locality or specimen details and classification
+    entries. Preserve nonstandard source page labels.
+  - Add author ORCID information and expand bibliographical and taxonomic research
+    notes, including investigations of disputed type localities and publication dates.
   - Add verified citations to some missed names and type designations.
 - Backend
+  - Add guarded recommendation manifests with review, dry-run, and virtual-model
+    validation for database corrections, source ingestion, and taxon creation. Add
+    read-only database protection and structured lint fixes.
+  - Expand geographic consistency checks using OpenStreetMap, GeoNames, and PLSS,
+    including locality-name normalization, coordinate provenance, and Region hierarchy
+    validation. Add configurable network and slow-lint resource gates.
+  - Improve reference matching, classification reconciliation, earlier name-usage
+    discovery, ZooBank checks, and MDD comparison and reporting tools.
+  - Add configurable summary trees for type-locality coverage and improve web caching,
+    compressed asset delivery, and GraphQL schema consistency.
+  - Refresh dependencies and CI tools. Run the full test suite, including web and import
+    tests, with isolated configuration and database fixtures.
 - Frontend
+  - Display occurrence records and their source evidence, regional distribution
+    assessments, richer location context, and linked coordinate provenance.
+  - Display partial type localities, additional source-level classification details,
+    citation metadata, journal aliases, and biographical links.
+  - Label historical calendars on publication-date evidence and journal issue dates;
+    sort issue dates by their Gregorian interpretation and show publication-date bounds.
+  - Extend the taxonomy games with geographic scopes, additional taxonomic levels, and
+    improved answer entry.
 
 # 25.12.0 (December 3, 2025)
 

@@ -34,6 +34,7 @@ from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models import (
     Article,
     ClassificationEntry,
+    IssueDate,
     Location,
     Name,
     NameComment,
@@ -540,7 +541,20 @@ def location_coordinate_url_resolver(
     return get_openstreetmap_url(location.latitude, location.longitude)
 
 
+def issue_date_gregorian_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
+    issue_date = get_model(IssueDate, parent, info)
+    try:
+        return issue_date.get_gregorian_date()
+    except ValueError:
+        return None
+
+
 CUSTOM_FIELDS = {
+    IssueDate: {
+        "gregorian_date": Field(
+            String, required=False, resolver=issue_date_gregorian_resolver
+        )
+    },
     Location: {
         "region_path": List(
             NonNull(lambda: build_object_type_from_model(Region)),

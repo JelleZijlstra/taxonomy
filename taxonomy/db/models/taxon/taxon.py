@@ -750,7 +750,7 @@ class Taxon(BaseModel):
         self,
         rank: Rank,
         name: str,
-        year: None | str | int = None,
+        year: str | int | None = None,
         age: AgeClass | None = None,
         **kwargs: Any,
     ) -> Taxon:
@@ -873,10 +873,10 @@ class Taxon(BaseModel):
         self,
         *,
         root_name: str | None = None,
-        year: None | int | str = None,
+        year: int | str | None = None,
         original_name: str | None = None,
         original_citation: Article | None = None,
-        page_described: None | int | str = None,
+        page_described: int | str | None = None,
         status: Status = Status.synonym,
         nomenclature_status: NomenclatureStatus = NomenclatureStatus.available,
         interactive: bool = True,
@@ -905,7 +905,7 @@ class Taxon(BaseModel):
     def add_type_identical(
         self,
         name: str,
-        page_described: None | int | str = None,
+        page_described: int | str | None = None,
         locality: models.Location | None = None,
         **kwargs: Any,
     ) -> Taxon:
@@ -973,7 +973,7 @@ class Taxon(BaseModel):
         *,
         root_name: str | None = None,
         paper: Article | None = None,
-        page_described: None | int | str = None,
+        page_described: int | str | None = None,
         status: Status = Status.synonym,
         group: Group | None = None,
         interactive: bool = True,
@@ -1012,7 +1012,7 @@ class Taxon(BaseModel):
         rank: Rank | None = None,
         name: str | None = None,
         paper: Article | None = None,
-        page_described: None | int | str = None,
+        page_described: int | str | None = None,
         status: Status = Status.valid,
         **override_kwargs: Any,
     ) -> Taxon | None:

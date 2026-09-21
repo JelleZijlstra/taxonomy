@@ -331,7 +331,7 @@ def _expected_address_types(region: Region) -> frozenset[str]:
             }
         )
     if region.kind is RegionKind.county:
-        address_types = {"city", "county", "district"}
+        address_types: set[str] = {"city", "county", "district"}
         if _is_english_county(region):
             # Most separate lieutenancy boundaries are exposed as
             # ``ceremonial``. Coterminous boundaries may instead be indexed as

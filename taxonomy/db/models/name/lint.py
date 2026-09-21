@@ -3358,7 +3358,7 @@ TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
             TypeTag.IncludedSpecies,
             TypeTag.GenusCoelebs,
             TypeTag.TypeSpeciesDetail,
-            TypeTag.NoOriginalParent,
+            type(TypeTag.NoOriginalParent),
         ),
         (Group.genus,),
     ),

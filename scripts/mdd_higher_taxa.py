@@ -56,7 +56,7 @@ def batched(iterable: Iterable[T], n: int) -> Iterable[list[T]]:
         yield chunk
 
 
-class MDDHigherTaxonRow(TypedDict, closed=True):  # type: ignore[call-arg]
+class MDDHigherTaxonRow(TypedDict, closed=True):
     sciName: str
     id: str
     rank: str

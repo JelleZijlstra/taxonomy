@@ -71,19 +71,19 @@ def test_type_locality_summary_labels_are_independent_of_tree() -> None:
     assert shell._type_locality_summary_labels(missing) == {
         "type_locality_set": False,
         "type_locality_required": False,
-        "taxon_age": frozenset({"fossil"}),
+        "taxon_age": "fossil",
     }
     assert shell._type_locality_summary_labels(regionwide) == {
         "type_locality_set": True,
-        "location_age": frozenset({"Recent"}),
-        "location_kind": frozenset({"regionwide"}),
+        "location_age": "Recent",
+        "location_kind": "regionwide",
         "imprecise_locality": True,
         "coordinates_set": True,
     }
     assert shell._type_locality_summary_labels(fossil_unplaced) == {
         "type_locality_set": True,
-        "location_age": frozenset({"fossil"}),
-        "location_kind": frozenset({"Unplaced"}),
+        "location_age": "fossil",
+        "location_kind": "Unplaced",
         "imprecise_locality": False,
         "coordinates_set": False,
     }
@@ -124,6 +124,8 @@ def test_type_locality_summary_lines() -> None:
         "    - 1 name (10.0% of total): fossil or ichnotaxon",
         "    - 1 name (10.0% of total): extant or recently extinct",
         "  - 1 name (10.0% of total): type locality required",
+        "    - 0 names (0.0% of total): fossil or ichnotaxon",
+        "    - 1 name (10.0% of total): extant or recently extinct",
         "- 7 names (70.0% of total): type locality set",
         "  - 4 names (40.0% of total): Recent location",
         "    - 1 name (10.0% of total): regionwide location",
@@ -133,12 +135,14 @@ def test_type_locality_summary_lines() -> None:
         "      - 0 names (0.0% of total): ImpreciseLocality tag set",
         "      - 1 name (10.0% of total): no ImpreciseLocality tag",
         "    - 1 name (10.0% of total): Unplaced location",
+        "    - 0 names (0.0% of total): partial type localities",
         "    - 1 name (10.0% of total): precise location",
         "      - 1 name (10.0% of total): coordinates set",
         "      - 0 names (0.0% of total): coordinates not set",
         "  - 3 names (30.0% of total): fossil location (all non-Recent locations)",
         "    - 1 name (10.0% of total): General location",
         "    - 1 name (10.0% of total): Unplaced location",
+        "    - 0 names (0.0% of total): partial type localities",
         "    - 1 name (10.0% of total): other location",
     ]
 

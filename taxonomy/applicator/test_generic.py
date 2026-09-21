@@ -1620,6 +1620,8 @@ def test_update_object_can_remove_one_malformed_raw_tag(
     def get_object(_model: type[BaseModel], object_id: int) -> BaseModel:
         return combination if object_id == 148619 else base_name
 
+    monkeypatch.setattr(recommendations, "_get_object", get_object)
+
     plan = recommendations.build_plan(
         [row], model_registry={"Name": Name}, get_object=get_object
     )
@@ -1628,7 +1630,7 @@ def test_update_object_can_remove_one_malformed_raw_tag(
     assert combination.type_tags == ()
     (combination_tag,) = combination.tags
     assert isinstance(combination_tag, NameTag.NameCombinationOf)
-    assert combination_tag.name.id == 148618
+    assert combination_tag.name is base_name
 
 
 def test_structured_tag_resolves_manifest_reference() -> None:
