@@ -13,6 +13,7 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from string import capwords
 from typing import IO, TypedDict
 
 import unidecode
@@ -315,11 +316,9 @@ def get_mdd_style_authority_for_single_person(
             case "John Edwards":
                 return "J. Edwards Hill"
     match person.naming_convention:
-        case NamingConvention.pinyin:
-            return f"{person.family_name} {person.given_names.replace('-', '').lower().title()}"
-        case NamingConvention.chinese:
+        case NamingConvention.pinyin | NamingConvention.chinese:
             if person.given_names is not None:
-                given_name = person.given_names.replace("-", "").lower().title()
+                given_name = capwords(person.given_names.replace("-", ""))
                 return f"{person.family_name} {given_name}"
             else:
                 if WARN_NO_INITIALS:
@@ -365,9 +364,10 @@ def possible_mdd_authors(hesp_author: Person) -> Iterable[str]:
         NamingConvention.pinyin,
         NamingConvention.chinese,
     ):
-        yield (
-            f"{hesp_author.family_name} {hesp_author.given_names.replace('-', '').lower().title()}"
-        )
+        if hesp_author.given_names is None:
+            yield hesp_author.family_name
+        else:
+            yield f"{hesp_author.family_name} {capwords(hesp_author.given_names.replace('-', ''))}"
         return
     if hesp_author.naming_convention is NamingConvention.korean:
         yield f"{hesp_author.family_name} {hesp_author.given_names}"

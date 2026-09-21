@@ -179,8 +179,9 @@ lower = C(
             "ń",
             "ň",
             "ṅ",
-            "ō",
+            "ű",
             "ő",
+            "ō",
             "ọ",
             "ř",
             "ś",
@@ -428,13 +429,19 @@ pinyin_family_name = pinyin_syllable | OneOf.from_strs(
 )
 
 chinese_lower = C(sorted(unicode_range("a", "z") | {"ü"}))
-chinese_name = latin_upper + OneOrMore(chinese_lower)
-pinyin_given_names_cased = chinese_name + Repetition(
-    L("-") + OneOrMore(chinese_lower), min=0, max=2
+chinese_lower_with_apostrophe = chinese_lower | (L("'") + chinese_lower)
+chinese_name = latin_upper + OneOrMore(chinese_lower_with_apostrophe)
+pinyin_given_names_cased = (
+    latin_upper
+    + ZeroOrMore(chinese_lower)
+    + Repetition(L("-") + OneOrMore(chinese_lower), min=0, max=2)
 )
 chinese_given_names = (
     chinese_name
-    + Optional((L("-") | L(" ")) + Optional(latin_upper) + OneOrMore(chinese_lower))
+    + Optional(
+        (L("-") | L(" "))
+        + (chinese_name | (chinese_lower + ZeroOrMore(chinese_lower_with_apostrophe)))
+    )
     + Optional(L(" ") + latin_upper + L("."))
 )
 

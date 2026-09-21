@@ -120,6 +120,49 @@ def test_pinyin_hyphen_preserves_initials() -> None:
     assert person.get_initials() == "Z.-j."
 
 
+@pytest.mark.parametrize("given_names", ["A-fang", "A", "E", "O", "Zhong-jian"])
+def test_pinyin_given_names(given_names: str) -> None:
+    assert parsing.matches_grammar(given_names, parsing.pinyin_given_names_pattern)
+    assert parsing.matches_grammar(
+        given_names.lower(), parsing.pinyin_given_names_lowercased_pattern
+    )
+
+
+@pytest.mark.parametrize(
+    "given_names", ["B-fang", "A-Fang", "a-fang", "A--fang", "Ch'eng-Chao", "A-fang!"]
+)
+def test_pinyin_given_names_reject_malformed_names(given_names: str) -> None:
+    assert not (
+        parsing.matches_grammar(given_names, parsing.pinyin_given_names_pattern)
+        and parsing.matches_grammar(
+            given_names.lower(), parsing.pinyin_given_names_lowercased_pattern
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "given_names",
+    ["C'eng-Chao", "Ch'eng-Chao", "Ch'eng-chao", "Cheng-Ch'ao", "Chien C."],
+)
+def test_chinese_given_names(given_names: str) -> None:
+    assert parsing.matches_grammar(given_names, parsing.chinese_given_names_pattern)
+
+
+@pytest.mark.parametrize(
+    "given_names",
+    ["'Cheng-Chao", "Ch''eng-Chao", "Cheng-Chao'", "Cheng-'chao", "Cheng--Chao"],
+)
+def test_chinese_given_names_reject_malformed_names(given_names: str) -> None:
+    assert not parsing.matches_grammar(given_names, parsing.chinese_given_names_pattern)
+
+
+def test_chinese_family_name_with_apostrophe() -> None:
+    assert parsing.matches_grammar("K'ung", parsing.chinese_family_name_pattern)
+    assert not parsing.matches_grammar(
+        "k'ung", parsing.pinyin_family_name_lowercased_pattern
+    )
+
+
 def test_ukrainian_uses_ukrainian_romanization() -> None:
     person = Person.virtual(
         family_name="Загороднюк",

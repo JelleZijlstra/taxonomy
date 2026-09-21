@@ -318,3 +318,31 @@ def test_mdd_author_uses_native_order_for_vietnamese_names() -> None:
         == "Vuong Tan Tu & Hassanin in Vuong Tan Tu, Cornette, Utge, & Hassanin"
     )
     assert list(mdd_diff.possible_mdd_authors(vuong)) == ["Vuong Tan Tu"]
+
+
+@pytest.mark.parametrize(
+    ("convention", "family_name", "given_names", "expected"),
+    [
+        (NamingConvention.pinyin, "Wu", "A-fang", "Wu Afang"),
+        (NamingConvention.chinese, "Liu", "Ch'eng-Chao", "Liu Ch'engchao"),
+        (NamingConvention.chinese, "Tan", "Heok Hui", "Tan Heok Hui"),
+        (NamingConvention.chinese, "Lee", "Chien C.", "Lee Chien C."),
+        (NamingConvention.pinyin, "Wu", None, "Wu"),
+        (NamingConvention.chinese, "Liu", None, "Liu"),
+    ],
+)
+def test_mdd_chinese_name_spelling(
+    convention: NamingConvention,
+    family_name: str,
+    given_names: str | None,
+    expected: str,
+) -> None:
+    person = _person(family_name, given_names=given_names, naming_convention=convention)
+
+    assert (
+        mdd_diff.get_mdd_style_authority_for_single_person(
+            person, set(), Name.virtual()
+        )
+        == expected
+    )
+    assert list(mdd_diff.possible_mdd_authors(person)) == [expected]

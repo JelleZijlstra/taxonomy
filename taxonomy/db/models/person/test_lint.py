@@ -5,7 +5,7 @@ import pytest
 from taxonomy.apis import orcid
 from taxonomy.db import models
 from taxonomy.db.constants import NamingConvention, PersonType
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.person import (
     Person,
     is_more_specific_than,
@@ -67,6 +67,192 @@ def test_multiple_orcids() -> None:
 
     assert len(issues) == 1
     assert "multiple ORCID tags" in str(issues[0])
+
+
+@pytest.mark.parametrize(
+    "convention",
+    [
+        NamingConvention.vietnamese,
+        NamingConvention.pinyin,
+        NamingConvention.chinese,
+        NamingConvention.korean,
+    ],
+)
+def test_naming_convention_warns_without_autofixing(
+    monkeypatch: pytest.MonkeyPatch, convention: NamingConvention
+) -> None:
+    person = Person.virtual(
+        family_name="Li",
+        given_names="Ming",
+        type=PersonType.unchecked,
+        naming_convention=NamingConvention.unspecified,
+        tags=(),
+    )
+    other = Person.virtual(
+        family_name="Li", type=PersonType.checked, naming_convention=convention
+    )
+    query = Mock()
+    query.filter.return_value = [other]
+    monkeypatch.setattr(Person, "select_valid", Mock(return_value=query))
+    Person.clear_lint_caches()
+    try:
+        issues = list(
+            lint.naming_convention(person, LintConfig(autofix=True, interactive=False))
+        )
+
+        assert len(issues) == 1
+        assert issues[0].code == "naming_convention"
+        assert (
+            "naming convention is unspecified, but family name 'Li' is also used "
+            f"with naming conventions: {convention.name}"
+        ) in str(issues[0])
+        assert issues[0].fix is None
+        assert person.naming_convention is NamingConvention.unspecified
+    finally:
+        Person.clear_lint_caches()
+
+
+@pytest.mark.parametrize(
+    "convention",
+    [value for value in NamingConvention if value is not NamingConvention.unspecified],
+)
+def test_naming_convention_preserves_explicit_conventions(
+    monkeypatch: pytest.MonkeyPatch, convention: NamingConvention
+) -> None:
+    person = Person.virtual(
+        family_name="Li",
+        given_names="Ming",
+        type=PersonType.unchecked,
+        naming_convention=convention,
+    )
+    lookup = Mock(
+        side_effect=AssertionError("should not look up an explicit convention")
+    )
+    monkeypatch.setattr(lint, "_family_name_to_naming_conventions", lookup)
+
+    assert not list(
+        lint.naming_convention.linter(
+            person, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
+
+def test_naming_convention_exact_matches_and_ignored_warning(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        lint,
+        "_family_name_to_naming_conventions",
+        Mock(return_value={"Li": {NamingConvention.pinyin, NamingConvention.chinese}}),
+    )
+    person = Person.virtual(
+        family_name="Li",
+        given_names="Ming",
+        type=PersonType.unchecked,
+        naming_convention=NamingConvention.unspecified,
+        tags=(
+            models.tags.PersonTag.IgnoreLint("naming_convention", comment="Reviewed"),
+        ),
+    )
+    cfg = LintConfig(autofix=False, interactive=False)
+
+    assert list(lint.naming_convention.linter(person, cfg)) == [
+        (
+            "naming convention is unspecified, but family name 'Li' is also used "
+            "with naming conventions: chinese, pinyin"
+        )
+    ]
+    assert not list(lint.naming_convention(person, cfg))
+    for family_name in ("Liu", "li", "Lí", "Smith"):
+        person.family_name = family_name
+        assert not list(lint.naming_convention.linter(person, cfg))
+
+
+@pytest.mark.parametrize("initials", [None, "M."])
+def test_naming_convention_skips_names_without_given_names(
+    monkeypatch: pytest.MonkeyPatch, initials: str | None
+) -> None:
+    person = Person.virtual(
+        family_name="Li",
+        initials=initials,
+        type=PersonType.unchecked,
+        naming_convention=NamingConvention.unspecified,
+    )
+    monkeypatch.setattr(
+        lint,
+        "_family_name_to_naming_conventions",
+        Mock(side_effect=AssertionError("should not look up an initials-only name")),
+    )
+
+    assert not list(
+        lint.naming_convention.linter(
+            person, LintConfig(autofix=False, interactive=False)
+        )
+    )
+
+
+@pytest.mark.parametrize(
+    "person_type",
+    [PersonType.deleted, PersonType.hard_redirect, PersonType.soft_redirect],
+)
+def test_naming_convention_skips_invalid_persons(
+    monkeypatch: pytest.MonkeyPatch, person_type: PersonType
+) -> None:
+    invalid = Person.virtual(
+        family_name="Li",
+        given_names="Ming",
+        type=person_type,
+        naming_convention=NamingConvention.pinyin,
+    )
+    person = Person.virtual(
+        family_name="Li",
+        given_names="Ming",
+        type=PersonType.unchecked,
+        naming_convention=NamingConvention.unspecified,
+    )
+    query = Mock()
+    query.filter.return_value = [invalid]
+    monkeypatch.setattr(Person, "select_valid", Mock(return_value=query))
+    Person.clear_lint_caches()
+    cfg = LintConfig(autofix=False, interactive=False)
+    try:
+        assert not list(lint.naming_convention.linter(person, cfg))
+        invalid.naming_convention = NamingConvention.unspecified
+        assert not list(lint.naming_convention.linter(invalid, cfg))
+    finally:
+        Person.clear_lint_caches()
+
+
+def test_naming_convention_cache_is_cleared_between_lint_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = Person.virtual(
+        family_name="Li",
+        type=PersonType.checked,
+        naming_convention=NamingConvention.pinyin,
+    )
+    query = Mock()
+    query.filter.return_value = [source]
+    select = Mock(return_value=query)
+    monkeypatch.setattr(Person, "select_valid", select)
+    Person.clear_lint_caches()
+    try:
+        assert lint._family_name_to_naming_conventions() == {
+            "Li": {NamingConvention.pinyin}
+        }
+        source.naming_convention = NamingConvention.chinese
+        assert lint._family_name_to_naming_conventions() == {
+            "Li": {NamingConvention.pinyin}
+        }
+        select.assert_called_once_with()
+
+        Person.clear_lint_caches()
+        assert lint._family_name_to_naming_conventions() == {
+            "Li": {NamingConvention.chinese}
+        }
+        assert select.call_count == 2
+    finally:
+        Person.clear_lint_caches()
 
 
 def test_unchecked_person_may_have_orcid_work_ignore() -> None:
@@ -170,8 +356,105 @@ def test_orcid_profile_warns_on_public_name_mismatch(
     ]
 
 
-def test_orcid_works_warns_when_known_article_does_not_list_person(
+def test_orcid_profile_reviewed_redirect_exception(
     monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stored_orcid = "0000-0003-1648-6773"
+    person = Person.virtual(
+        family_name="Le",
+        given_names="Son",
+        tussenvoegsel="Xuan",
+        naming_convention=NamingConvention.vietnamese,
+        type=PersonType.unchecked,
+        tags=(models.tags.PersonTag.ORCID(stored_orcid),),
+    )
+    profile = Mock(
+        return_value=orcid.OrcidProfile(
+            orcid="0000-0001-9273-0040",
+            given_names="Anh",
+            family_names="Nguyen",
+            credit_name="Anh D. Nguyen",
+            other_names=(),
+            works=(),
+        )
+    )
+    monkeypatch.setattr(orcid, "get_orcid_profile", profile)
+    monkeypatch.setattr(lint.LINT, "linters", [lint.orcid_profile])
+    cfg = LintConfig(
+        autofix=False,
+        structured_autofix=True,
+        interactive=False,
+        available_resources=frozenset(LintResource),
+    )
+
+    issues = list(lint.LINT.run(person, cfg))
+    assert len(issues) == 2
+    assert "redirects to public record 0000-0001-9273-0040" in str(issues[0])
+    assert "does not match Person 'Le Xuan Son'" in str(issues[1])
+
+    lint.add_ignore(
+        person, "orcid_profile", "Published identifier redirects incorrectly."
+    )
+    assert not list(lint.LINT.run(person, cfg))
+    assert lint.LINT.get_ignored_lints(person) == {"orcid_profile"}
+
+    # If ORCID resolves the conflict, normal lint cleanup removes the exception.
+    profile.return_value = orcid.OrcidProfile(
+        orcid=stored_orcid,
+        given_names="Son Xuan",
+        family_names="Le",
+        credit_name=None,
+        other_names=(),
+        works=(),
+    )
+    assert not list(lint.LINT.run(person, cfg))
+    assert person.tags == (models.tags.PersonTag.ORCID(stored_orcid),)
+
+
+@pytest.mark.parametrize(
+    "resources",
+    [frozenset(), frozenset({LintResource.NETWORK}), frozenset({LintResource.SLOW})],
+)
+def test_orcid_profile_exception_survives_unavailable_resources(
+    monkeypatch: pytest.MonkeyPatch, resources: frozenset[LintResource]
+) -> None:
+    person = Person.virtual(
+        family_name="Le",
+        given_names="Son",
+        tussenvoegsel="Xuan",
+        naming_convention=NamingConvention.vietnamese,
+        type=PersonType.unchecked,
+        tags=(
+            models.tags.PersonTag.ORCID("0000-0003-1648-6773"),
+            models.tags.PersonTag.IgnoreLint(
+                "orcid_profile", comment="Reviewed redirect."
+            ),
+        ),
+    )
+    lookup = Mock(
+        side_effect=AssertionError("profile lookup requires network and slow")
+    )
+    monkeypatch.setattr(orcid, "get_orcid_profile", lookup)
+    monkeypatch.setattr(lint.LINT, "linters", [lint.orcid_profile])
+
+    assert not list(
+        lint.LINT.run(
+            person,
+            LintConfig(
+                autofix=False,
+                structured_autofix=True,
+                interactive=False,
+                available_resources=resources,
+            ),
+        )
+    )
+    lookup.assert_not_called()
+    assert lint.LINT.get_ignored_lints(person) == {"orcid_profile"}
+
+
+@pytest.mark.parametrize("redirected", [False, True])
+def test_orcid_works_warns_when_known_article_does_not_list_person(
+    monkeypatch: pytest.MonkeyPatch, *, redirected: bool
 ) -> None:
     person = _profile_person("0000-0002-1694-233X")
     article = Mock(spec=models.Article)
@@ -179,7 +462,7 @@ def test_orcid_works_warns_when_known_article_does_not_list_person(
     article.name = "example-paper"
     article.get_authors.return_value = []
     profile = orcid.OrcidProfile(
-        orcid="0000-0002-1694-233X",
+        orcid="0000-0003-1577-6568" if redirected else "0000-0002-1694-233X",
         given_names="Jane",
         family_names="Smith",
         credit_name=None,
@@ -207,6 +490,38 @@ def test_orcid_works_warns_when_known_article_does_not_list_person(
             "is not an author of Article 'example-paper'"
         )
     ]
+
+
+def test_orcid_works_skips_redirect_to_different_person(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    person = _profile_person("0000-0002-1694-233X")
+    profile = orcid.OrcidProfile(
+        orcid="0000-0003-1577-6568",
+        given_names="John",
+        family_names="Jones",
+        credit_name=None,
+        other_names=(),
+        works=(
+            orcid.OrcidWork(
+                doi="10.1234/example",
+                title="Example",
+                journal_title=None,
+                publication_year=2024,
+                source_name=None,
+            ),
+        ),
+    )
+    monkeypatch.setattr(orcid, "get_orcid_profile", Mock(return_value=profile))
+    articles = Mock(
+        side_effect=AssertionError("cannot attribute another person's works")
+    )
+    monkeypatch.setattr(lint, "_articles_by_doi", articles)
+
+    assert not list(
+        lint.orcid_works.linter(person, LintConfig(autofix=False, interactive=False))
+    )
+    articles.assert_not_called()
 
 
 def test_orcid_works_respects_doi_specific_ignore(

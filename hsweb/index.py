@@ -9,6 +9,7 @@ from aiohttp import web
 from aiohttp_graphql import GraphQLView
 
 from . import schema
+from .render import DOCS_ROOT
 
 HESPEROMYS_ROOT = Path("/Users/jelle/py/hesperomys")
 GAME_DATA_DIR = Path(__file__).parent / "game_data"
@@ -17,6 +18,18 @@ COMPRESSIBLE_SUFFIXES = {".css", ".html", ".js", ".json", ".svg", ".txt", ".xml"
 HASHED_ASSET_PATTERN = re.compile(r"\.[0-9a-f]{8,}\.")
 IMMUTABLE_CACHE_CONTROL = "public, max-age=31536000, immutable"
 GAME_DATA_CACHE_CONTROL = "public, max-age=86400"
+DOCUMENTATION_ASSET_SUFFIXES = {
+    ".avif",
+    ".csv",
+    ".gif",
+    ".html",
+    ".jpeg",
+    ".jpg",
+    ".pdf",
+    ".png",
+    ".svg",
+    ".webp",
+}
 ROBOTS_TXT = """\
 User-agent: Baiduspider
 Disallow: /
@@ -61,6 +74,20 @@ def make_build_asset_handler(
 
 async def robots_handler(request: web.Request) -> web.Response:
     return web.Response(text=ROBOTS_TXT, content_type="text/plain")
+
+
+async def documentation_asset_handler(request: web.Request) -> web.FileResponse:
+    root = DOCS_ROOT.resolve()
+    path = (root / request.match_info["path"]).resolve()
+    if (
+        not path.is_relative_to(root)
+        or path.suffix.lower() not in DOCUMENTATION_ASSET_SUFFIXES
+        or not path.is_file()
+    ):
+        raise web.HTTPNotFound
+    return web.FileResponse(
+        path, headers={"Cache-Control": "public, max-age=0, must-revalidate"}
+    )
 
 
 async def on_prepare(request: web.Request, response: web.Response) -> None:
@@ -141,6 +168,7 @@ def make_app(build_root: str | None = None) -> web.Application:
     for path in ROOT_BUILD_ASSETS:
         app.router.add_get(f"/{path}", make_build_asset_handler(path, hesperomys_dir))
     app.router.add_get("/robots.txt", robots_handler)
+    app.router.add_get(r"/docs/{path:.*\.[^/]+}", documentation_asset_handler)
 
     # Delegate everything else to React
     react_handler = make_static_handler("index.html", "text/html", hesperomys_dir)

@@ -10,8 +10,8 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Literal, NotRequired, Self, TypedDict, cast
 
-import fitz
 import httpx
+import pymupdf
 from clirm import Field
 
 from taxonomy import getinput, urlparse
@@ -334,7 +334,7 @@ def _make_cb_map(full_path: Path) -> CallbackMap:
 
 
 def extract_first_page_link(pdf_path: Path) -> str | None:
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     page = doc[0]
 
     links = page.get_links()
@@ -555,7 +555,7 @@ def _parse_verdict_json(text: str) -> _Verdict:
 
 
 def _extract_pdf_text(pdf_path: Path, *, max_pages: int = 2) -> str:
-    doc = fitz.open(pdf_path)
+    doc = pymupdf.open(pdf_path)
     texts: list[str] = []
     pages = min(len(doc), max_pages)
     for i in range(pages):
@@ -594,7 +594,7 @@ def _make_informative_preview_pdf(
     min_chars characters in their extracted text. If none are found, fall back
     to the first target_pages pages.
     """
-    src = fitz.open(pdf_path)
+    src = pymupdf.open(pdf_path)
     try:
         total = len(src)
         scan_upto = min(total, max_scan)
@@ -611,7 +611,7 @@ def _make_informative_preview_pdf(
 
         with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tf3:
             tmp_path = Path(tf3.name)
-        dst = fitz.open()
+        dst = pymupdf.open()
         try:
             for idx in indices:
                 dst.insert_pdf(src, from_page=idx, to_page=idx)

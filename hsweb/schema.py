@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable
 from itertools import islice
 from typing import TYPE_CHECKING, Any, TypeVar
+from urllib.parse import urlencode
 
 import clirm
 import graphene
@@ -27,12 +28,14 @@ from graphene.relay import Connection, ConnectionField, Node
 from graphene.utils.str_converters import to_snake_case
 
 from taxonomy.adt import ADT, unwrap_type
+from taxonomy.apis.plss import BLM_BASE_URL
 from taxonomy.config import get_options
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import CommentKind, RegionKind
 from taxonomy.db.derived_data import DerivedField
 from taxonomy.db.models import (
     Article,
+    CitationGroup,
     ClassificationEntry,
     IssueDate,
     Location,
@@ -126,15 +129,38 @@ def coordinate_url_resolver(parent: ObjectType, info: ResolveInfo) -> str | None
     )
 
 
+def get_plss_map_url(latitude: str | None, longitude: str | None) -> str | None:
+    if latitude is None or longitude is None:
+        return None
+    extent = coordinate_lint.make_extent(latitude, longitude)
+    if extent is None:
+        return None
+    params = {"url": BLM_BASE_URL, "mapOnly": "true"}
+    if extent.point is not None:
+        params["center"] = f"{extent.point.longitude},{extent.point.latitude}"
+        params["level"] = "15"
+    else:
+        params["extent"] = (
+            f"{extent.longitude.minimum},{extent.latitude.minimum},"
+            f"{extent.longitude.maximum},{extent.latitude.maximum}"
+        )
+    return "https://www.arcgis.com/apps/mapviewer/index.html?" + urlencode(params)
+
+
 @cache
 def build_adt_member(
     model_cls: type[BaseModel], adt_cls: type[ADT], adt: type[ADT] | ADT
 ) -> type[ObjectType]:
     namespace = {}
     for name, typ in adt._attributes.items():
-        graphene_field = build_graphene_field_from_adt_arg(
-            typ, is_required=name in adt.__required_attrs__
-        )
+        if name == "osm_id":
+            # OSM identifiers exceed GraphQL's 32-bit Int range. ID also preserves
+            # their exact value when consumed by JavaScript clients.
+            graphene_field = Field(ID, required=name in adt.__required_attrs__)
+        else:
+            graphene_field = build_graphene_field_from_adt_arg(
+                typ, is_required=name in adt.__required_attrs__
+            )
         if graphene_field is not None:
             namespace[name] = graphene_field
     if {"latitude", "longitude"} <= adt._attributes.keys():
@@ -541,6 +567,11 @@ def location_coordinate_url_resolver(
     return get_openstreetmap_url(location.latitude, location.longitude)
 
 
+def location_plss_map_url_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
+    location = get_model(Location, parent, info)
+    return get_plss_map_url(location.latitude, location.longitude)
+
+
 def issue_date_gregorian_resolver(parent: ObjectType, info: ResolveInfo) -> str | None:
     issue_date = get_model(IssueDate, parent, info)
     try:
@@ -549,7 +580,34 @@ def issue_date_gregorian_resolver(parent: ObjectType, info: ResolveInfo) -> str 
         return None
 
 
+def issue_date_sort_key(issue_date: IssueDate) -> tuple[str, int]:
+    try:
+        date = issue_date.get_gregorian_date()
+    except ValueError:
+        date = issue_date.date
+    return date, issue_date.id
+
+
+def citation_group_issue_dates_resolver(
+    parent: ObjectType, info: ResolveInfo, first: int = 100, after: str | None = None
+) -> list[ObjectType]:
+    citation_group = get_model(CitationGroup, parent, info)
+    issue_dates = sorted(citation_group.issue_date_set, key=issue_date_sort_key)
+    object_type = build_object_type_from_model(IssueDate)
+    # Graphene applies the cursor offset to this prefix, as for other connections.
+    page = issue_dates[: first + _decode_after(after) + 1]
+    cache = info.context["request"]
+    for issue_date in page:
+        cache[(IssueDate.call_sign, issue_date.id)] = issue_date
+    return [object_type(id=date.id, oid=date.id) for date in page]
+
+
 CUSTOM_FIELDS = {
+    CitationGroup: {
+        "issue_date_set": ConnectionField(
+            make_connection(IssueDate), resolver=citation_group_issue_dates_resolver
+        )
+    },
     IssueDate: {
         "gregorian_date": Field(
             String, required=False, resolver=issue_date_gregorian_resolver
@@ -563,6 +621,9 @@ CUSTOM_FIELDS = {
         ),
         "openstreetmap_url": Field(
             String, required=False, resolver=location_coordinate_url_resolver
+        ),
+        "plss_map_url": Field(
+            String, required=False, resolver=location_plss_map_url_resolver
         ),
     },
     Period: {
@@ -851,10 +912,23 @@ def get_model_resolvers() -> dict[str, Field]:
 def resolve_by_call_sign(
     parent: ObjectType, info: ResolveInfo, call_sign: str, oid: str
 ) -> list[ObjectType]:
-    model_cls = get_by_call_sign(call_sign)
+    try:
+        model_cls = get_by_call_sign(call_sign)
+    except KeyError:
+        return []
     object_type = build_object_type_from_model(model_cls)
-    if oid.isnumeric():
-        return [object_type(oid=int(oid), id=int(oid))]
+    if oid.isdecimal():
+        numeric_id = int(oid)
+        if not 0 < numeric_id < 2**31:
+            return []
+        try:
+            obj = model_cls.get(id=numeric_id)
+        except model_cls.DoesNotExist:
+            return []
+        if obj.is_invalid() and not obj.get_redirect_target():
+            return []
+        info.context["request"][(model_cls.call_sign, numeric_id)] = obj
+        return [object_type(oid=numeric_id, id=numeric_id)]
     else:
         if not model_cls.label_field_has_underscores:
             oid = oid.replace("_", " ")

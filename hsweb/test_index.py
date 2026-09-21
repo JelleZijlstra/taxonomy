@@ -2,8 +2,11 @@ import asyncio
 import gzip
 from pathlib import Path
 
+import pytest
 from aiohttp.test_utils import TestClient, TestServer
+from yarl import URL
 
+from . import index
 from .index import GAME_DATA_CACHE_CONTROL, IMMUTABLE_CACHE_CONTROL, make_app
 
 
@@ -54,5 +57,58 @@ def test_static_asset_response_policy(tmp_path: Path) -> None:
             assert await manifest_response.json() == {}
         finally:
             await client.close()
+
+    asyncio.run(run_test())
+
+
+def test_documentation_assets(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    docs_root = tmp_path / "docs"
+    note_dir = docs_root / "research-notes"
+    note_dir.mkdir(parents=True)
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 700"/>'
+    (note_dir / "localities.svg").write_text(svg)
+    (note_dir / "localities.csv").write_text("name,latitude\nbreviceps,32.7751\n")
+    (note_dir / "map.html").write_text("<html><body>Interactive map</body></html>")
+    (note_dir / "note.md").write_text("# Research note")
+    (tmp_path / "outside.svg").write_text("private file")
+    (note_dir / "outside.svg").symlink_to(tmp_path / "outside.svg")
+    monkeypatch.setattr(index, "DOCS_ROOT", docs_root)
+    build_dir = tmp_path / "build"
+    (build_dir / "static").mkdir(parents=True)
+    (build_dir / "index.html").write_text("<html>React app</html>")
+
+    async def run_test() -> None:
+        async with TestClient(TestServer(make_app(str(tmp_path)))) as client:
+            for filename, content_type in (
+                ("localities.svg", "image/svg+xml"),
+                ("localities.csv", "text/csv"),
+                ("map.html", "text/html"),
+            ):
+                response = await client.get(f"/docs/research-notes/{filename}")
+                assert response.status == 200
+                assert response.content_type == content_type
+                assert await response.text() == (note_dir / filename).read_text()
+                assert response.headers["Cache-Control"] == (
+                    "public, max-age=0, must-revalidate"
+                )
+                cached = await client.get(
+                    f"/docs/research-notes/{filename}",
+                    headers={"If-None-Match": response.headers["ETag"]},
+                )
+                assert cached.status == 304
+
+            for path in (
+                "research-notes/missing.svg",
+                "research-notes/note.md",
+                "research-notes/outside.svg",
+                "%2e%2e/outside.svg",
+            ):
+                response = await client.get(URL(f"/docs/{path}", encoded=True))
+                assert response.status == 404
+
+            # Extensionless documentation pages still go through React.
+            response = await client.get("/docs/research-notes/note")
+            assert response.status == 200
+            assert await response.text() == "<html>React app</html>"
 
     asyncio.run(run_test())

@@ -7,7 +7,7 @@ from typing import Any
 
 from taxonomy.apis import orcid
 from taxonomy.db import helpers, models
-from taxonomy.db.constants import PersonType
+from taxonomy.db.constants import NamingConvention, PersonType
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import IgnoreLint, Lint, field_issue
 from taxonomy.db.models.lint_types import LintResult
@@ -17,7 +17,13 @@ from .name_matching import (
     format_external_identity,
     public_identity_matches_person,
 )
-from .person import Person, VirtualPerson, is_more_specific_than, normalize_orcid
+from .person import (
+    Person,
+    PersonLevel,
+    VirtualPerson,
+    is_more_specific_than,
+    normalize_orcid,
+)
 
 
 def get_ignores(person: Person) -> Iterable[IgnoreLint]:
@@ -29,6 +35,56 @@ def add_ignore(person: Person, label: str, comment: str) -> None:
 
 
 LINT = Lint(Person, get_ignores, add_ignore)
+
+ENFORCED_NAMING_CONVENTIONS = (
+    NamingConvention.vietnamese,
+    NamingConvention.pinyin,
+    NamingConvention.chinese,
+    NamingConvention.korean,
+    NamingConvention.japanese,
+    NamingConvention.german,
+    NamingConvention.french,
+    NamingConvention.dutch,
+    NamingConvention.italian,
+    NamingConvention.hungarian,
+    NamingConvention.russian,
+    NamingConvention.ukrainian,
+    NamingConvention.turkish,
+    # TODO: Maybe add Spanish and Portuguese, but they add hundreds more names to clean up
+)
+
+
+@functools.cache
+def _family_name_to_naming_conventions() -> dict[str, set[NamingConvention]]:
+    conventions: dict[str, set[NamingConvention]] = {}
+    for person in Person.select_valid().filter(
+        Person.naming_convention.is_in(ENFORCED_NAMING_CONVENTIONS)
+    ):
+        if not person.is_invalid():
+            conventions.setdefault(person.family_name, set()).add(
+                person.naming_convention
+            )
+    return conventions
+
+
+@LINT.add(
+    "naming_convention", clear_caches=_family_name_to_naming_conventions.cache_clear
+)
+def naming_convention(person: Person, cfg: LintConfig) -> Iterable[str]:
+    """Suggest conventions for review based on exact family-name matches."""
+    if (
+        person.naming_convention is not NamingConvention.unspecified
+        or person.is_invalid()
+        or person.get_level() < PersonLevel.has_given_name
+    ):
+        return
+    conventions = _family_name_to_naming_conventions().get(person.family_name)
+    if conventions:
+        names = ", ".join(sorted(convention.name for convention in conventions))
+        yield (
+            f"naming convention is unspecified, but family name {person.family_name!r} "
+            f"is also used with naming conventions: {names}"
+        )
 
 
 def get_orcid_tags(person: Person) -> list[Any]:
@@ -214,6 +270,16 @@ def orcid_works(person: Person, cfg: LintConfig) -> Iterable[str]:
         stored_orcid = normalize_orcid(tag.text)
         profile = orcid.get_orcid_profile(stored_orcid)
         if profile is None:
+            continue
+        if profile.orcid != stored_orcid and not public_identity_matches_person(
+            given_names=profile.given_names,
+            family_names=profile.family_names,
+            credit_name=profile.credit_name,
+            other_names=profile.other_names,
+            person=identity,
+        ):
+            # orcid_profile reports this unresolved identity conflict. Works on
+            # the redirect destination cannot safely be attributed to this Person.
             continue
         for work in profile.works:
             if (stored_orcid, work.doi) in ignored_works:
