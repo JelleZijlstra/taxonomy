@@ -2,6 +2,9 @@ from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import patch
 
+import pytest
+from clirm import substitute_virtual_models
+
 from taxonomy.db.constants import AgeClass, Group, NomenclatureStatus, Rank, Status
 from taxonomy.db.models import Article, CitationGroup, Person, Taxon
 from taxonomy.db.models.base import LintConfig
@@ -14,12 +17,14 @@ from taxonomy.db.models.classification_entry.lint import (
     _is_misspelling_of,
     check_auxiliary_name,
     check_mapped_name,
+    check_mapped_name_matches_other_ces,
     check_missing_mapped_name,
     check_needs_auxiliary_name,
     check_parent_cycle,
     check_parent_rank,
     check_tags,
     check_verbatim_parent,
+    get_filtered_possible_mapped_names,
     get_species_group_mapped_names,
     infer_duplicate,
     materialize_classification_entry,
@@ -91,6 +96,88 @@ def _make_name(root_name: str, *tags: NameTag) -> Name:
         author_tags=(),
         tags=tags,
     )
+
+
+@pytest.mark.parametrize("separator", [" and ", " & "])
+def test_candidate_search_matches_source_author_separator(separator: str) -> None:
+    available = _make_name("lasiura")
+    available.corrected_original_name = "Crocidura lasiura"
+    available.nomenclature_status = NomenclatureStatus.available
+    available.year = "1890"
+    available.author_tags = (AuthorTag.Author(Person.virtual(family_name="Dobson")),)  # type: ignore[assignment]
+    nudum = _make_name("lasiura", NameTag.UnavailableVersionOf(available))
+    nudum.corrected_original_name = "Crocidura lasiura"
+    nudum.nomenclature_status = NomenclatureStatus.nomen_nudum
+    nudum.year = "1888"
+    nudum.author_tags = tuple(  # type: ignore[assignment]
+        AuthorTag.Author(Person.virtual(family_name=author))
+        for author in ("Giglioli", "Salvadori")
+    )
+    ce = ClassificationEntry.virtual(
+        article=Article.virtual(name="source", year="2005"),
+        name="lasiura",
+        rank=Rank.synonym_species,
+        authority=f"Giglioli{separator}Salvadori",
+        year="1887",
+        mapped_name=nudum,
+        tags=(),
+    )
+    with (
+        patch(
+            "taxonomy.db.models.classification_entry.lint.get_possible_mapped_names",
+            return_value=[available, nudum],
+        ),
+        patch.object(Taxon, "select_valid", return_value=_FakeQuery()),
+        patch.object(ClassificationEntry, "get_children", return_value=_FakeQuery()),
+    ):
+        # The source explicitly cites the unavailable name's authors. Its printed
+        # year differs from both candidates and must not be silently rewritten.
+        assert list(get_filtered_possible_mapped_names(ce)) == [nudum]
+        assert ce.authority == f"Giglioli{separator}Salvadori"
+        assert ce.year == "1887"
+        ce.authority = "Dobson"
+        assert list(get_filtered_possible_mapped_names(ce)) == [available]
+
+
+@pytest.mark.parametrize(
+    ("old_same", "new_same"), [(False, True), (True, False), (False, False)]
+)
+def test_mapped_name_consistency_uses_proposed_peers(
+    *, old_same: bool, new_same: bool
+) -> None:
+    first_name = _make_name("arizonensis")
+    second_name = _make_name("arizonensis")
+    first = ClassificationEntry.virtual(
+        article=_ARTICLE,
+        name="Mustela arizonensis",
+        rank=Rank.species,
+        mapped_name=first_name,
+        tags=(),
+    )
+    second = first.virtual_copy(mapped_name=first_name if old_same else second_name)
+    proposed_first = first.virtual_copy(mapped_name=second_name)
+    proposed_second = second.virtual_copy(
+        mapped_name=second_name if new_same else first_name
+    )
+    # Give the copies origins without creating database rows.
+    proposed_first._clirm_virtual_origin = first
+    proposed_second._clirm_virtual_origin = second
+    with (
+        substitute_virtual_models([proposed_first, proposed_second]),
+        patch.object(
+            ClassificationEntry,
+            "select_valid",
+            return_value=_FakeQuery([first, second]),
+        ),
+    ):
+        messages = list(
+            check_mapped_name_matches_other_ces(proposed_first, LintConfig())
+        )
+    assert len(messages) == (0 if new_same else 1)
+    if messages:
+        assert "other names are mapped differently" in str(messages[0])
+    assert first.mapped_name is first_name
+    assert second.mapped_name is (first_name if old_same else second_name)
 
 
 def test_infer_duplicate_uses_structured_merge_fix() -> None:

@@ -1162,7 +1162,9 @@ class CandidateName:
             str(self.name.resolve_variant().numeric_year()),
         ]:
             score += 10
-        if self.ce.authority is not None and self.ce.authority not in [
+        if self.ce.authority is not None and self.ce.authority.replace(
+            " and ", " & "
+        ) not in [
             self.name.taxonomic_authority(),
             self.name.resolve_variant().taxonomic_authority(),
         ]:
@@ -1961,16 +1963,31 @@ def check_mapped_name_matches_other_ces(
     ce_key = _get_ce_key(ce)
     if ce_key is None:
         return
-    others = [
-        other_ce
+    query = ClassificationEntry.select_valid().filter(
+        ClassificationEntry.name == ce.name
+    )
+    if ce.is_virtual:
+        # Queries return persisted rows even during virtual lint. Resolve peers
+        # before comparing fields that may have changed in the proposal.
+        peers: Iterable[ClassificationEntry] = (
+            ClassificationEntry.resolve_reference(other_ce.id) for other_ce in query
+        )
+    else:
+        # Keep the database-side filters for ordinary maintenance runs.
         # static analysis: ignore[incompatible_argument]
-        for other_ce in ClassificationEntry.select_valid().filter(
-            ClassificationEntry.name == ce.name,
+        peers = query.filter(
             ClassificationEntry.id != ce.id,
             ClassificationEntry.mapped_name != ce.mapped_name,
             ~ClassificationEntry.rank.is_in(_EXCLUDED_RANKS),
         )
-        if not LINT.is_ignoring_lint(other_ce, "mapped_name_matches_other_ces")
+    others = [
+        other_ce
+        for other_ce in peers
+        if other_ce != ce
+        and not other_ce.is_invalid()
+        and other_ce.name == ce.name
+        and other_ce.rank not in _EXCLUDED_RANKS
+        and not LINT.is_ignoring_lint(other_ce, "mapped_name_matches_other_ces")
         and other_ce.mapped_name is not None
         and _resolve_name(other_ce.mapped_name) != _resolve_name(ce.mapped_name)
         and _get_ce_key(other_ce) == ce_key
