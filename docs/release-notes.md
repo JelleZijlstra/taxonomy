@@ -16,8 +16,8 @@ exports released on Zenodo.
   - Extend source transcriptions with etymologies, original descriptions, auxiliary
     names, and links between quoted locality or specimen details and classification
     entries. Preserve nonstandard source page labels.
-  - Add author ORCID information and expand bibliographical notes, including
-    investigations of publication dates.
+  - Add author ORCID information and expand bibliographical and taxonomic research
+    notes, including investigations of disputed type localities and publication dates.
   - Add verified citations to some missed names and type designations.
 - Backend
   - Expand geographic consistency checks using OpenStreetMap, GeoNames, and PLSS,
@@ -28,8 +28,6 @@ exports released on Zenodo.
   - Improve web caching, compressed asset delivery, and GraphQL schema consistency.
   - Refresh dependencies and CI tools.
 - Frontend
-  - Add the [Research notes](/docs/research-notes) series, with source-based discussions
-    of taxonomy, distributions, and disputed type localities.
   - Display occurrence records and their source evidence, regional distribution
     assessments, richer location context, and linked coordinate provenance.
   - Display partial type localities, additional source-level classification details,
