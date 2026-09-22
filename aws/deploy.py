@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 import argparse
 import datetime
+import shlex
 import shutil
 import subprocess
 import time
@@ -9,6 +10,10 @@ from pathlib import Path
 from taxonomy.config import Options, get_options
 
 STAGING_DIR = "/home/ec2-user/staging/"
+RSYNC_ATTEMPTS = 5
+RSYNC_RETRY_DELAY = 10
+# Socket errors, broken streams, timeouts, and SSH connection failures.
+RSYNC_RETRY_CODES = {10, 12, 30, 35, 255}
 
 
 def run_ssh(options: Options, command: str) -> None:
@@ -34,6 +39,53 @@ def run_scp(
     subprocess.check_call(command)
 
 
+def run_rsync(options: Options, local_path: Path, remote_path: str) -> None:
+    """Upload into staging resumably; requires rsync locally and on the server.
+
+    The destination must not be a live file: an interrupted upload leaves it partial.
+    """
+    ssh_command = shlex.join(
+        [
+            "ssh",
+            "-i",
+            str(options.pem_file),
+            "-o",
+            "ConnectTimeout=30",
+            "-o",
+            "ServerAliveInterval=30",
+            "-o",
+            "ServerAliveCountMax=3",
+        ]
+    )
+    command = [
+        "rsync",
+        "--times",
+        "--progress",
+        # Staging is promoted only after success. Avoid an extra database-sized copy
+        # on each attempt; --inplace also retains partial files for resumption.
+        "--inplace",
+        "--timeout=120",
+        "-e",
+        ssh_command,
+        str(local_path),
+        f"{options.hesperomys_host}:{remote_path}",
+    ]
+    for attempt in range(1, RSYNC_ATTEMPTS + 1):
+        print(f"# {shlex.join(command)}")
+        try:
+            subprocess.check_call(command)
+        except subprocess.CalledProcessError as exc:
+            if exc.returncode not in RSYNC_RETRY_CODES or attempt == RSYNC_ATTEMPTS:
+                raise
+            print(
+                f"# rsync failed (exit {exc.returncode}, attempt"
+                f" {attempt}/{RSYNC_ATTEMPTS}); resuming in {RSYNC_RETRY_DELAY}s"
+            )
+            time.sleep(RSYNC_RETRY_DELAY)
+        else:
+            return
+
+
 def save_data(options: Options, version: str) -> None:
     saved_filename = (
         options.db_filename.parent / f"{options.db_filename.name}.{version}"
@@ -44,11 +96,11 @@ def save_data(options: Options, version: str) -> None:
 
 def deploy_data(options: Options) -> None:
     run_ssh(options, f"mkdir -p {STAGING_DIR}")
-    run_scp(options, options.db_filename, STAGING_DIR, is_directory=False)
-    run_scp(options, options.derived_data_filename, STAGING_DIR, is_directory=False)
+    run_rsync(options, options.db_filename, STAGING_DIR)
+    run_rsync(options, options.derived_data_filename, STAGING_DIR)
     # Also deploy the full-text search database used by hsweb
     if options.search_db_filename and options.search_db_filename.exists():
-        run_scp(options, options.search_db_filename, STAGING_DIR, is_directory=False)
+        run_rsync(options, options.search_db_filename, STAGING_DIR)
 
 
 def validate_version(version: str) -> None:
