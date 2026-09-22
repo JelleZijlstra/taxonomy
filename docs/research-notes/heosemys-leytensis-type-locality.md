@@ -59,9 +59,10 @@ Taylor designated an unnumbered University of the Philippines specimen from “C
 southern Leyte” as the type and identified Lopez as its collector. It was an adult male
 with a carapace length of 210 mm. His second specimen was from the same locality, had a
 carapace length of 126 mm, and was described only as medium-sized. Taylor did not state
-its sex. Later authors have called the second specimen a juvenile or a female; only the
-former is compatible with Taylor's account. The two are now usually treated as the
-holotype and paratype, although Buskirk called them cotypes.
+its sex. Later authors have called the second specimen a juvenile or a female. A
+juvenile interpretation is consistent with its size; a female identification is not
+established by Taylor's text, although it is compatible with that account. The two are
+now usually treated as the holotype and paratype, although Buskirk called them cotypes.
 
 Taylor described and illustrated a distinctive turtle. Its relevant features included a
 mostly unkeeled, reddish-brown carapace with serrated anterior margins; a narrow
@@ -242,13 +243,13 @@ The three old specimens probably came from the Palawan region, although their re
 Leyte provenance remains unresolved. The similar names “Cabalian” and “Calamian”, and
 the form “Calabian” in the CAS ledger, suggest a possible source of confusion.
 
-[Diesmos et al., 2008](/a/73171) specifically selected northern Palawan as the type
-locality, but it appears more likely that the neotype came from the Calamianes. Although
-the species has not been recorded there in modern times, these islands are close and
-biogeographically connected to Palawan, and Lopez is known to have collected there
-around the time the neotype must have been obtained. For the original two specimens, the
-Calamian hypothesis is weaker because they predate Lopez's first documented
-western-Philippine work, at Culion in 1921, and have no surviving numbers.
+[Diesmos et al. (2012: 066.3)](/a/73175) specifically restricted the type locality to
+northern Palawan. A Calamian origin remains a plausible alternative for the neotype:
+these islands are close and biogeographically connected to Palawan, and Lopez collected
+there before the neotype's accession in December 1922. The same paper reports
+unconfirmed modern records from Coron, Culion, and Busuanga (p. 066.5). For the original
+two specimens, the Calamian hypothesis is weaker because they predate Lopez's first
+documented western-Philippine work, at Culion in 1921, and have no surviving numbers.
 
 ## Sources
 

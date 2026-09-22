@@ -29,11 +29,10 @@ type but was not found. [Turni & Kock (2008)](/a/35363) later found both syntype
 extracted. They recorded both as adult males from Suriname, donated by Schaufuß.
 
 Turni & Kock spell the donor's name Schaufuß. He was probably Ludwig Wilhelm Schaufuß
-(1833-1890), a German naturalist and specimen dealer. Schaufuß was educated in Leipzig,
-and ran a natural-history business in Dresden under the name L.W. Schaufuß, formerly E.
-Klocke. He traded prepared animals and teaching specimens internationally. The ZMB
-catalogue identifies him as the donor and gives neither a collector nor a precise
-locality.
+(1833–1890), a German naturalist and specimen dealer.
+[Heese (2018)](https://saebi.isgv.de/biografie/Ludwig_Wilhelm_Schaufu%C3%9F_%281833-1890%29)
+documents his schooling in Leipzig and his natural-history business in Dresden under the
+name L.W. Schaufuß, formerly E. Klocke, which also supplied teaching collections.
 
 ## USNM 14816
 
@@ -42,13 +41,14 @@ study of morphological variation in _Pygoderma bilabiatum_.
 [Webster & Owen (1984)](/a/13255) then referred to one additional male from Suriname,
 apart from the _microdon_ type material, but noted that the exact locality was unknown.
 
-[Gardner (2008)](/a/5818) identified this record as USNM 14816, received from Albert
-Koebele and catalogued on 6 March 1885. Koebele was an entomologist working for the
-United States Department of Agriculture. He is documented as travelling to Brazil in
-1883 to study cotton pests and collect insects; no source found here documents a visit
-to Suriname. His name is misspelled as "Koeble" in USNM records. Gardner argued that
-USNM 14816 probably did not come from Suriname, because other USNM evidence connects
-Koebele material with Bonito, Pernambuco, Brazil.
+[Gardner (2008: 361)](/a/5818) identified this record as USNM 14816, received from
+Albert Koebele and catalogued on 6 March 1885; his name is misspelled as "Koeble" in
+USNM records. Koebele worked for the United States Department of Agriculture and
+travelled to Brazil with John C. Branner in November 1882 to investigate cotton pests,
+returning in 1883
+([Howard, 1930](https://repository.si.edu/bitstream/handle/10088/23848/SMC_84_Howard_1930_1_1-564.pdf)).
+Gardner argued that USNM 14816 probably did not come from Suriname, because other USNM
+evidence connects Koebele material with Bonito, Pernambuco, Brazil.
 
 The
 [original USNM mammal catalogue](https://ids.si.edu/ids/media_view?id=ark:/65665/m383daea9278a94213a24566dbad475b40&defaultView=image_dynamic)
@@ -58,11 +58,12 @@ and USNM 14817, entered as _Vesperugo_. _Lichonycteris_ is known to occur both i
 Suriname and Pernambuco. "_Vesperugo_" presumably means what is now called
 _Neoeptesicus_, species of which occur throughout tropical South America.
 
-The USNM contains another Koebele mammal specimen: USNM 14761, a _Kerodon rupestris_. It
-too was originally recorded as being from Surinam, with a handwritten note "Prob. NE
-Brazil where Koebele collected. See notes with specimen. RMK 1946". _Kerodon_ does not
-occur in Suriname. In addition, the USNM has a number of bird and insect specimens
-collected by Koebele in Pernambuco, but none from Suriname.
+[Gardner (2008: 243)](/a/5818) also reported a Koebele specimen of _Kerodon rupestris_
+among the USNM mammals accessioned as coming from Surinam, despite that rodent's
+restriction to northeastern Brazil. [Dunnum (2015: 726)](/a/27628) lists USNM 14761 from
+Bonito, Pernambuco. Gardner reported that Koebele's USNM bird specimens included
+material from the vicinity of La Bonita in Pernambuco and none from Surinam. He found
+evidence of Koebele's travels in Pernambuco and Bahia but none of a visit to Surinam.
 
 ## YPM MAM 014625
 
@@ -89,7 +90,9 @@ has yet to be discussed in the peer-reviewed literature.
 - [Owen & Webster (1983)](/a/14421) and [Webster & Owen (1984)](/a/13255), source of the
   USNM Suriname specimen in the later literature.
 - [Gardner (2008)](/a/5818), discussion of USNM 14816 and the reason for suspecting a
-  Brazilian origin.
+  Brazilian origin (p. 361), and the related Koebele mammal and bird records (p. 243).
+- [Dunnum (2015: 726)](/a/27628), _Kerodon rupestris_ account in _Mammals of South
+  America_, volume 2, listing USNM 14761 from Bonito, Pernambuco.
 - [USNM mammal catalogue page](https://ids.si.edu/ids/media_view?id=ark:/65665/m383daea9278a94213a24566dbad475b40&defaultView=image_dynamic)
   recording USNM 14815-14817 from Suriname.
 - [GBIF occurrence 1039522420](https://www.gbif.org/occurrence/1039522420), YPM MAM

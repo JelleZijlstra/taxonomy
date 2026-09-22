@@ -249,8 +249,10 @@ The lack of South Asian molecular data leaves three possible arrangements:
 - Treat South Asian populations as conspecific with Chinese ones, west perhaps to
   Afghanistan. This is the classification of [Wilson & Mittermeier (2019)](/a/59249).
   Under this classification, _Nyctalus labiatus_ has priority over their chosen name,
-  _N. plancyi_. This option is biogeographically plausible but lacks explicit
-  morphological support.
+  _N. plancyi_. This option is biogeographically plausible and has some morphometric
+  support from [Kruskop & Vasenkov (2016)](/a/28926), but the observed size forms and
+  the uncertain placement of Afghan specimens leave conspecificity across the proposed
+  range unresolved.
 - Recognize one or more additional species in South Asia, distinct from both _noctula_
   and _plancyi_. This remains speculative.
 

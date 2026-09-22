@@ -38,10 +38,20 @@ previous neotype designation.
 ## Nomenclature
 
 The application of _Cacajao melanocephalus_ depends on which neotype designation is
-valid. Both designations are cursory and do not explain why a neotype is justified. The
-designation by [Boubli et al. (2008)](/a/4772) is additionally problematic because the
-proposed neotype, MN 68616, is from Brazil, while the original type locality was in
-Venezuela.
+valid. [Ferrari et al. (2014: 357–358)](/a/19437) justified their proposal by discussing
+the ambiguity of the original lithograph and the availability of suitable specimens.
+They selected NMNH 406425 for its correspondence to the original illustration and its
+geographic proximity to the original locality. That rationale does not itself establish
+compliance with all the Code's conditions, and the status of the preceding designation
+by [Boubli et al. (2008)](/a/4772) needs assessment.
+
+Boubli et al.'s proposed neotype, MN 68616, is from Brazil, whereas the original type
+locality was in Venezuela. The relevant test under
+[ICZN Article 75.3.6](https://code.iczn.org/types-in-the-species-group/article-75-neotypes/)
+is whether the neotype came from as near the original type locality as practicable; the
+difference in country alone does not settle that question. Article 75.4 gives priority
+to the first designation that satisfies the Article's requirements. Neither
+designation's compliance with all those requirements has been established here.
 
 I provisionally accept the earlier designation by [Boubli et al. (2008)](/a/4772) of MN
 68616 as the neotype, placing _C. melanocephalus_ on the right bank. A reassessment of

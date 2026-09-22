@@ -77,16 +77,19 @@ which is sister to _O. balneator_.
 purportedly distinguish _hesperus_ from _huancabambensis_:
 
 - "(i) a more reddish overall coloration (versus a brownish pelage)."
-  [Brito et al. (2026)](/a/72617) do not cite any color differences among the species,
-  and [Anthony (1924)](/a/8829) also did not think the dorsal color was different. MECN
-  4789 appears slightly more reddish in photographs than other _Oreoryzomys_.
+  [Brito et al. (2026)](/a/72617) describe pelage coloration in the species accounts but
+  do not use color differences in their diagnostic table 4. [Anthony (1924)](/a/8829)
+  did not think the dorsal color was different. MECN 4789 appears slightly more reddish
+  in photographs than other _Oreoryzomys_.
 - "(ii) presence of a white pectoral patch (absent in _O. balneator_ and _O.
   huancabambensis_ sp. nov.)." This was the primary character used by
   [Anthony (1924)](/a/8829). [Brito et al. (2023)](/a/72618) mentioned the white patch
-  for their El Oro specimen, but [Brito et al. (2026)](/a/72617) did not cite this
-  character. [Brito et al. (2026: fig. 7)](/a/72617) show a ventral view of the fur of
-  MECN 4789 with this patch. [Llancachahua-Tarqui et al. (2025: fig. 3)](/a/72378) also
-  show a ventral view, and the specimen lacks this patch.
+  for their El Oro specimen. [Brito et al. (2026: 35)](/a/72617) discuss dorsal and
+  ventral coloration, including gular and pectoral patches, as individually variable
+  features; they do not use the patch as a diagnostic character in table 4.
+  [Brito et al. (2026: fig. 7)](/a/72617) show a ventral view of the fur of MECN 4789
+  with this patch. [Llancachahua-Tarqui et al. (2025: fig. 3)](/a/72378) also show a
+  ventral view, and the specimen lacks this patch.
 - "(iii) a U-shaped fronto-parietal suture (versus V-shaped in _O. balneator_ and _O.
   huancabambensis_ sp. nov.)." This character is also cited by
   [Brito et al. (2026: table 4)](/a/72617) to distinguish _O. hesperus_ from the other
