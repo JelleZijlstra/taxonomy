@@ -2,9 +2,8 @@
 
 _Jelle S. Zijlstra, June 2026_
 
-Recently, two papers reviewed _Oreoryzomys_ and proposed revisions, but the two
-revisions appear to be in conflict regarding the species occurring in southern Ecuador
-and far northern Peru. What is the right classification?
+Two recent revisions of _Oreoryzomys_ propose conflicting classifications for southern
+Ecuador and far northern Peru.
 
 ## Sources
 
@@ -32,20 +31,18 @@ how _huancabambensis_ differs from _hesperus_, based on the description of the h
 and on [Brito et al. (2023)](/a/72618). Their table 2 summarizes differences between
 _balneator_ and _huancabambensis_.
 
-[Brito et al. (2026)](/a/72617) named a new species from northern Ecuador (_O. jumandi_,
-not further at issue here) and split _Oreoryzomys hesperus_ for populations in southern
-Ecuador and northern Peru. They examined 27 specimens of _hesperus_, all from Ecuador.
-The extension to Peru is based on GenBank sequences. The El Oro specimen, MECN 4789, is
-the only figured specimen of _hesperus_, though presumably the description is based on
-the entire sample. Their table 4 summarizes differences among _balneator_, _hesperus_,
-and _jumandi_.
+[Brito et al. (2026)](/a/72617) named _O. jumandi_ from northern Ecuador and recognized
+_Oreoryzomys hesperus_ for populations in southern Ecuador and northern Peru. They
+examined 27 specimens of _hesperus_, all from Ecuador. The extension to Peru is based on
+GenBank sequences. The El Oro specimen, MECN 4789, is the only figured specimen of
+_hesperus_, though presumably the description is based on the entire sample. Their table
+4 summarizes differences among _balneator_, _hesperus_, and _jumandi_.
 
 ## Geography
 
 - The type locality of _balneator_ is on the upper Río Pastaza, close to the cluster of
-  localities 4-9 in [Brito et al. (2026: fig. 14)](/a/72617). Therefore, even though
-  [Brito et al. (2026)](/a/72617) did not examine the type of _balneator_, the
-  assignment of the name _balneator_ to that species is reasonably secure.
+  localities 4-9 in [Brito et al. (2026: fig. 14)](/a/72617). This supports their
+  assignment of _balneator_, although they did not examine its type.
 - The type locality of _hesperus_ is El Chiral, El Oro Province. This is on the western
   side of the Andes in southwestern Ecuador. The AMNH has about 20 other specimens from
   this area.
@@ -81,22 +78,20 @@ purportedly distinguish _hesperus_ from _huancabambensis_:
 
 - "(i) a more reddish overall coloration (versus a brownish pelage)."
   [Brito et al. (2026)](/a/72617) do not cite any color differences among the species,
-  and [Anthony (1924)](/a/8829) also did not think the dorsal color was different.
-  Pictures of MECN 4789 do appear to show it a bit more reddish than other
-  _Oreoryzomys_.
+  and [Anthony (1924)](/a/8829) also did not think the dorsal color was different. MECN
+  4789 appears slightly more reddish in photographs than other _Oreoryzomys_.
 - "(ii) presence of a white pectoral patch (absent in _O. balneator_ and _O.
   huancabambensis_ sp. nov.)." This was the primary character used by
   [Anthony (1924)](/a/8829). [Brito et al. (2023)](/a/72618) mentioned the white patch
   for their El Oro specimen, but [Brito et al. (2026)](/a/72617) did not cite this
   character. [Brito et al. (2026: fig. 7)](/a/72617) show a ventral view of the fur of
-  MECN 4789, which does indeed have this patch.
-  [Llancachahua-Tarqui et al. (2025: fig. 3)](/a/72378) also show a ventral view, and
-  the specimen lacks this patch.
+  MECN 4789 with this patch. [Llancachahua-Tarqui et al. (2025: fig. 3)](/a/72378) also
+  show a ventral view, and the specimen lacks this patch.
 - "(iii) a U-shaped fronto-parietal suture (versus V-shaped in _O. balneator_ and _O.
   huancabambensis_ sp. nov.)." This character is also cited by
   [Brito et al. (2026: table 4)](/a/72617) to distinguish _O. hesperus_ from the other
-  two species. [Brito et al. (2026: fig. 6)](/a/72617) shows this character in
-  MECN 4789. The holotype of _O. huancabambensis_
+  two species. [Brito et al. (2026: fig. 6)](/a/72617) show this character in MECN 4789.
+  The holotype of _O. huancabambensis_
   ([Llancachahua-Tarqui et al., 2025: fig. 6](/a/72378)) has a more V-shaped suture,
   though the angle is less acute than shown for _O. balneator_ and _O. jumandi_ in
   [Brito et al. (2026)](/a/72617).
@@ -115,17 +110,17 @@ purportedly distinguish _hesperus_ from _huancabambensis_:
 [Llancachahua-Tarqui et al. (2025: table 2)](/a/72378) list nine characters
 distinguishing _balneator_ from _huancabambensis_:
 
-| Character                                      | _O. balneator_             | _O. huancabambensis_           | Discussion                                                                                                                                                                                                                                       |
-| ---------------------------------------------- | -------------------------- | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Dorsal fur coloration                          | Pale brown                 | Dark olive brown               | The specimen figured by [Llancachahua-Tarqui et al. (2025)](/a/72378) is darker than that figured by [Brito et al. (2026)](/a/72617).                                                                                                            |
-| Contrast between dorsal and ventral coloration | Weakly defined             | Sharply defined                | The live _balneator_ figured by [Brito et al. (2026)](/a/72617) has a sharp contrast.                                                                                                                                                            |
-| Coloration of ventral fur tips                 | Dull whitish to buffy gray | Whitish                        | [Brito et al. (2026)](/a/72617) described both as having white tips. The specimen figured by [Llancachahua-Tarqui et al. (2025)](/a/72378) has whiter ventral coloration than other figured _Oreoryzomys_.                                       |
-| TL/HBL                                         | 126.8 +/- 4.43             | 132.1 +/- 5.91                 | [Brito et al. (2026)](/a/72617) cite 118% on average for _balneator_ and 117% for _hesperus_.                                                                                                                                                    |
-| Anterior margins of zygomatic plate            | Convex                     | Slightly convex                | I cannot tell in figures what this is referring to.                                                                                                                                                                                              |
-| Palatal bone                                   | Slightly long              | Distinctly long                | Fig. 4 shows the palate extending a little past the end of M3 in _huancabambensis_ but not _balneator_. [Brito et al. (2026)](/a/72617) do not discuss this character, but fig. 6 does show MECN 4789 looking similar to _huancabambensis_ here. |
-| Incisive foramina                              | Broad and borders curved   | Narrow and borders subparallel | Very subtle difference, shown in fig. 4, but [Brito et al. (2026: fig. 6)](/a/72617) has MECN 4789 looking like _balneator_.                                                                                                                     |
-| Anterior borders of mesopterygoid fossa        | Convergent anteriorly      | Subparallel                    | I do not see what this is referring to.                                                                                                                                                                                                          |
-| Maxillary septum of incisive foramina          | Thick                      | Thin                           | MECN 4789 has a rather thin septum ([Brito et al., 2026: fig. 6](/a/72617)).                                                                                                                                                                     |
+| Character                                      | _O. balneator_             | _O. huancabambensis_           | Discussion                                                                                                                                                                                                             |
+| ---------------------------------------------- | -------------------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Dorsal fur coloration                          | Pale brown                 | Dark olive brown               | The specimen figured by [Llancachahua-Tarqui et al. (2025)](/a/72378) is darker than that figured by [Brito et al. (2026)](/a/72617).                                                                                  |
+| Contrast between dorsal and ventral coloration | Weakly defined             | Sharply defined                | The live _balneator_ figured by [Brito et al. (2026)](/a/72617) has a sharp contrast.                                                                                                                                  |
+| Coloration of ventral fur tips                 | Dull whitish to buffy gray | Whitish                        | [Brito et al. (2026)](/a/72617) described both as having white tips. The specimen figured by [Llancachahua-Tarqui et al. (2025)](/a/72378) has whiter ventral coloration than other figured _Oreoryzomys_.             |
+| TL/HBL                                         | 126.8 +/- 4.43             | 132.1 +/- 5.91                 | [Brito et al. (2026)](/a/72617) cite 118% on average for _balneator_ and 117% for _hesperus_.                                                                                                                          |
+| Anterior margins of zygomatic plate            | Convex                     | Slightly convex                | I cannot distinguish this character in the figures.                                                                                                                                                                    |
+| Palatal bone                                   | Slightly long              | Distinctly long                | Fig. 4 shows the palate extending a little past the end of M3 in _huancabambensis_ but not _balneator_. [Brito et al. (2026)](/a/72617) do not discuss this character, but fig. 6 shows a similar palate in MECN 4789. |
+| Incisive foramina                              | Broad and borders curved   | Narrow and borders subparallel | The difference in fig. 4 is subtle; MECN 4789 resembles _balneator_ ([Brito et al., 2026: fig. 6](/a/72617)).                                                                                                          |
+| Anterior borders of mesopterygoid fossa        | Convergent anteriorly      | Subparallel                    | The distinction is unclear to me.                                                                                                                                                                                      |
+| Maxillary septum of incisive foramina          | Thick                      | Thin                           | MECN 4789 has a thin septum ([Brito et al., 2026: fig. 6](/a/72617)).                                                                                                                                                  |
 
 [Brito et al. (2026: table 4)](/a/72617) list these characters distinguishing the three
 species:
@@ -145,24 +140,21 @@ species:
 
 ## Assessment
 
-How many species of _Oreoryzomys_ are there at the southern edge of its distribution,
-and how are they distributed?
+Three hypotheses could reconcile the papers:
 
-- Option 1: We take both papers at face value: _O. hesperus_ and _O. huancabambensis_
-  both occur in southern Ecuador and northern Peru sympatrically. In some sense this is
-  the most conservative option, and the two papers describe _O. hesperus_ and _O.
-  huancabambensis_ as different morphologically. However, neither paper suggests that
-  there might be two sympatric species in this area.
-- Option 2: The two species are synonymous. The proposed distributions for the two
-  species are similar, and some morphological features are similar. This contradicts the
-  claim by [Llancachahua-Tarqui et al. (2025)](/a/72378) that _hesperus_ is distinct,
-  though that claim was based only on the literature.
-- Option 3: The two are distinct, but _O. hesperus_ is restricted to El Oro, on the
-  western versant of the Andes. This is consistent with the apparent morphological
-  differences between MECN 4789 and _O. huancabambensis_, and is suggested by the mtDNA
-  divergence between MECN 4789 and the rest of the _O. hesperus_ clade. However, it
-  contradicts the conclusion of [Brito et al. (2026)](/a/72617) that MECN 4789 is
-  conspecific with southeastern Ecuador specimens.
+- _O. hesperus_ and _O. huancabambensis_ occur sympatrically in southern Ecuador and
+  northern Peru. This preserves both papers' species limits and distributions, but
+  neither paper proposes sympatry.
+- The two names are synonymous. Their proposed distributions and some morphological
+  features are similar. This contradicts the claim by
+  [Llancachahua-Tarqui et al. (2025)](/a/72378) that _hesperus_ is distinct, though that
+  claim was based only on the literature.
+- The two species are distinct, with _O. hesperus_ restricted to El Oro, on the western
+  versant of the Andes. This is consistent with the apparent morphological differences
+  between MECN 4789 and _O. huancabambensis_, and is suggested by the mtDNA divergence
+  between MECN 4789 and the rest of the _O. hesperus_ clade. However, it contradicts the
+  conclusion of [Brito et al. (2026)](/a/72617) that MECN 4789 is conspecific with
+  southeastern Ecuador specimens.
 
-To figure out which hypothesis is correct, more comparative work should be done
-comparing the El Oro and eastern populations in terms of genetics and morphology.
+Distinguishing these hypotheses requires genetic and morphological comparisons of the El
+Oro and eastern populations.

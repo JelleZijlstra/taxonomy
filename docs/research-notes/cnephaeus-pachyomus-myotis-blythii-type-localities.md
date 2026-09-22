@@ -4,18 +4,14 @@ _Jelle S. Zijlstra, June 2026_
 
 Two bat names described by [Tomes (1857)](/a/15050) have been linked to "Nassenabad" or
 Nasirabad/Rajputana: _Scotophilus pachyomus_, now usually placed in _Cnephaeus_, and
-_Vespertilio blythii_, now _Myotis blythii_. The evidence is similar but not identical
-for the two names: _S. pachyomus_ was originally recorded only from "India" and Capt.
-Boys, whereas _V. blythii_ was described from a specimen labelled "India, Nassenabad,
-from Mr. Warwick, 1848" and believed by Tomes to have been collected by Capt. Boys. A
-third bat, _Vespertilio caliginosus_ (currently _Submyotodon caliginosus_), was also
-named from a specimen collected by Capt. Boys.
+_Vespertilio blythii_, now _Myotis blythii_. Both are associated with Capt. Boys, as is
+a third bat, _Vespertilio caliginosus_ (currently _Submyotodon caliginosus_). Their type
+localities remain uncertain.
 
 ## Original data
 
 [Tomes (1857)](/a/15050) described _Scotophilus pachyomus_ from a British Museum
-specimen and gave its habitat as "India", adding that it was in the British Museum and
-collected by Capt. Boys. No more precise locality was given in the original description.
+specimen collected by Capt. Boys, giving only "India" as its locality.
 
 In the same paper, Tomes described _Vespertilio blythii_ from a single British Museum
 specimen labelled "India, Nassenabad, from Mr. Warwick, 1848". Tomes added that he
@@ -61,20 +57,16 @@ records Mr. Warwick.
 The East-India Register indexes expand W. J. E. Boys's name as William John Edward Boys.
 The East-India Register for 1827 lists him as a cornet in the 8th Regiment of Bengal
 Light Cavalry, with rank dated 18 January 1826. The 1830 register lists the 8th Light
-Cavalry at Nusseerabad and includes Wm. J. E. Boys in the regiment. This shows that Boys
-was already in Company service before the publication of _Felis ornata_ and that his
-regiment was stationed at Nusseerabad in 1830.
+Cavalry at Nusseerabad and includes Wm. J. E. Boys in the regiment.
 
 The East-India Register for 1844 lists Boys as a lieutenant in the 6th Regiment of
 Bengal Light Cavalry and as interpreter and quartermaster of that regiment. The
-regiment's station is given as Nusseerabad. The same 1844 register also lists the 18th
-Regiment Native Infantry at Nusseerabad, showing that this was an active Company
-military station at the time. The register's distance table gives Ajmere as W.N.W. of
-Calcutta at about 1035 British miles and Nusseerabad at about 1018 British miles. Later
-gazetteer usage identifies Nasirabad as a town and cantonment in the district of Ajmere,
-Rajputana. Thus, although there are multiple places named "Nasirabad" or similar in
-South Asia, it seems reasonably certain that Boys was at modern Nasirabad, Ajmer
-district, Rajasthan.
+regiment's station is given as Nusseerabad, as is that of the 18th Regiment Native
+Infantry. The register's distance table gives Ajmere as W.N.W. of Calcutta at about 1035
+British miles and Nusseerabad at about 1018 British miles. Later gazetteer usage
+identifies Nasirabad as a town and cantonment in the district of Ajmere, Rajputana.
+These records place Boys at modern Nasirabad, Ajmer district, Rajasthan, with reasonable
+certainty.
 
 The 1845 East-India Register lists the 6th Light Cavalry at Loodianah, where it had
 arrived in January 1844. [Anderson (1881)](/a/69773) recorded two skins of _Nyctinomus
@@ -88,8 +80,8 @@ quartermaster.
 The East-India Register for 1849 lists Boys as a captain, with captaincy dated 3 April
 1848, and still in the 6th Light Cavalry; the 1854 register still lists him as captain.
 _Allen's Indian Mail_ for 1854 reported the death of "Capt. W. J. E. Boys, 6th L.C." at
-Almorah, now Almora in Uttarakhand, on 21 March 1854, and official notices in the same
-volume referred to successors appointed in succession to Boys, deceased.
+Almorah, now Almora in Uttarakhand, on 21 March 1854; official notices in the same
+volume recorded the appointment of his successors.
 
 Zoological specimens associated with Boys include:
 
@@ -114,23 +106,14 @@ Zoological specimens associated with Boys include:
 
 ## Zoogeography
 
-Nasirabad, Rajasthan, is located at an elevation of 429 m and is in a dry, partly desert
-region. [Saikia et al. (2025)](/a/69679) record _Cnephaeus pachyomus_ at 1440 to 1630 m
-and _Submyotodon caliginosus_ at 1500 to 3065 m in Uttarakhand; no elevation was given
-for _Myotis blythii_. All three species otherwise occur only along the southern flank of
-the Himalayas in this region. An occurrence in Rajasthan is perhaps not out of the
-question, especially for _Myotis blythii_, which otherwise has a wide distribution
-ranging over many habitat types in western Eurasia, but for all three it is
-zoogeographically more plausible that the type specimens came from the Himalayan
-foothills.
-
-## Assessment
-
-The type locality of all three species discussed here (_Cnephaeus pachyomus_, _Myotis
-blythii_, and _Submyotodon caliginosus_) remains uncertain. Capt. Boys had a long career
-in the service of the East Indies Company, some of which was spent in Nasirabad, the
-place associated with some of his specimens, but the available evidence suggests he
-collected in many other places.
+Nasirabad, Rajasthan, lies at an elevation of 429 m in a dry, partly desert region.
+[Saikia et al. (2025)](/a/69679) record _Cnephaeus pachyomus_ at 1440 to 1630 m and
+_Submyotodon caliginosus_ at 1500 to 3065 m in Uttarakhand; no elevation was given for
+_Myotis blythii_. All three species otherwise occur only along the southern flank of the
+Himalayas in this region. Rajasthan remains a possible origin, especially for _Myotis
+blythii_, which occupies many habitat types across western Eurasia. The Himalayan
+foothills are a more plausible origin for all three types, given their known
+distributions and Boys's association with specimens from several localities.
 
 ## Sources
 

@@ -2,9 +2,9 @@
 
 _Jelle S. Zijlstra, June 2026_
 
-The problem is the identity of the larger noctule bats reported from the southern
-Himalayas, mainland Southeast Asia, China, Taiwan, and the Philippines: are they
-_Nyctalus noctula_, _N. plancyi_, _N. labiatus_, or some combination of these?
+The larger noctule bats of the southern Himalayas, mainland Southeast Asia, China,
+Taiwan, and the Philippines have been assigned to _Nyctalus noctula_, _N. plancyi_, and
+_N. labiatus_. Their species limits and the application of these names remain disputed.
 
 ## Taxonomic context
 
@@ -20,12 +20,10 @@ The names directly involved are:
   specimen AMNH M-44649. It is usually attached to the Chinese/Taiwanese _plancyi_
   group, either as a synonym or subspecies.
 
-There are also western and central Asian names that help frame true _N. noctula_ but are
-not central to the South/East Asian name problem: _lebanoticus_ from Lebanon and
-_meklenburzevi_ from Uzbekistan. [Wilson & Mittermeier (2019)](/a/59249) treated these,
-with nominotypical _noctula_, as subspecies of _N. noctula_.
+Western and central Asian names include _lebanoticus_ from Lebanon and _meklenburzevi_
+from Uzbekistan. [Wilson & Mittermeier (2019)](/a/59249) treated both, along with
+nominotypical _noctula_, as subspecies of _N. noctula_.
 
-Major classifications have moved the boundary in different places.
 [Dobson (1878)](/a/34111) and later broad treatments included _labiata_ in a very wide
 _Vesperugo/Nyctalus noctula_ concept extending from Europe across Asia, and
 [Corbet & Hill (1992)](/a/63139) still treated _labiatus_, _plancyi_, and _velutinus_
@@ -42,9 +40,7 @@ _plancyi_ and _velutinus_, even though _labiatus_ is an older name than _plancyi
 
 ### Western and central Palearctic Asia
 
-True _N. noctula_ occurs widely in Europe and central Palearctic Asia, and that range is
-relevant because it is the source for any "western" _noctula_ expected in southwest or
-central Asia. [Benda & Gaisler (2015)](/a/29223) described the Palearctic range as
+[Benda & Gaisler (2015)](/a/29223) described the Palearctic range of _N. noctula_ as
 covering mostly Europe and West Turkestan, with patches in the Middle East, including
 the Levant, Caucasus, and Hyrcanian region. They delimited the West Turkestan range as
 southern and eastern Kazakhstan, eastern Uzbekistan, northern and western Kyrgyzstan,
@@ -100,7 +96,7 @@ noctula_). [Bates & Harrison (1997)](/a/27903) listed the Kathmandu Valley as th
 locality of _labiata_ and also cited Godavari, Gari, and Nuwakot. Their figured skull of
 _N. noctula_ was from Godavari, Nepal. [Zhukova et al. (2025)](/a/69659) included a
 Nepalese specimen under _N. labiata_ in their morphometric material, but no molecular
-data from Nepal has been reported.
+data from Nepal have been reported.
 
 ### Myanmar
 
@@ -112,12 +108,12 @@ the smaller values that resemble Chinese _plancyi_ more than the Afghan specimen
 compiled these values from earlier Burma/Myanmar literature by Sinha and Ghosh, which I
 have not seen.
 
-### Countries without confirmed records in the sources checked
+### Other mainland countries
 
 No confirmed records of this complex from Bhutan, Bangladesh, Laos, Cambodia, or
 Thailand were found in the sources checked here. [Corbet & Hill (1992)](/a/63139) gave a
-queried northern Thailand occurrence in their broad _N. noctula_ account, but it is
-unclear what if anything this record was based on.
+queried northern Thailand occurrence in their broad _N. noctula_ account, but its basis
+is unclear.
 
 ### Vietnam
 
@@ -131,12 +127,6 @@ Earlier regional works had already suggested Vietnamese occurrence.
 [Corbet & Hill (1992)](/a/63139) listed Vietnam in a broad _N. noctula_ account, but
 Kruskop & Vasenkov noted that this was apparently based on occurrence in nearby China
 rather than a concrete Vietnamese specimen.
-
-The Vietnamese bats were large (forearm lengths of 55.6, 54.1, and 52.1 mm), externally
-close to European _N. noctula_, but their brown coloration without reddish tones and
-their morphometric placement were closer to the Chinese/South Asian group than to true
-_N. noctula_. This supports excluding at least the Vietnamese population from
-western/central _N. noctula_.
 
 ### Malaysia and Singapore
 
@@ -161,7 +151,6 @@ Chinese _plancyi_ sequence very divergent from _N. noctula_, and
 series. [Kruskop & Vasenkov (2016)](/a/28926) compared Vietnamese bats with Chinese
 material and the _plancyi_ holotype.
 
-Some uses of _N. noctula_ in China do appear to refer to true _noctula_.
 [Smith & Xie (2008)](/a/64149) listed _N. noctula_ from Xinjiang, with the Chinese
 subspecies given as _N. n. mecklenburzevi_, and treated it as widely distributed through
 Eurasia. In the same book they recognized _N. plancyi_ separately, throughout
@@ -172,8 +161,6 @@ Chinese subspecies.
 
 [Smith & Xie (2008)](/a/64149) included Taiwan under _N. plancyi velutinus_, and
 [Huang et al. (2020)](/a/63740) listed _N. plancyi velutinus_ in a Taiwan field key.
-[Lin et al. (2002)](/a/1266) reported Taiwanese _Nyctalus_ with a 2n = 36 karyotype like
-Chinese _N. velutinus_ and unlike European _N. noctula_ with 2n = 42.
 [Salgueiro et al. (2007)](/a/72884) summarized _N. plancyi_ as occurring in eastern
 China and Taiwan, and [Heaney et al. (2012)](/a/12147) interpreted the Luzon record as a
 northern colonization from Taiwan or mainland China.
@@ -188,9 +175,8 @@ Heaney et al. judged the Philippine and Chinese specimens likely conspecific.
 ## Molecular data
 
 Molecular data consistently separate Chinese, Vietnamese, and Philippine
-_plancyi_/_labiatus_ material from true _N. noctula_, but they do not yet sample the
-critical South Asian localities. I found no molecular data from Nepal, India, Pakistan,
-Afghanistan, or Myanmar.
+_plancyi_/_labiatus_ material from _N. noctula_. I found no molecular data from Nepal,
+India, Pakistan, Afghanistan, or Myanmar.
 
 [Lin et al. (2002)](/a/1266) supplied cytotaxonomic evidence: Taiwanese _Nyctalus_ had a
 2n = 36 karyotype matching Chinese "_N. velutinus_" and different from European _N.
@@ -202,33 +188,25 @@ _N. noctula_, and had a different karyotype reported in the literature. They the
 supported species rank for _plancyi_.
 
 [Heaney et al. (2012)](/a/12147) sequenced cytb and nuclear RAG2. The Philippine
-_plancyi_ specimens were close enough to the Chinese sequence to be considered probably
-conspecific, while still distinct enough to suggest a real geographic structure or a
-relatively old connection. Their combined tree placed _Nyctalus plancyi_ sister to the
-other _Nyctalus_ species sampled.
+_plancyi_ specimens were judged probably conspecific with the Chinese sample; their
+sequence divergence suggests geographic structure or a relatively old connection. The
+combined tree placed _Nyctalus plancyi_ sister to the other _Nyctalus_ species sampled.
 
 [Dool & Puechmaille (2025)](/a/70522) sampled a Philippine _N. plancyi_ in a six-intron
 analysis. In their species tree, _N. plancyi_ diverged first within _Nyctalus_, followed
 by _N. leisleri_, _N. noctula_, and the _N. lasiopterus_ + _N. aviator_ pair.
 
 [Zhukova et al. (2022)](/a/69545) used three nuclear genes. Their figure places three
-sequences labelled _N. labiata_ together, sister to _N. leisleri_ within _Nyctalus_,
-rather than with _N. noctula_. The paper is primarily about _Pipistrellus_, and the
-locality details for those three _labiata_ sequences are not stated in the article text.
-At least one corresponds to the Vietnamese material of
-[Kruskop & Vasenkov (2016)](/a/28926).
+sequences labelled _N. labiata_ together, sister to _N. leisleri_ within _Nyctalus_. The
+paper is primarily about _Pipistrellus_, and the locality details for those three
+_labiata_ sequences are not stated in the article text. At least one corresponds to the
+Vietnamese material of [Kruskop & Vasenkov (2016)](/a/28926).
 
 [Zhukova et al. (2025)](/a/69659) included cytb and four nuclear markers. In the cytb
 figure, _N. labiata_ from China, the Philippines, and Vietnam forms the basal lineage of
-sampled _Nyctalus_, sister to the remaining _Nyctalus_ species. The paper's text does
-not provide a detailed taxonomic discussion of the _Nyctalus_ complex, but its sampling
-supports the same general point: the East/Southeast Asian _labiatus_/_plancyi_ group is
-genetically distinct from _N. noctula_.
+sampled _Nyctalus_, sister to the remaining _Nyctalus_ species.
 
 ## Morphology
-
-Morphology is consistent with a distinct eastern/southern group, but it is not yet clean
-enough to define species limits by itself.
 
 [Bates & Harrison (1997)](/a/27903) treated Indian-subcontinent specimens as _N. noctula
 labiata_ and described _N. noctula_ in the broad sense as a robust bat with a forearm of
@@ -244,31 +222,24 @@ glossy dorsal fur with a reddish tint in bright light, paler brown ventral fur, 
 short robust skull.
 
 [Kruskop & Vasenkov (2016)](/a/28926) made the most explicit morphometric comparison.
-Their Vietnamese specimens had forearms of 52.1-55.6 mm and were larger than Philippine
-_plancyi_. In a PCA of cranial measurements, larger _Nyctalus_ separated almost into
-true _N. noctula_ and a China/South Asia group. They found two size forms within the
-latter: a smaller form including the _plancyi_ holotype and Philippine specimens, and a
-larger form including the _labiatus_ holotype. The Vietnamese bats were even somewhat
-larger than the largest Chinese specimens and approached _N. noctula_ in size, but still
-fell with _N. cf. labiata_ and resembled the Chinese/South Asian group in fur color.
+Their Vietnamese specimens had forearms of 55.6, 54.1, and 52.1 mm and were larger than
+Philippine _plancyi_. In a PCA of cranial measurements, larger _Nyctalus_ separated
+almost into _N. noctula_ and a China/South Asia group. They found two size forms within
+the latter: a smaller form including the _plancyi_ holotype and Philippine specimens,
+and a larger form including the _labiatus_ holotype. The Vietnamese bats were even
+somewhat larger than the largest Chinese specimens and approached _N. noctula_ in size,
+but still fell with _N. cf. labiata_. Their brown fur lacked the reddish tones of
+European _N. noctula_, resembling the Chinese/South Asian group.
 
-[Benda & Gaisler (2015)](/a/29223) complicated the picture from the west. Their Afghan
-specimens were larger than Chinese _plancyi_ and most published _labiatus_ measurements,
-and they resembled European/Middle Eastern _N. noctula_ in size. They therefore did not
-assign the Afghan bats confidently to _labiatus_ or _plancyi_. Their discussion is a
-useful warning that the South Asian range may contain more than one form, or a size
-cline, rather than a single easily diagnosed taxon.
+[Benda & Gaisler (2015)](/a/29223) found that their Afghan specimens were larger than
+Chinese _plancyi_ and most published _labiatus_ measurements, and they resembled
+European/Middle Eastern _N. noctula_ in size. They therefore did not assign the Afghan
+bats confidently to _labiatus_ or _plancyi_, suggesting either multiple forms or a size
+cline.
 
 ## Assessment
 
-The available molecular evidence strongly suggests that the species occurring in China,
-Vietnam, and the Philippines is distinct from western Eurasian true _Nyctalus noctula_.
-However, no molecular data is as yet available from South Asia, so it remains unclear
-whether populations in this area are conspecific with the western species, the eastern
-species, or neither. There is some morphometric evidence but it cannot be considered
-decisive.
-
-There are several possible arrangements:
+The lack of South Asian molecular data leaves three possible arrangements:
 
 - Recognize South Asian populations as _noctula_, extending east perhaps to Myanmar, and
   treat populations in China, Vietnam, and the Philippines as _plancyi_. This is
@@ -277,19 +248,18 @@ There are several possible arrangements:
   ones, and biogeographically it appears less plausible.
 - Treat South Asian populations as conspecific with Chinese ones, west perhaps to
   Afghanistan. This is the classification of [Wilson & Mittermeier (2019)](/a/59249).
-  They used the name "_Nyctalus plancyi_", but if this classification is accepted,
-  _Nyctalus labiatus_ is the older name. This option is biogeographically satisfying,
-  but has so far not been explicitly supported by morphological evidence.
-- Other options are possible, though not supported by currently available evidence;
-  perhaps there are one or more additional species in South Asia, distinct from both
-  _noctula_ and _plancyi_.
+  Under this classification, _Nyctalus labiatus_ has priority over their chosen name,
+  _N. plancyi_. This option is biogeographically plausible but lacks explicit
+  morphological support.
+- Recognize one or more additional species in South Asia, distinct from both _noctula_
+  and _plancyi_. This remains speculative.
 
 The first option is the most conservative until a more comprehensive revision is
 published.
 
-As for geographic occurrence, I would currently reject the occurrence of the group in
-Malaysia or Singapore. However, a bat of the group would be expected to occur in Bhutan,
-and similar bats should be sought for elsewhere in Southeast Asia.
+I would currently reject the records from Malaysia and Singapore. Bats of this group
+could be sought in Bhutan, where they are likely to occur, and elsewhere in Southeast
+Asia.
 
 ## Sources
 

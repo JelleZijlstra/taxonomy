@@ -2,11 +2,10 @@
 
 _Jelle S. Zijlstra, June 2026_
 
-The classification of the black-headed uacari group is confusing because recent
-treatments disagree both on species limits and on which population bears the name
-_Cacajao melanocephalus_. I currently follow [Boubli et al. (2008)](/a/4772), but the
-nomenclature of _melanocephalus_ and the separation of _ayresi_ and _hosomi_ both need
-further corroboration.
+Recent treatments of black-headed uacaris disagree on species limits and on which
+population bears the name _Cacajao melanocephalus_. I currently follow
+[Boubli et al. (2008)](/a/4772), but the nomenclature of _melanocephalus_ and the
+separation of _ayresi_ and _hosomi_ both need further corroboration.
 
 ## Taxonomic treatments
 
@@ -38,16 +37,15 @@ previous neotype designation.
 
 ## Nomenclature
 
-The identity of _Cacajao melanocephalus_ hinges on the identity of its neotype. Both
-neotype designations are somewhat cursory and do not discuss why a neotype is justified.
-The designation by [Boubli et al. (2008)](/a/4772) is additionally problematic because
-the proposed neotype, MN 68616, is from Brazil, while the original type locality was in
+The application of _Cacajao melanocephalus_ depends on which neotype designation is
+valid. Both designations are cursory and do not explain why a neotype is justified. The
+designation by [Boubli et al. (2008)](/a/4772) is additionally problematic because the
+proposed neotype, MN 68616, is from Brazil, while the original type locality was in
 Venezuela.
 
-However, the designation by [Boubli et al. (2008)](/a/4772) is the older one. In the
-absence of a compelling argument to the contrary, I accept their designation of MN 68616
-as the neotype. On that basis, _C. melanocephalus_ is the appropriate name for the
-right-bank uacari.
+I provisionally accept the earlier designation by [Boubli et al. (2008)](/a/4772) of MN
+68616 as the neotype, placing _C. melanocephalus_ on the right bank. A reassessment of
+the designations could return the name to the left-bank population.
 
 ## Molecular evidence
 
@@ -60,13 +58,3 @@ separate species.
 Within the left-bank clade, _C. ayresi_ and _C. hosomi_ are reciprocally monophyletic
 but very close to each other. They may be separate species, but further study is needed
 to confirm their distinction.
-
-## Assessment
-
-I accept the classification of [Boubli et al. (2008)](/a/4772), with two caveats:
-
-- A technical reassessment of the validity of the various neotype designations for _C.
-  melanocephalus_ could result in the reallocation of the name _melanocephalus_ to
-  left-bank populations.
-- The distinction between _C. ayresi_ and _C. hosomi_ is weak and needs further
-  corroboration.

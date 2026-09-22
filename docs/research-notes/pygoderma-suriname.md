@@ -2,19 +2,13 @@
 
 _Jelle S. Zijlstra, June 2026_
 
-There is some evidence that _Pygoderma_ occurs in Suriname, but all records are open to
-question:
-
-- The two syntypes of _Stenoderma_ (_Pygoderma_) _microdon_ Peters, 1863, which are
-  recorded as being from Suriname but lack any more precise data.
-- Another museum specimen, USNM 14816, also said to be from Suriname.
-- A modern YPM specimen that is identified as _Pygoderma_ in online sources, but that
-  has not been discussed in the peer-reviewed literature.
+Four specimens have been reported from Suriname as _Pygoderma_, but their origins or
+identification need verification.
 
 _Pygoderma_ contains a single recognized species, _Pygoderma bilabiatum_. It otherwise
 occurs in southern and eastern coastal Brazil and inland to Bolivia and northern
 Argentina. [Voss & Emmons (1996)](/a/15331) reject its occurrence in Suriname, but
-[Gardner (2008)](/a/5818) believe there is some possibility it really does occur there.
+[Gardner (2008)](/a/5818) considers it possible.
 
 ## ZMB syntypes
 
@@ -36,10 +30,10 @@ extracted. They recorded both as adult males from Suriname, donated by Schaufuß
 
 Turni & Kock spell the donor's name Schaufuß. He was probably Ludwig Wilhelm Schaufuß
 (1833-1890), a German naturalist and specimen dealer. Schaufuß was educated in Leipzig,
-but his natural-history business was in Dresden, under the name L.W. Schaufuß, formerly
-E. Klocke. He traded prepared animals and teaching specimens internationally, but the
-ZMB catalogue data identify him only as the donor; they do not show that he collected
-the bats himself or that he visited Suriname.
+and ran a natural-history business in Dresden under the name L.W. Schaufuß, formerly E.
+Klocke. He traded prepared animals and teaching specimens internationally. The ZMB
+catalogue identifies him as the donor and gives neither a collector nor a precise
+locality.
 
 ## USNM 14816
 
@@ -72,21 +66,13 @@ collected by Koebele in Pernambuco, but none from Suriname.
 
 ## YPM MAM 014625
 
-The most important unpublished evidence is YPM MAM 014625, a Yale Peabody Museum
-specimen identified in GBIF as _Pygoderma bilabiatum_. Its metadata give the locality as
-Sipaliwini Savanna, Mamia Pakoro, Suriname (1.9624, -55.93), collected on 26 June 2007
-by Kristof Zyskowski, field number F 6934, and identified in 2009 by Jordan G. Colosi.
+YPM MAM 014625, a Yale Peabody Museum specimen, is identified in GBIF as _Pygoderma
+bilabiatum_. Its metadata give the locality as Sipaliwini Savanna, Mamia Pakoro,
+Suriname (1.9624, -55.93), collected on 26 June 2007 by Kristof Zyskowski, field number
+F 6934, and identified in 2009 by Jordan G. Colosi.
 
-However, no peer-reviewed literature mentions this record.
-
-## Assessment
-
-Published literature alone supports a cautious "possibly, but not securely
-demonstrated". The ZMB syntypes are legitimate historical evidence from Suriname, but
-they lack a precise locality and independent collecting context. USNM 14816 was
-genuinely catalogued from Suriname, but it is doubtful that any of Koebele's material
-came from Suriname. YPM MAM 014625 is potentially decisive modern evidence, but it
-remains unpublished and needs direct verification.
+This record could establish the species' occurrence in Suriname if verified directly. It
+has yet to be discussed in the peer-reviewed literature.
 
 ## Sources
 
