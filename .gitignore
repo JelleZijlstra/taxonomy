@@ -12,7 +12,9 @@ data_import/data/
 data_import/wikicache/
 mapper/base_maps/
 notes/
+outputs/
 recs/manifests/
+recs/reports/
 recs/scripts/
 .vscode/
 .ipynb_checkpoints/
