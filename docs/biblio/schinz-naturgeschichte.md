@@ -66,7 +66,9 @@ The available evidence is spotty and inconsistent. It is clear that:
 - Both were issued in parts and publication took several years
 - By 1827, the second edition was being published
 
-Each Heft probably usually contained about 12 pages and 7 plates.
+The reported contents vary: one notice gives 72 plates for 12 Hefte (six per Heft),
+whereas another reports seven plates per Heft. A fixed number of pages or plates per
+Heft cannot be assumed.
 
 Speculative questions:
 
@@ -76,8 +78,11 @@ Speculative questions:
 
 ## Conclusion
 
-For now, we assume the following publication history:
+For now, I use the following provisional dating:
 
-- pp. 1–130, Hefte 1–12, were published by 1825 ({Mammalia (Schinz 1825) (Heft 1-12)})
-- pp. 131 to the end were published by 1827, on the assumption that by the time the
-  second edition was started, the first was mostly complete
+- pp. 1–130, Hefte 1–12: cited as 1825 in contemporary notices and available by the
+  review of 14 February 1826 ({Mammalia (Schinz 1825) (Heft 1-12)}).
+- pp. 131 to the end: provisionally dated 1827, but completion by that year has not been
+  established. The start of the second edition does not prove that the first was
+  complete, and the edition to which Palmer's February 1828 completion notice applies
+  remains uncertain.

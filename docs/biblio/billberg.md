@@ -64,6 +64,7 @@ and "Hoplepoda" in 1828.
 
 ## Treatment in the database
 
-While both the 1827 and 1828 editions were apparently published, the 1827 edition is
-older and I have a more nearly complete copy, so I cite names only from the 1827
-edition.
+The 1827 edition is earlier and my copy is more complete, so I use it as the default
+source for names from this work. Each name must nevertheless be verified in that
+edition: a name or spelling found only in the 1828 edition cannot be backdated merely
+because an earlier edition exists.

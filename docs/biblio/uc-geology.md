@@ -1,7 +1,7 @@
 # University of California Geology
 
-The University of California's geological series has gone through a confusing series of
-renames:
+The University of California's geological publication series has changed title several
+times:
 
 - [Bulletin of the Department of Geology of the University of California](/cg/3965) (v.
   1-2, 1896–1902)
@@ -10,8 +10,8 @@ renames:
 - [University of California Publications in Geology](/cg/23) (v. 7-12, 1912–1921)
 - [University of California Publications, Bulletin of the Department of Geological Sciences](/cg/850)
   (v. 13-28, 1921–1951)
-- [University of California Publications in Geological Sciences](/cg/1251) (v.29-,
-  1951-)
+- [University of California Publications in Geological Sciences](/cg/1251) (v. 29–,
+  1951–)
 
 Main source: https://searchworks.stanford.edu/view/355199
 

@@ -235,14 +235,14 @@ because the _Isis_ review puts 7 plates in part 4 and only 5 in part 5.
 However, the _Isis_ review only covers parts up to 15. For the rest, we have to allocate
 plates M27-30, B32-36, R4-6, F25-35, I7-12. The August 1831 _Bulletin des Sciences
 Naturelles et de Géologie_ has data for the last three parts (there numbered 25-27,
-which is presumed to be a mistake for 18-20). Other data cited below indicate that part
+which is presumed to be a mistake for 18-20). Other data cited above indicate that part
 16 contains fish and part 17 contains invertebrates. It is not clear what happened to
 plate B32; it is not listed in the _Isis_ review (contra {Aves-dating.pdf} which puts it
 in part 14), but also not listed in the _Bulletin_ review. It is listed in the earlier
 _Bulletin_ review of birds, so must have been published by July 1830. I tentatively
 associate it with part 14.
 
-We can therefore assume that the contents of the parts are as follows:
+The following is a provisional reconstruction of the contents:
 
 - Heft 1: pl. M1-4, B1-2
 - Heft 2: pl. B3-8

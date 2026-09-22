@@ -4,7 +4,7 @@ This book was published from 1868 to 1874 by Henri Milne-Edwards (1800–1885) a
 Alphonse Milne-Edwards (1835–1900). It is of interest mostly for descriptions of a
 number of new taxa from China.
 
-### Contents
+## Contents
 
 The work consists of two volumes:
 
@@ -23,7 +23,7 @@ The work consists of two volumes:
 
 The title pages of both volumes bear the date "1868 à 1874".
 
-### Primary sources
+## Primary sources
 
 - _Zoological Record_
   - {Mammalia-1868 Zoological Record} p. 3: parts 1–3 were published in 1868, containing
@@ -41,8 +41,8 @@ The title pages of both volumes bear the date "1868 à 1874".
   - {Mammalia-1874 Zoological Record} p. 4: the work has been completed.
 - _Comptes Rendus_ (found by searching "recherches mammifères milne"; possibly some
   notices were missed)
-  - 68:1009, 1078 (23 November 1868): livraisons 1 and 2 were received, with plates 1–7,
-    10, 14, 21
+  - [67:1009, 1078](https://www.biodiversitylibrary.org/item/23678) (23 November 1868):
+    livraisons 1 and 2 were received, with plates 1–7, 10, 14, 21
   - 73:871 (25 September 1871): livraison 7 was received, "texte et planches"
   - 74:1212 (29 April 1872): livraisons 10 and 11 were received
   - 75:691 (16 September 1872): livraisons 12 and 13 were received
@@ -63,25 +63,30 @@ The title pages of both volumes bear the date "1868 à 1874".
 - Internal evidence
   - p. 229: livraison 5, including plate for _M. tcheliensis_, was published in 1870
 - Other
-  - There were 20 total livraisons according to the _Catalogue général de la libraire
-    française_, quoted at [BHL](https://www.biodiversitylibrary.org/bibliography/59889).
+  - There were 20 livraisons in total according to the _Catalogue général de la
+    librairie française_, quoted at
+    [BHL](https://www.biodiversitylibrary.org/bibliography/59889).
 
-### Discussion
+## Discussion
 
 The evidence gathered so far provides enough data for a general account of the history
 of publication of the work, but not enough to assign all the plates and give exact dates
 of publication. A few observations:
 
-- The publication of the work was obviously affected by the Franco-Prussian War of
-  1870–71. It may be assumed that nothing was published between the beginning of the
-  Siege of Paris (19 September 1870) and the end of the Paris Commune (28 May 1871).
+- The October 1871 notice in the _Annales des sciences naturelles_ explicitly reports an
+  interruption during the Siege of Paris. It does not establish the exact dates of the
+  interruption or show that publication remained suspended until the end of the Paris
+  Commune.
+- The date of livraison 5 remains uncertain: the _Zoological Record_ assigns it to 1869,
+  whereas p. 229 of the work itself gives 1870. The combined citation for livraisons 4–5
+  below does not resolve this discrepancy.
 - The _Zoological Record_ provides the only complete account of the publication of the
   work; in other sources I have found some notices, but they do not cover all
   livraisons.
 - Plates were evidently published in a somewhat haphazard order, but there is little
   evidence for exact dates.
 
-### Treatment in the database
+## Treatment in the database
 
 We organize the work as follows:
 

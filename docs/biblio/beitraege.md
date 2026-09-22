@@ -1,7 +1,6 @@
 # Beiträge zur Paläontologie
 
-The Austrian journal _Beiträge zur Paläontologie_ had various more ornate names in the
-past.
+The Austrian journal _Beiträge zur Paläontologie_ appeared under several earlier titles.
 
 - [Beiträge zur Paläontologie Österreich-Ungarns und des Orients](/cg/1702) v. 1-8
   (1882-1890/91)

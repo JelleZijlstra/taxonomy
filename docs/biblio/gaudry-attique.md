@@ -4,10 +4,10 @@ This book, which concerns the fossil mammals of Pikermi, Greece, has a relativel
 straightforward history, but since it was published in parts and the division is not
 completely obvious, I record my findings here.
 
-My copy comes from Gallica (the website of the Bibliothèque Nationale de France). It has
+My copy comes from Gallica (the website of the Bibliothèque nationale de France). It has
 474 numbered pages, followed by a note entitled "Dates de la publication des diverses
 livraisons qui composent cet ouvrage". It records the publication of the _livraisons_,
-_feuilles_ (leaves), and _planches_ (plates) of the work, as follows:
+_feuilles_ (printed sheets), and _planches_ (plates) of the work, as follows:
 
 - 1862: livr. 1–3, f. 1–9, pl. 1–12
 - 1863: livr. 4–6, f. 10–18, pl. 13–24
@@ -17,7 +17,7 @@ _feuilles_ (leaves), and _planches_ (plates) of the work, as follows:
 - 1867: livr. 16–19, f. 48–60, pl. 61–75
 
 Thus, the work was published in 19 parts over a six-year period. Most parts contained
-three leaves, but some 1865 and 1867 parts contained more.
+three sheets, but some 1865 and 1867 parts contained more.
 
 In the text, there are markings on many pages, as follows:
 
@@ -37,8 +37,8 @@ not looked for them consistently through the last parts of the book.
 
 These markings are consistent with the following hypothesis:
 
-- Each marking is at the beginning of the leaf
-- Each leaf is exactly 8 pages
+- Each marking is at the beginning of a printed sheet
+- Each sheet comprises 8 pages (four leaves), except for the final sheet
 
 This implies the following publication dates:
 

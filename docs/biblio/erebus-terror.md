@@ -18,15 +18,14 @@ A few of the confusing aspects are:
   into parts and the dates of publication of the work.
 - Page and plate numbers are not contiguous even within the mammal section.
 
-Here I briefly review the contents of the work, then look at the previous bibliographic
-sources that discussed the work, then lay out the treatment used in this database. I
-will consider only the mammal section for now.
+This note reviews the contents and publication history of the mammal section and
+explains its treatment in the database.
 
-### Contents
+## Contents
 
 As the Ross expedition focused on Antarctica, most of the mammal section concerns marine
 mammals, but there are also some newly named land mammals from Australia. The text is
-divisible into three logical divisions:
+divided into three sections:
 
 - "The seals of the southern Hemisphere", pages 1 through 12. Named, among others,
   [_Ommatophoca rossii_](/t/Ommatophoca_rossii).
@@ -35,9 +34,9 @@ divisible into three logical divisions:
 - "On the cetaceous animals", pages 13 through 53, a full review of the Cetacea that
   introduced numerous names that are still considered valid.
 
-Two differently numbered series of plates:
+There are two separately numbered series of plates:
 
-- Main series: plates 1 through 29, where plates 1 through 17 concerns seals and plates
+- Main series: plates 1 through 29, where plates 1 through 17 concern seals and plates
   18 through 29 concern terrestrial mammals. Plates 11, 12, 13, 23, and 24 are
   apparently missing.
 - For whales: plates 1 through 37, plus 32 _bis_, and an unnumbered plate of _Balaena
@@ -46,7 +45,7 @@ Two differently numbered series of plates:
 To avoid confusion, I will refer to the main series as plates M1 through M29 (for
 "Mammalia") and the whale series as C1 through C37 (for "Cetacea").
 
-### Previous work
+## Previous work
 
 Two articles provide detailed bibliographical accounts of the _Erebus and Terror_:
 
@@ -60,7 +59,7 @@ They agree on the following points:
   three parts were published together.
 - Parts I through XVIII were published in 1844–1848. After a long gap, the final parts
   XIX through XXIV were published in 1874–1875.
-- The mammals were published in four parts:
+- The mammals were issued in four installments, one comprising three numbered parts:
   - Part I: June 1844
   - Part IV: December 1844
   - Parts XIII–XV: August 1846 (Rosove) or 14–29 January 1847 (Evenhuis)
@@ -69,20 +68,21 @@ They agree on the following points:
 However, the two references differ in what was published in each part. Evenhuis divides
 the work as follows:
 
-- Part I: pp. 1–8, ppl. M1–M10
-- Part IV: pp. 13–53, ppl. C1–C37
-- Part XIII–XV: reprinting of part IV, no new content
-- Part XXIII: pp. 9–12, 12a–12d, ppl. M14–M28
+- Part I: pp. 1–8, pls. M1–M10
+- Part IV: pp. 13–53, pls. C1–C37
+- Parts XIII–XV: reprinting of part IV, no new content
+- Part XXIII: pp. 9–12, 12a–12d, pls. M14–M28
 
 Rosove's division is as follows:
 
-- Part I: pp. 1–4, ppl. M3–M10, M14, M16
-- Part IV: pp. 5–8, ppl. M1, M2, M15, M17, M18–M22, M25
-- Part XIII–XV: pp. 13–53, ppl. C1–C30
-- Part XXIII: pp. 9–12, 12a–12d, ppl. M26–M29, C31–C37, unnumbered plate of _Balaena
-  antipodarum_
+- Part I: pp. 1–4, pls. M3–M10, M14, M16
+- Part IV: pp. 5–8, pls. M1, M2, M15, M17, M18–M22, M25
+- Parts XIII–XV: pp. 13–53, pls. C1–C30
+- Part XXIII: pp. 9–12, 12a–12d, pls. M26–M29, C31–C37, C32 _bis_; Rosove also lists the
+  unnumbered plate of _Balaena antipodarum_ here, but explicitly says its assignment to
+  a part is speculative.
 
-### Primary sources
+## Primary sources
 
 Evenhuis makes references to "_Muquardt's Monthly Circular_", a work that was difficult
 to track down. It appears to refer to "A Monthly List of New Books Published in Great
@@ -115,13 +115,13 @@ a useful independent summary. Wagner gives the following pertinent information:
 - The plates depict terrestrial mammals. Wagner explicitly cites plates 18, 19, 20, 21,
   22, and 25 with the correct scientific names for the depicted animals.
 
-### Discussion
+## Discussion
 
 The most surprising point of agreement is that pp. 1–8 of "The seals of the southern
 Hemisphere" (1844) were published 31 years before pp. 9–12 (1875). On a first look at
 the work, this is difficult to believe, as p. 8 ends in the middle of a line of synonymy
 with a comma, and the line is completed on p. 9. Nevertheless, internal evidence in the
-work agrees with this division. P. 9 cites "Suppl. Cat. Seals and Whales Brit. Mus.",
+work agrees with this division. P. 9 cites "Supls. Cat. Seals and Whales Brit. Mus.",
 which is {Cetacea, Pinnipedia-in BMNH (Gray 1871).pdf}, as well as other works published
 in 1869 and 1874. However, p. 8 gives no literature references for _Ommatophoca Rossii_,
 and as early as {Pinnipedia-in BMNH (Gray 1850).pdf}, Gray cites the name from the
@@ -132,12 +132,12 @@ Among the disagreements are:
 - Was "The seals of the southern Hemisphere" pp. 1–8 published in its entirety in part I
   (Evenhuis), or divided into parts I and IV (Rosove)? This is of relatively minor
   significance (it affects only the month of publication within 1844). Muquardt's
-  listing for July 1844 ("pp. 16, 16 plates") appears more consistent with Rosove's
-  claim. In addition to mammals, Part I contained an introduction to the work on pages
-  numbered v through xii (presumably pp. i–iv were the original front matter). 12 pages
-  of introduction plus 4 pages of seals makes 16 pages total. Evenhuis gives 10 plates
-  to part I and Rosove gives 8 discontinuously numbered plates, the highest number
-  being 16.
+  listing for July 1844 gives "pp. 16, 16 plates". Rosove records an introduction on pp.
+  v–xii and four pages of seals; these would total 16 pages if pp. i–iv were also
+  included as front matter, but that assumption remains unverified. Both Evenhuis and
+  Rosove assign 10 plates to Part I, although they list different plate numbers. Neither
+  agrees with Muquardt's count of 16 plates, so the listing does not resolve the
+  disagreement.
 - Was "On the cetaceous animals" published in part IV (1844) or XIII–XV (1846)? As noted
   by {Odontoceti-nomenclature (Jefferson 2021).pdf} p. 79, this work contains numerous
   references to events from 1845 and 1846, so it cannot have been published in 1844.
@@ -164,24 +164,28 @@ Among the disagreements are:
 There is also some disagreement about a few of the other plates; I have not researched
 those further.
 
-### Treatment in the database
+## Treatment in the database
 
-It is evident from the above discussion that Rosove's bibliography is generally more
-consistent with the evidence. Therefore, I accept Rosove's assignment of the text and
-plates to parts in its entirety. However, I agree with Evenhuis that parts XIII–XV were
-likely published in January 1847, not in 1846.
+Rosove's bibliography is generally more consistent with the evidence. I follow his
+assignment of the text and numbered plates to parts, while retaining his uncertainty
+about the unnumbered _Balaena antipodarum_ plate. Rosove examined the wrapper of Part
+XXIII but did not locate a complete original copy; its contents are reconstructed
+(Rosove, p. 14). I agree with Evenhuis that parts XIII–XV were likely published in
+January 1847, not in 1846.
 
 I cite the work as follows:
 
 - {Aves, Mammalia-Erebus & Terror voyage.pdf} for the entirety of the mammals and birds
   portion of the work.
   - {Mammalia-Erebus & Terror 1 (Gray 1844)} (by June 1, 1844) for Part I, containing
-    pp. 1–4, ppl. M3–M10, M14, M16 (seals)
+    pp. 1–4, pls. M3–M10, M14, M16 (seals)
   - {Mammalia-Erebus & Terror 4 (Gray 1844)} (by December 2, 1844) for Part IV,
-    containing pp. 5–8, ppl. M1, M2, M15, M17, M18–M22, M25 (text on seals; plates on
+    containing pp. 5–8, pls. M1, M2, M15, M17, M18–M22, M25 (text on seals; plates on
     seals and terrestrial mammals)
   - {Cetacea (Gray 1846).pdf} (by January 29, 1847) for Parts XIII–XV, containing pp.
-    13–53, ppl. C1–C30 (whales)
+    13–53, pls. C1–C30 (whales)
   - {Mammalia-Erebus & Terror 23 (Gray 1875)} (by May 1875) for Part XXIII, containing
-    pp. 9–12, 12a–12d, ppl. M26–M29, C31–C37 (text on seals and terrestrial mammals;
-    plates on terrestrial mammals and whales)
+    pp. 9–12, 12a–12d, pls. M26–M29, C31–C37, C32 _bis_ (text on seals and terrestrial
+    mammals; plates on terrestrial mammals and whales)
+
+The unnumbered _Balaena antipodarum_ plate remains unassigned to a dated part.

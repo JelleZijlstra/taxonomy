@@ -9,7 +9,7 @@ However, the publication of the printed volume often happened considerably later
 useful overview of the early history of the journal is [Duncan (1937)](/a/14498), with
 additions by [Cowan (1973)](/a/59416) and [Dickinson (2005)](/a/14497). These sources
 provide precise dates of publication for all volumes from 1861 to 1925; before 1861 the
-data is fuzzier.
+dates are less certain.
 
 The precise title varied, but the journal is usually (including in this database)
 referred to as _Proceedings of the Zoological Society of London_ throughout its history:

@@ -16,7 +16,7 @@ The carnivore volume also bears the cover date of 1821. On p. 292, the account o
 _Tupaia Javanica_ mentions that "Dr. Horsfield has lately given a more detailed
 description of them, accompanied with excellent engravings, in his work now publishing
 on the animals of Java and the neighbouring islands". Horsfield's plate of _Tupaia
-javanica_ was published in April 1822 in Part III of this _Zoological Researches_ (see
+javanica_ was published in April 1822 in Part III of his _Zoological Researches_ (see
 {Aves, Mammalia Java-Horsfield dates (Reitmeyer & Dickinson 2019).pdf}). It also refers
 to {Sumatra (Raffles 1821).pdf}, which was published sometime in 1821.
 
@@ -64,19 +64,19 @@ of 1822.
 
 Thus, I treat the two volumes as follows:
 
-- Part 1, 1821: {Primates (Griffith 1821.pdf)}
-- Part 2, 1822: {Carnivora (Griffith 1821.pdf)}
+- Part 1, 1821: {Primates (Griffith 1821).pdf}
+- Part 2, 1822: {Carnivora (Griffith 1821).pdf}
 
 ## Nomenclature
 
-The _General and Particular Description_ is significant to mammal nomenclature as the
+The _General and Particular Descriptions_ is significant to mammal nomenclature as the
 first publication of a number of available names, including those of the species
 _Trachypithecus mauritius_ (part 1, p. 58) and _Neofelis nebulosa_ (part 2, p. 37). The
 first description of _Paguma larvata_ also appears in part 2, p. 263, though this name
 is usually attributed to a later work by Griffith.
 
-The work appears to use binomial nomenclature on a first look: species are cited with a
-genus and species name. However, Griffith's use of genera is inconsistent. He divides
+At first glance, the work appears to use binominal nomenclature: species are cited with
+a genus and species name. However, Griffith's use of genera is inconsistent. He divides
 each order into informal "sections", and uses generic names in a way that is not
 consistent with these sections. For example, the section on hyenas (part 2, p. 97)
 states in the text that the hyenas have been formed into a genus separate from the dogs,

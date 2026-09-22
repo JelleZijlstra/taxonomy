@@ -1,9 +1,9 @@
 # Zoologie et Paléontologie Françaises
 
 Gervais's _Zoologie et paléontologie françaises_ bears the dates 1848–1852, but the work
-is difficult because it lacks a continuous pagination and was published over several
-years. I am not aware of any published work summarizing the publication history of the
-book.
+is difficult to date because it lacks continuous pagination and was published over
+several years. I am not aware of any published work summarizing the publication history
+of the book.
 
 ## The work
 
@@ -38,8 +38,8 @@ the full work and the dates 1848–1852:
     unnumbered pp.
   - Pl. X. Fauna of Gard. _Ibex_. 2 unnumbered pp.
   - Pl. XI. Fauna of Alais. _Pterodon_, _Tylodon_, _Anchitherium_, _Palaeotherium_,
-    _Lophiotherium_. 2 unnumbered pp. (positions of the two pages swapped in {France
-    (Gervais 1852).pdf}).
+    _Lophiotherium_. 2 unnumbered pp. (positions of the two pages swapped in
+    {France+(Gervais+1852).pdf}).
   - Pl. XII, XIII, XIV, XV. Vaucluse. _Hyaena_, _Sus_, _Antilope_, _Pterodon_,
     _Anthracotherium_, _Palaeotherium_, _Paloplotherium_, _Tylodon_. _Pterodon_,
     _Mangusta_, _Anoplotherium_, indeterminate. 4 unnumbered pp.
@@ -96,7 +96,7 @@ the full work and the dates 1848–1852:
 In my library I have several partial copies of the work:
 
 - {France (Gervais 1852).pdf}
-  - Tome I and II. This is used as the main reference.
+  - Tomes I and II. This is used as the main reference.
 - {France (Gervais 1852) (1).pdf}
   - Only Tome I
 - {France (Gervais 1852) (2).pdf}
@@ -114,12 +114,14 @@ first edition to be cited to the second.
 ## Bibliographic sources
 
 The work itself contains some evidence to constrain its dates. On p. 244, there is a
-reference to "Test. Larteti, Pictet, Paléont., t. I, p. 444." This refers to {Animalia
-fossil (Pictet 1853.pdf)}, a work that bears a cover date of 1853 and has a preface
-dated 20 December 1852 (p. ix). Pictet's book may have been published in parts, but
-there is no concrete evidence for this, and it totals 580 pages, so most of it must have
-been available by the time Gervais wrote his work. The first reference to the second
-edition of Pictet's work (the first appeared in 1844) is on p. 200 of Gervais's book.
+reference to "Test. Larteti, Pictet, Paléont., t. I, p. 444." This refers to
+{Animalia+fossil+(Pictet+1853).pdf}, a work that bears a cover date of 1853 and has a
+preface dated 20 December 1852 (p. ix). The citation shows that Gervais had access to
+material as far as p. 444 of Pictet's book, but does not establish when that material
+was published. Pictet's imprint date and preface suggest late 1852 or 1853; they do not
+by themselves prove that Gervais's text appeared in 1853. The first reference to the
+second edition of Pictet's work (the first appeared in 1844) is on p. 200 of Gervais's
+book.
 
 I found the following external evidence:
 
@@ -169,8 +171,8 @@ I found the following external evidence:
       pls. 1–30 collectively have 64 pp. of text in Tome II.)
     - This catalog is for January–June 1851.
   - [p. 101](https://www.google.com/books/edition/Bibliotheca_historico_naturalis_physico/owUYAAAAYAAJ?hl=en&gbpv=1&dq=gervais%20Bibliotheca%20historico-naturalis&pg=RA1-PA101&printsec=frontcover)
-    - Livraisons 9–20, completing the work. Each livraisons contains 4 plates and 2 1/2
-      leaves of text.
+    - Livraisons 9–20, completing the work. Each livraison contains 4 plates and 2 1/2
+      sheets of text.
     - This catalog is for July–December 1852.
 - Scattered references
   - [_Revue et magasin de zoologie_, ser. 2, vol. 3, p. 195](https://www.google.com/books/edition/Revue_et_magasin_de_zoologie_pure_et_app/V2tIAAAAMAAJ?hl=en&gbpv=1&pg=PA195&printsec=frontcover&dq=gervais%20zoologie)
@@ -189,16 +191,21 @@ in order.
 ## Conclusion
 
 Unfortunately, the evidence is insufficient to reconstruct the publication history of
-the work in full. Only the following is known securely:
+the work in full. The evidence supports the following outline, with the limitations
+noted:
 
 - Livr. 1 contained pls. 3, 4, 5, and 10 and was published in 1848.
 - Livr. 2 contained pls. 2, 8, 11, and 12 and was published by January 1849.
-- Plates 1, 6, 7, and 9 were published in 1849.
-- Livr. 3–8 were published by 23 November 1850. They contained Tome I, pp. 1–136, and
-  probably 24 additional plates.
-- Livr. 9–20 were published by 1852 according to the _Bibliotheca historico-naturalis_,
-  but the internal evidence from citations to Pictet indicates that much of this part of
-  the book did not appear until 1853.
+- Plates 1, 6, 7, and 9 are cited in Wagner's review of the literature for 1849,
+  published in 1850. This establishes their availability by the review's publication,
+  but does not securely date each plate to 1849.
+- Livr. 1–8 were published by 23 November 1850, with 32 plates according to the
+  _Bibliographie de la France_. The 1851 _Bibliotheca historico-naturalis_ gives pp.
+  1–136 of Tome I for these eight livraisons together; Sherborn instead gives pp. 1–144
+  and descriptions for 21 plates. The extent of the text remains disputed.
+- Livr. 9–20 are listed as completing the work in the July–December 1852 _Bibliotheca
+  historico-naturalis_. The citations to Pictet leave open the possibility that some
+  text appeared in 1853, but do not establish this.
 - Plate 39 was published by April 1851.
 
 If a copy with original wrappers could be found, it could provide a more precise
@@ -210,5 +217,6 @@ In the database I use the following citations:
 - {France (Gervais 1849) (livr 2)} for livraison 2
 - {France (Gervais 1850) (livr 1-8)} for Tome I, pp. 1–136, which contains numerous new
   mammal names.
-- {France (Gervais 1852) (livr 9-20)} for the rest, even if much of it may have been
-  published earlier.
+- {France (Gervais 1852) (livr 9-20)} for the rest, retaining 1852 as a provisional
+  aggregate date; some components appeared earlier, and publication of some text in 1853
+  remains possible.

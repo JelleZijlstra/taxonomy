@@ -2,23 +2,24 @@
 
 This work arose out of a voyage to the Near East by two Prussian naturalists, Christian
 Gottfried Ehrenberg (1795–1876) and Friedrich Wilhelm Hemprich (1796–1825). They arrived
-in Egypt in 1821 and traveled around northeastern Africa and southwestern Asia until
-1825, when Hemprich died in what is now Eritrea and Ehrenberg returned to Europe (Baker,
-1997){Animalia-Hemprich Ehrenberg travel (Baker 1997).pdf}. Ehrenberg then published an
+in Egypt in 1820 and traveled around northeastern Africa and southwestern Asia until
+1825, when Hemprich died in what is now Eritrea and Ehrenberg returned to Europe
+({Animalia-Hemprich Ehrenberg travel (Baker 1997).pdf}). Ehrenberg then published an
 account of their collections, entitled _Symbolae physicae_.
 
 ## Internal evidence
 
-The mammals were issued in two "decades" or volumes. {Mammalia NE Africa (Hemprich &
-Ehrenberg 1).pdf} is the first volume. It bears the cover date 1828, but contains a
-letter dated 12 April 1829, where Ehrenberg writes that he is about to go on a
-collecting trip to Russia, so he is having the work published as much as possible before
-he leaves. The work also contains a dedicated dated September 1828 and a preface dated
-October 1828. The main text is a series of chapters dealing with individual species,
-some of which contain a date at the end. The last date is August 1832. Before the first
-page of signature _i_ is an explanation from Ehrenberg, stating that he is having the
-rest of the text of Decas I published together with Decas I. There are also 10 plates.
-The closing wrapper bears an index listing the 10 plates.
+The mammals were issued in two "decades" or volumes.
+{Mammalia+NE+Africa+(Hemprich+&+Ehrenberg+1).pdf} is the first volume. It bears the
+cover date 1828, but contains a letter dated 12 April 1829, where Ehrenberg writes that
+he is about to go on a collecting trip to Russia, so he is having the work published as
+much as possible before he leaves. The work also contains a dedication dated September
+1828 and a preface dated October 1828. The main text is a series of chapters dealing
+with individual species, some of which contain a date at the end. The last date is
+August 1832. Before the first page of signature _i_ is an explanation from Ehrenberg,
+stating that he is having the rest of the text of Decas I published together with Decas
+II (PDF p. 35). There are also 10 plates. The closing wrapper bears an index listing the
+10 plates.
 
 The second volume is {Mammalia NE Africa (Hemprich & Ehrenberg 2).pdf}. The title page
 bears the date 1830. There is no preface or introductory material. The end of the second
@@ -27,8 +28,9 @@ the last account is November 1832. There are again 10 plates and an index on the
 wrapper.
 
 The dates at the ends of individual accounts presumably represent the date when
-Ehrenberg wrote the text, not necessarily when they were published. It is clear that the
-cover dates (1828 and 1830) are not correct for the entire contents of the volumes.
+Ehrenberg wrote the text, not necessarily when the accounts were published. It is clear
+that the cover dates (1828 and 1830) are not correct for the entire contents of the
+volumes.
 
 There is no pagination in the work. In the text of the mammal accounts, the footer of
 every second page contains a small-print signature, ranging from a to z and then further
@@ -61,10 +63,13 @@ For the second Decas, a date in early 1833 is supported by
 ## Authorship
 
 Names from the _Symbolae Physicae_ are usually attributed to both Hemprich and
-Ehrenberg, but as Hemprich died before the expedition's return to Europe, the published
-work was produced by Ehrenberg alone. Thus, Ehrenberg is the sole author of the
-_Symbolae Physicae_ (except for the insect portion by Klug; Baker, 1997) and of the
-names introduced in the work.
+Ehrenberg. Baker (1997, p. 177) attributes all original sections except the insects (by
+Klug) to Ehrenberg. Ehrenberg's signed continuation notice also states that he is
+working alone. This supports attributing the mammal text to Ehrenberg, but Hemprich's
+death before publication does not itself exclude him from nomenclatural authorship. The
+authorship of individual names requires consideration of any explicit attribution of
+responsibility for the name and its description under
+[Article 50.1 of the Code](https://code.iczn.org/authorship/article-50-authors-of-names-and-nomenclatural-acts/).
 
 ## Conclusion
 
@@ -75,10 +80,10 @@ The first contained all of the plates in Decas I, as well as some of the text.
 {Library-BMNH catalog 2.pdf} attributes only signatures a through f to this part, but it
 seems more likely that signatures g and h, which also deal with hyraxes and are
 associated with the second plate, were included, since they precede the notice where
-Ehrenberg explained the delay in the publication of the rest of the text. {Library-BMNH
-catalog 2.pdf} and the title page attribute this part of the work to 1828, but
-contemporary evidence (e.g., the _Verzeichniß der Bücher_) suggests it was published in
-1829, no later than June.
+Ehrenberg explained the delay in the publication of the rest of the text.
+{Library-BMNH+catalog+2.pdf} and the title page attribute this part of the work to 1828,
+but contemporary evidence (e.g., the _Verzeichniß der Bücher_) suggests it was published
+in 1829, no later than June.
 
 The second part contained the remaining text of Decas I and all of Decas II, which were
 apparently published together. {Library-BMNH catalog 2.pdf} dates these to 1833,

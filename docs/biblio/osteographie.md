@@ -7,10 +7,10 @@ The work was published in independently paginated "monographies", each ostensibl
 covering a single genus, and arranged into four volumes. The monographies were issued in
 parts (livraisons), each usually covering a single monographie.
 
-Two tertiary sources give a list of contents and dates:
+Two bibliographic sources give lists of contents and dates:
 
 - {Mammalia-families (Gill 1872).pdf} pp. 32–34 is a general account of the work
-- {Osteographie-dates.pdf} only gives the livraison numbers and dates.
+- Sherborn's {Osteographie-dates.pdf} gives the livraison numbers and dates.
 
 The two sources mostly agree, but differ in some details. The monographies on bats
 (_Vespertilio_) and "De l'ancienneté des Primates" are dated to 1839 by Gill and to 1840
@@ -42,7 +42,7 @@ The 26 livraisons had the following contents:
 - Livr. 6
   - Insectivores, 1840. Vol. 1. {Lipotyphla-osteographie.pdf}
 - Livr. 7
-  - Carnasiers, 1840. Vol. 2. {Carnivora-osteographie.pdf}
+  - Carnassiers, 1840. Vol. 2. {Carnivora-osteographie.pdf}
   - _Phoca_, 1840. Vol. 2. {Phoca-osteographie.pdf}
 - Livr. 8
   - _Ursus_, 1841. Vol. 2. {Ursus-osteographie.pdf}
@@ -74,8 +74,8 @@ The 26 livraisons had the following contents:
 - Livr. 21
   - _Palaeotherium_, December 1846. Vol. 4. {Palaeotherium-osteographie.pdf}
 - Livr. 22
-  - _Hippopotamus_, _Sus_, 20 November 1847. Vol. 4. {Hippopotamus,
-    Sus-osteographie.pdf}
+  - _Hippopotamus_, _Sus_, 20 November 1847. Vol. 4.
+    {Hippopotamus,+Sus-osteographie.pdf}
 - Livr. 23
   - _Anoplotherium_, 1 June 1849. Vol. 4. {Anoplotherium-osteographie.pdf}
 - Livr. 24

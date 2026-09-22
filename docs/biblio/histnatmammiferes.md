@@ -1,11 +1,10 @@
 # Histoire Naturelle des Mammifères
 
 This is an early 19th-century work by É. Geoffroy Saint-Hilaire and F. Cuvier. It was
-published in many parts over the period from 1818 to 1842, and is comprised of plates
-with accompanying text. Neither the plates nor the text are continuously numbered. The
-work is divided into seven volumes, but appears to have been originally published in a
-larger number of short fascicles ("livraisons"). I cite the complete work as
-{Mammalia-Histoire Naturelle (Geoffroy & Cuvier 1818-1842)}.
+published in many parts from 1818 to 1842 and consists of plates with accompanying text.
+Neither the plates nor the text are continuously numbered. The work is bound in seven
+volumes but was originally published in 72 fascicles ("livraisons"). I cite the complete
+work as {Mammalia-Histoire Naturelle (Geoffroy & Cuvier 1818-1842)}.
 
 ## Subdivision
 
@@ -61,7 +60,9 @@ Livraison 72 will appear in October and will contain the last few plates as well
 "Table générale et méthodique".
 
 The beginning of each series contains a table, the "Ordre méthodique", listing the
-plates in that volume with their dates of publication. These can be found as follows:
+plates and the dates of their associated texts. These dates are conventionally used as
+publication dates, subject to the reservations below. The tables can be found as
+follows:
 
 - Series 1: PDF p. 23 of vol. 1, comprising livraisons 1 through 20, published in
   1818–1820
@@ -70,7 +71,7 @@ plates in that volume with their dates of publication. These can be found as fol
 - Series 3: PDF p. 13 of vol. 5, comprising livraisons 41 through 60, published in
   1824-1829
 - Series 4: PDF p. 13 of vol. 7, comprising livraisons 61 through 72, published in
-  1830–1842
+  1829–1842
 
 The volumes may be found at:
 
@@ -82,7 +83,7 @@ The volumes may be found at:
 - {Mammalia-Histoire Naturelle (Geoffroy & Cuvier 1824) (6).pdf} (vol. 6)
 - {Mammalia (Geoffroy & Cuvier 1842).pdf} (vol. 7)
 
-The dates of the Livraisons, based on the "Ordre méthodique", are:
+The conventional dates of the livraisons, based on the "Ordre méthodique", are:
 
 - Series 1
   - 1: December 1818 ({Mammalia (Geoffroy & Cuvier 1818) (livraison 1)})
@@ -163,12 +164,14 @@ The dates of the Livraisons, based on the "Ordre méthodique", are:
   - _Table générale_, assumed to have been published with 72 (cited here as
     {Mammalia-Table generale (Cuvier 1842)})
 
-It is interesting that the notice by Cuvier _fils_, discussed above, is dated September
-1842 but contains statements suggesting that only livraison 71 had been published at
-that time, while livraison 72 was expected in October. Perhaps the "Date du texte" given
-in the "Ordre méthodique" is the date the text was written, not the date each livraison
-was published. Be that as it may, these dates are usually accepted as the date of
-publication.
+The notice by Cuvier _fils_, discussed above, is dated September 1842 but contains
+statements suggesting that only livraison 71 had been published at that time, while
+livraison 72 was expected in October. Perhaps the "Date du texte" given in the "Ordre
+méthodique" is the date the text was written, not the date each livraison was published.
+The table also assigns different text dates to material in the same livraison: for
+example, livraison 72 includes giraffe text dated September 1842 as well as text dated
+August 1842. The dates listed above should therefore be treated as conventional
+citations, not independently established publication dates for every component.
 
 ## Nomenclature
 
@@ -224,7 +227,7 @@ Significant people who do _not_ appear to have contributed to the work are:
 - [Georges Cuvier](/h/18128) (1769–1832), Frédéric's more famous brother
 - [Isidore Geoffroy Saint-Hilaire](/h/11717) (1805–1861), Étienne's son and successor
 
-# Treatment in the database
+## Treatment in the database
 
 For citation purposes, I have created separate articles for each livraison and for the
 "Table générale"; those are listed above. All are children of the article

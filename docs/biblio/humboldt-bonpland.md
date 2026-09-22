@@ -1,14 +1,13 @@
 # Humboldt and Bonpland's _Recueil d'observations_
 
-After the famous German explorer Alexander von Humboldt visited South America, he
-published an account of the results of his journey, including several dealing with
-zoology. Most relevant for mammals is the first volume, entitled _Recueil d'observations
-de zoologie et d'anatomie comparée, faites dans l'Océan atlantique, dans l'intérieur du
-nouveau continent et dans la mer du sud pendant les années 1799, 1800, 1801, 1802 et
-1803_. It contains a number of descriptions of new species Humboldt saw, primarily
-monkeys, as well as a concise review of all New World monkeys ("Tableau synoptique des
-singes de l'Amérique", pp. 353–363). This volume bears the date 1811 on its title page,
-but the truth appears to be more complicated.
+After visiting South America, Alexander von Humboldt published accounts of his journey,
+including works on zoology. Most relevant for mammals is the first volume of the
+_Recueil d'observations de zoologie et d'anatomie comparée, faites dans l'Océan
+atlantique, dans l'intérieur du nouveau continent et dans la mer du sud pendant les
+années 1799, 1800, 1801, 1802 et 1803_. It contains a number of descriptions of new
+species Humboldt saw, primarily monkeys, as well as a concise review of all New World
+monkeys ("Tableau synoptique des singes de l'Amérique", pp. 353–363). This volume bears
+the date 1811 on its title page, but its publication history is more complicated.
 
 The following secondary sources are relevant:
 
@@ -30,9 +29,10 @@ Relevant primary sources:
 Sherborn's research indicates that much of the volume was published twice. Livraisons 1
 through 6 were published in 1805 through 1809, comprising a total of 412 pages. After a
 gap, livraison 7 appeared in 1812, comprising a reprint of the first six livraisons (309
-pages), plus additional material comprising a total of 368 pages. This work is dated
-1811 on the title page, but its appearance in the _Bibliographie de l'Empire français_
-of August 7, 1812, indicates that it was not issued until later.
+pages), plus additional material, for a total of 368 pages. This version is dated 1811
+on the title page. Sherborn assigns it to 1812; the notice in the _Bibliographie de
+l'Empire français_ establishes that it was available by August 7, 1812, but does not by
+itself establish the exact publication date.
 
 Various scans of the 1812 edition of the work are available online:
 

@@ -1,7 +1,7 @@
 # Muséum national d'histoire naturelle
 
-The Paris Museum has published and frequently renamed several journals. They seem to
-fall in three groups.
+The Paris Museum's journals have changed titles several times. The main publication
+sequences are:
 
 - The "old" group, frequently renamed and now defunct
   - [Annales du Muséum d'histoire naturelle](/cg/1365) (v. 1–21, 1802–1813,
