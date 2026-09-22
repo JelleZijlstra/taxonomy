@@ -4,7 +4,9 @@ Version numbers correspond to Git tags in the
 [backend](https://github.com/JelleZijlstra/taxonomy/) repositories, and to database
 exports released on Zenodo.
 
-# Unreleased
+# 26.9.0 (September 21, 2026)
+
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.22888314.svg)](https://doi.org/10.5281/zenodo.22888314)
 
 - Database
   - Move most type localities for extant taxa into more precise Location records, often
