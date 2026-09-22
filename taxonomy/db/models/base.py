@@ -71,18 +71,30 @@ class LazyClirm(Clirm):
 
     @property
     def conn(self) -> sqlite3.Connection:
-        if self._conn is None:
-            self._conn = self.make_connection()
-        return self._conn
+        connection = self._conn
+        if connection is None:
+            connection = self.make_connection()
+            self.conn = connection
+        return connection
 
     @conn.setter
-    def conn(self, value: sqlite3.Connection) -> None:
-        self._conn = value
+    def conn(self, value: sqlite3.Connection | None) -> None:
+        if value is not self._conn:
+            self._conn = value
+            self._query_only_restore = None
+        self._sync_query_only()
+
+    def _sync_query_only(self) -> None:
+        # Clirm synchronizes read-only state during initialization and when entering
+        # a read-only context. Neither operation should open a lazy connection.
+        if self._conn is not None:
+            super()._sync_query_only()
 
     def reconnect(self) -> None:
         if self._conn is not None:
             self._conn.close()
-        self._conn = self.make_connection()
+        self.conn = None
+        self.conn = self.make_connection()
 
     def make_connection(self) -> sqlite3.Connection:
         # static analysis: ignore[internal_error]

@@ -10,6 +10,14 @@ from . import index
 from .index import GAME_DATA_CACHE_CONTROL, IMMUTABLE_CACHE_CONTROL, make_app
 
 
+@pytest.fixture(autouse=True)
+def _game_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    game_data = tmp_path / "game_data"
+    game_data.mkdir()
+    (game_data / "test.json").write_text('{"taxa": []}')
+    monkeypatch.setattr(index, "GAME_DATA_DIR", game_data)
+
+
 def test_static_asset_response_policy(tmp_path: Path) -> None:
     async def run_test() -> None:
         build_dir = tmp_path / "build"
@@ -55,6 +63,14 @@ def test_static_asset_response_policy(tmp_path: Path) -> None:
             assert manifest_response.status == 200
             assert manifest_response.content_type == "application/json"
             assert await manifest_response.json() == {}
+
+            game_response = await client.get(
+                "/games/data/test.json", headers={"Accept-Encoding": "gzip"}
+            )
+            assert game_response.status == 200
+            assert game_response.headers["Content-Encoding"] == "gzip"
+            assert game_response.headers["Cache-Control"] == GAME_DATA_CACHE_CONTROL
+            assert gzip.decompress(await game_response.read()) == b'{"taxa": []}'
         finally:
             await client.close()
 

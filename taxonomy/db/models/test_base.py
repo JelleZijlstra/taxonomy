@@ -6,8 +6,79 @@ from types import SimpleNamespace
 import pytest
 
 from taxonomy.db import models
-from taxonomy.db.models.base import BaseModel, LintConfig, LintResource
+from taxonomy.db.models.base import BaseModel, LazyClirm, LintConfig, LintResource
 from taxonomy.db.models.tags import LocationTag
+
+
+def test_lazy_clirm_does_not_connect_on_initialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def unexpected_connection(self: LazyClirm) -> sqlite3.Connection:
+        raise AssertionError("LazyClirm opened a connection before it was needed")
+
+    monkeypatch.setenv("CLIRM_READONLY", "1")
+    monkeypatch.setattr(LazyClirm, "make_connection", unexpected_connection)
+    database = LazyClirm()
+    with database.readonly():
+        assert database.is_read_only
+    assert database._conn is None
+
+
+def test_lazy_clirm_protects_new_and_replacement_connections(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("CLIRM_READONLY", "1")
+    monkeypatch.setattr(
+        LazyClirm, "make_connection", lambda self: sqlite3.connect(":memory:")
+    )
+    database = LazyClirm()
+    try:
+        first = database.conn
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            first.execute("CREATE TABLE test (id INTEGER)")
+        database.reconnect()
+        assert database.conn is not first
+        with pytest.raises(sqlite3.ProgrammingError, match="closed"):
+            first.execute("SELECT 1")
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            database.conn.execute("CREATE TABLE test (id INTEGER)")
+
+        database.conn.close()
+        database.conn = sqlite3.connect(":memory:")
+        with pytest.raises(sqlite3.OperationalError, match="readonly"):
+            database.conn.execute("CREATE TABLE test (id INTEGER)")
+    finally:
+        database.conn.close()
+
+
+@pytest.mark.parametrize("initial_query_only", [False, True])
+def test_lazy_clirm_restores_connection_state_after_readonly(
+    monkeypatch: pytest.MonkeyPatch, *, initial_query_only: bool
+) -> None:
+    # All connections in this test are isolated in-memory databases.
+    monkeypatch.setenv("CLIRM_READONLY", "0")
+
+    def make_connection(self: LazyClirm) -> sqlite3.Connection:
+        connection = sqlite3.connect(":memory:")
+        if initial_query_only:
+            connection.execute("PRAGMA query_only = ON")
+        return connection
+
+    monkeypatch.setattr(LazyClirm, "make_connection", make_connection)
+    database = LazyClirm()
+    try:
+        with database.readonly():
+            assert database.conn.execute("PRAGMA query_only").fetchone() == (1,)
+            database.reconnect()
+            # Reassigning the same connection must preserve its original state.
+            database.conn = database.conn
+            with pytest.raises(sqlite3.OperationalError, match="readonly"):
+                database.conn.execute("CREATE TABLE test (id INTEGER)")
+        assert database.conn.execute("PRAGMA query_only").fetchone() == (
+            int(initial_query_only),
+        )
+    finally:
+        database.conn.close()
 
 
 class _IntegrityErrorOnEdit:
