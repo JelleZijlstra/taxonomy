@@ -123,6 +123,21 @@ by themselves prove that Gervais's text appeared in 1853. The first reference to
 second edition of Pictet's work (the first appeared in 1844) is on p. 200 of Gervais's
 book.
 
+There is another reference to an 1853 publication on p. 200. In discussing _Delphinus
+Tethyos_, Gervais cites the _Bulletin de la Société d'agriculture de l'Hérault_, "année
+1853, p. 150". This corresponds to {Mammalia marine France (Gervais 1853)}, catalogued
+as volume 40, pp. 140–155. The actual issue date of that paper needs to be established;
+because it is Gervais's own paper, advance access remains possible. On p. 193, he
+explicitly describes another paper as forthcoming in the _Bulletin de la Société
+géologique_ for 1853. These references strengthen the case for investigating publication
+in 1853, but citing a forthcoming work does not establish a publication date.
+
+On p. 263, Gervais cites the August 1852 _Annals and Magazine of Natural History_ and
+refers to "feu M. Reynaux". {Dinosauria France-early discoveries.pdf}, p. 11, identifies
+this collector as Prosper Renaux, who died on 11 August 1852, citing Pérès's 1853
+biography. This supplies a lower bound for the text on that page. Brignon assigns it to
+1852, but the death reference alone cannot distinguish late 1852 from 1853.
+
 I found the following external evidence:
 
 - _Archives des sciences physiques et naturelles_ (Geneva journal that frequently
@@ -172,8 +187,12 @@ I found the following external evidence:
     - This catalog is for January–June 1851.
   - [p. 101](https://www.google.com/books/edition/Bibliotheca_historico_naturalis_physico/owUYAAAAYAAJ?hl=en&gbpv=1&dq=gervais%20Bibliotheca%20historico-naturalis&pg=RA1-PA101&printsec=frontcover)
     - Livraisons 9–20, completing the work. Each livraison contains 4 plates and 2 1/2
-      sheets of text.
-    - This catalog is for July–December 1852.
+      sheets of text. The entry explicitly describes the work as complete in 20
+      livraisons; it is also available in a
+      [BSB scan](https://www.digitale-sammlungen.de/en/view/bsb10076743?page=103).
+    - This catalog covers July–December 1852. Its actual publication date remains to be
+      established; the coverage period alone does not prove that the completed work was
+      available by 31 December 1852.
 - Scattered references
   - [_Revue et magasin de zoologie_, ser. 2, vol. 3, p. 195](https://www.google.com/books/edition/Revue_et_magasin_de_zoologie_pure_et_app/V2tIAAAAMAAJ?hl=en&gbpv=1&pg=PA195&printsec=frontcover&dq=gervais%20zoologie)
     - Cites pl. 39 of _Ziphius cavirostris_.
@@ -204,12 +223,15 @@ noted:
   1–136 of Tome I for these eight livraisons together; Sherborn instead gives pp. 1–144
   and descriptions for 21 plates. The extent of the text remains disputed.
 - Livr. 9–20 are listed as completing the work in the July–December 1852 _Bibliotheca
-  historico-naturalis_. The citations to Pictet leave open the possibility that some
-  text appeared in 1853, but do not establish this.
+  historico-naturalis_, whose actual issue date remains uncertain. The citations to
+  Pictet and to Gervais's Hérault paper leave open the possibility that some text
+  appeared in 1853, but do not establish this.
 - Plate 39 was published by April 1851.
 
 If a copy with original wrappers could be found, it could provide a more precise
-collation.
+collation. Dated receipt notices for the final livraisons, publication notices for
+Pictet's volume and the Hérault paper, and comparison of copies for later replacement
+leaves could help distinguish the dates of individual components.
 
 In the database I use the following citations:
 
@@ -217,6 +239,7 @@ In the database I use the following citations:
 - {France (Gervais 1849) (livr 2)} for livraison 2
 - {France (Gervais 1850) (livr 1-8)} for Tome I, pp. 1–136, which contains numerous new
   mammal names.
-- {France (Gervais 1852) (livr 9-20)} for the rest, retaining 1852 as a provisional
-  aggregate date; some components appeared earlier, and publication of some text in 1853
-  remains possible.
+- {France (Gervais 1852) (livr 9-20)} for the rest. Despite the 1852 in its catalog
+  label, its database year is currently 1853. That aggregate date remains under review:
+  some components appeared earlier, and the evidence does not yet resolve the dates of
+  the remaining text and plates.
