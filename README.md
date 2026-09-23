@@ -13,3 +13,6 @@ Main entry points:
   communicate with to render the web app
 - `python -m taxonomy.shell` will open a shell that enables editing the database. This
   is my primary interface for working with the database.
+- `python -m scripts.zenodo_release` prepares Zenodo release drafts and DOIs, generates
+  CSV exports, uploads them with retries, and publishes verified releases. See the
+  [release process](RELEASE.md) for the order of operations, including EC2 deployment.
