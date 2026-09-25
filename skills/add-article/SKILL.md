@@ -297,6 +297,15 @@ Edited-volume pair example (each object is one JSONL line):
 
 Optional Article keys are:
 
+- `supersedes`: existing `{id, name}` snapshots of earlier electronic versions of the
+  same DOI. Use only after inspecting both versions. Planning requires the same DOI and
+  rejects unrelated DOI collisions or conflicting existing parent links. After
+  installing and indexing the final file, application retains each earlier file and
+  marks its Article as an alternative version pointing to the final Article. Include
+  guarded companion updates for every reference that should use the final publication.
+  Exact completed and interrupted states are retryable; this does not rename or delete
+  an earlier library file.
+
 - `type`: an `ArticleType` name such as `JOURNAL`, `BOOK`, or `THESIS`;
 - `fields`: string or null values for `year`, `title`, `series`, `volume`, `issue`,
   `start_page`, `end_page`, `url`, `publisher`, `pages`, `misc_data`, and

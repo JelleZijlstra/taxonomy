@@ -390,6 +390,7 @@ class ClassificationBundleBuilder:
             raise ClassificationDraftError("duplicate Article keys")
         for article in self.articles:
             entries = {entry.key: entry for entry in article.entries}
+            entries_by_ref = {entry.ref: entry for entry in article.entries}
             if len(entries) != len(article.entries):
                 raise ClassificationDraftError(
                     f"Article {article.key!r} has duplicate entry keys"
@@ -414,6 +415,39 @@ class ClassificationBundleBuilder:
                     raise ClassificationDraftError(
                         f"{article.key}:{entry.key} has unknown parent {entry.parent_key!r}"
                     )
+                verbatim_parent = None
+                for tag in entry.tags:
+                    if not isinstance(tag, dict) or tag.get("tag") != "VerbatimParent":
+                        continue
+                    target = tag.get("arguments", {}).get("ce", {})
+                    if (
+                        target.get("model") != "ClassificationEntry"
+                        or target.get("ref") not in entries_by_ref
+                    ):
+                        raise ClassificationDraftError(
+                            f"{article.key}:{entry.key} requires a source-local VerbatimParent ref"
+                        )
+                    if verbatim_parent is not None:
+                        raise ClassificationDraftError(
+                            f"{article.key}:{entry.key} has multiple VerbatimParent tags"
+                        )
+                    verbatim_parent = entries_by_ref[target["ref"]]
+                    if not any(
+                        isinstance(parent_tag, dict)
+                        and parent_tag.get("tag") == "AuxiliaryName"
+                        for parent_tag in verbatim_parent.tags
+                    ):
+                        raise ClassificationDraftError(
+                            f"{article.key}:{entry.key} VerbatimParent is not an AuxiliaryName"
+                        )
+                    if (
+                        entry.parent_key is None
+                        or verbatim_parent.parent_key != entry.parent_key
+                        or verbatim_parent.rank is not entries[entry.parent_key].rank
+                    ):
+                        raise ClassificationDraftError(
+                            f"{article.key}:{entry.key} VerbatimParent must share its primary parent and rank"
+                        )
                 visited = {entry.key}
                 parent_key = entry.parent_key
                 while parent_key is not None:
@@ -429,9 +463,15 @@ class ClassificationBundleBuilder:
                     while ancestor.parent_key is not None:
                         ancestor = entries[ancestor.parent_key]
                         if ancestor.rank is Rank.genus:
-                            if ancestor.name != genus:
+                            source_genus = (
+                                verbatim_parent
+                                if verbatim_parent is not None
+                                and verbatim_parent.rank is Rank.genus
+                                else ancestor
+                            )
+                            if source_genus.name != genus:
                                 raise ClassificationDraftError(
-                                    f"species {entry.name!r} conflicts with source genus {ancestor.name!r}"
+                                    f"species {entry.name!r} conflicts with source genus {source_genus.name!r}"
                                 )
                             break
                 occurrence_ids: set[tuple[str, str | None, OccurrenceBasis]] = set()

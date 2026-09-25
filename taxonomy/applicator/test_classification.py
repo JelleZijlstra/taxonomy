@@ -321,3 +321,86 @@ def test_builder_rejects_materialize_parent_from_another_bundle() -> None:
             materialize=True,
             materialize_parent=genus,
         )
+
+
+@pytest.mark.parametrize(
+    ("problem", "expected_error"),
+    [
+        (None, None),
+        ("no_auxiliary_tag", "not an AuxiliaryName"),
+        ("different_parent", "must share its primary parent"),
+        ("different_rank", "must share its primary parent"),
+        ("unknown_ref", "source-local VerbatimParent"),
+        ("wrong_spelling", "conflicts with source genus"),
+        ("no_verbatim_parent", "conflicts with source genus"),
+    ],
+)
+def test_builder_validates_verbatim_genus_parent(
+    problem: str | None, expected_error: str | None
+) -> None:
+    bundle = ClassificationBundleBuilder()
+    source = bundle.article(
+        "source", evidence=[DraftEvidence("source_page", "Main text, page 401")]
+    )
+    family = source.add_entry("Bradypodidae", Rank.family, page="401")
+    genus = source.add_entry("Choloepus", Rank.genus, page="401", parent=family)
+    auxiliary = source.add_entry(
+        "Choloeopus",
+        Rank.subgenus if problem == "different_rank" else Rank.genus,
+        page="401",
+        parent=family if problem == "different_parent" else genus,
+        tags=(
+            []
+            if problem == "no_auxiliary_tag"
+            else [{"tag": "AuxiliaryName", "arguments": {}}]
+        ),
+    )
+    species = source.add_entry(
+        (
+            "Othergenus didactylus"
+            if problem == "wrong_spelling"
+            else "Choloeopus didactylus"
+        ),
+        Rank.species,
+        page="401",
+        parent=genus,
+        tags=(
+            []
+            if problem == "no_verbatim_parent"
+            else [
+                {
+                    "tag": "VerbatimParent",
+                    "arguments": {
+                        "ce": {
+                            "model": "ClassificationEntry",
+                            "ref": (
+                                "ce:other:genus"
+                                if problem == "unknown_ref"
+                                else auxiliary.ref
+                            ),
+                        }
+                    },
+                }
+            ]
+        ),
+    )
+    if expected_error is not None:
+        with pytest.raises(ClassificationDraftError, match=expected_error):
+            bundle.to_rows()
+        return
+    rows = bundle.to_rows()
+    parsed = [generic.parse_recommendation(row, i) for i, row in enumerate(rows, 1)]
+    plan = generic.build_plan(
+        parsed,
+        model_registry={"ClassificationEntry": ClassificationEntry},
+        initial_references={"source": Article.virtual(name="Vieira.pdf")},
+        find_objects_by_match=lambda _model, _match: [],
+    )
+    auxiliary_action, species_action = plan.actions[-2:]
+    assert ClassificationEntryTag.AuxiliaryName in auxiliary_action.new_value["tags"]
+    assert (
+        ClassificationEntryTag.VerbatimParent(auxiliary_action.object)
+        in species_action.new_value["tags"]
+    )
+    assert rows[-1]["values"]["parent"]["ref"] == genus.ref
+    assert rows[-1]["values"]["name"] == species.name

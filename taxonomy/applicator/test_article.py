@@ -9,11 +9,125 @@ from typing import Any, cast
 import pytest
 
 from taxonomy.applicator import article as recommendations
+from taxonomy.applicator.proposals import ProposalBuilder
 from taxonomy.config import Options
 from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
 from taxonomy.db.models import Article, CitationGroup, Person
 from taxonomy.db.models.article.article import ArticleTag
 from taxonomy.db.models.person import VirtualPerson
+
+
+@pytest.mark.parametrize(
+    "failure", [None, "name", "doi", "parent", "unlisted_collision"]
+)
+def test_superseding_article_guards(tmp_path: Path, failure: str | None) -> None:
+    pdf = _pdf_bytes()
+    new_path = tmp_path / "new"
+    new_path.mkdir()
+    (new_path / "download.pdf").write_bytes(pdf)
+    library = tmp_path / "library"
+    (library / "Mollusca").mkdir(parents=True)
+    old = Article.virtual(
+        name="Endodontidae (in press).pdf",
+        doi="10.1234/example",
+        kind=ArticleKind.electronic,
+        type=ArticleType.JOURNAL,
+        parent=None,
+        tags=(),
+        author_tags=(),
+    )
+    data = _row(pdf)
+    data["article"]["supersedes"] = [{"id": old.id, "name": old.name}]
+    if failure == "name":
+        old.name = "Endodontidae (different).pdf"
+    elif failure == "doi":
+        old.doi = "10.1234/other"
+    elif failure == "parent":
+        old.parent = Article.virtual(name="Other.pdf")
+    collision = Article.virtual(name="Unreviewed.pdf", doi=old.doi)
+    kwargs: dict[str, Any] = {
+        "options": Options(new_path=new_path, library_path=library),
+        "get_article": lambda _name: None,
+        "get_article_by_id": lambda _id: old,
+        "articles_with_doi": lambda _doi: (
+            (old, collision) if failure == "unlisted_collision" else (old,)
+        ),
+        "is_catalog_folder": lambda _path: True,
+        "get_citation_group": lambda _id: _citation_group(),
+        "expand_doi": lambda _doi: {
+            "type": ArticleType.JOURNAL,
+            "author_tags": [VirtualPerson(family_name="Solem", given_names="Alan")],
+        },
+    }
+    row = recommendations.parse_recommendation(data, 1)
+    if failure:
+        with pytest.raises(recommendations.RecommendationError):
+            recommendations.build_plan((row,), **kwargs)
+        return
+    plan = recommendations.build_plan((row,), **kwargs)
+    assert plan.actions[0].superseded_articles == (old,)
+    builder = ProposalBuilder()
+    recommendations.add_virtual_models(plan, builder)
+    proposals = {
+        p.model.name: p.model for p in builder.build() if isinstance(p.model, Article)
+    }
+    assert proposals[old.name].kind is ArticleKind.alternative_version
+    assert proposals[old.name].parent is proposals["Endodontidae.pdf"]
+    assert old.kind is ArticleKind.electronic
+
+    person = Person.virtual(family_name="Solem", given_names="Alan", tags=())
+    final: Article | None = None
+
+    def create(name: str, values: Mapping[str, Any]) -> Article:
+        nonlocal final
+        final = Article.virtual(name=name, **values)
+        return final
+
+    def fail_auxiliary(article: Article, *, add_history: bool) -> None:
+        raise RuntimeError("indexing failed")
+
+    with pytest.raises(RuntimeError, match="indexing failed"):
+        recommendations.execute_plan(
+            plan,
+            apply=True,
+            get_or_create_person=lambda **_kwargs: person,
+            create_article=create,
+            run_auxiliary=fail_auxiliary,
+        )
+    assert old.kind is ArticleKind.electronic
+    assert (new_path / "download.pdf").exists()
+    recommendations.execute_plan(
+        plan,
+        apply=True,
+        get_or_create_person=lambda **_kwargs: person,
+        create_article=create,
+        run_auxiliary=lambda _article, **_kwargs: None,
+    )
+    assert (old.kind, old.parent) == (ArticleKind.alternative_version, final)
+    assert not (new_path / "download.pdf").exists()
+    kwargs["get_article"] = lambda _name: final
+    kwargs["articles_with_doi"] = lambda _doi: (old, final)
+    retry = recommendations.build_plan((row,), **kwargs)
+    assert retry.actions[0].already_applied
+    # A crash between installing the final file and linking the old version is safe.
+    old.kind = ArticleKind.electronic
+    old.parent = None
+    retry = recommendations.build_plan((row,), **kwargs)
+    recommendations.execute_plan(
+        retry, apply=True, run_auxiliary=lambda _article, **_kwargs: None
+    )
+    assert (old.kind, old.parent) == (ArticleKind.alternative_version, final)
+
+
+def test_supersedes_requires_file_doi_and_existing_guards() -> None:
+    for overrides in ({"doi": None}, {"supersedes": [{"name": "Endodontidae"}]}):
+        data = _row(_pdf_bytes())
+        data["article"].update(
+            type="JOURNAL", supersedes=[{"id": 123, "name": "Old.pdf"}]
+        )
+        data["article"].update(overrides)
+        with pytest.raises(recommendations.RecommendationError):
+            recommendations.parse_recommendation(data, 1)
 
 
 def _pdf_bytes() -> bytes:

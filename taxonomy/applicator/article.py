@@ -157,6 +157,7 @@ class Recommendation:
     parent: ParentSpec | None
     file: FileSpec | None
     ref: str | None = None
+    supersedes: tuple[ParentSpec, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +177,7 @@ class PlannedAction:
     tags: tuple[ArticleTag, ...]
     crossref_journal: str | None
     already_applied: bool
+    superseded_articles: tuple[Article, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -488,6 +490,20 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
     parent = (
         _parse_parent(article["parent"], line_number) if "parent" in article else None
     )
+    supersedes_data = article.get("supersedes", [])
+    if not isinstance(supersedes_data, list):
+        raise RecommendationError(
+            f"line {line_number}: article.supersedes must be a list"
+        )
+    supersedes = tuple(_parse_parent(value, line_number) for value in supersedes_data)
+    if any(spec.is_planned for spec in supersedes):
+        raise RecommendationError(
+            f"line {line_number}: supersedes requires existing ID/name guards"
+        )
+    if supersedes and (doi is None or file is None):
+        raise RecommendationError(
+            f"line {line_number}: supersedes requires a DOI and an electronic file"
+        )
     unknown_article = set(article) - {
         "name",
         "doi",
@@ -498,6 +514,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         "citation_group",
         "parent",
         "ref",
+        "supersedes",
     }
     if unknown_article:
         raise RecommendationError(
@@ -536,6 +553,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         parent=parent,
         file=file,
         ref=ref,
+        supersedes=supersedes,
     )
 
 
@@ -728,6 +746,7 @@ def build_plan(
     seen_refs: set[str] = set()
     seen_dois: set[str] = set()
     seen_sources: set[Path] = set()
+    seen_superseded_ids: set[int] = set()
     planned_new_citation_groups: dict[str, PlannedCitationGroup] = {}
     planned_actions_by_name: dict[str, PlannedAction] = {}
     planned_actions_by_ref: dict[str, PlannedAction] = {}
@@ -990,11 +1009,41 @@ def build_plan(
                 )
 
         existing = get_article(recommendation.name)
+        superseded_articles = []
+        for superseded_spec in recommendation.supersedes:
+            assert superseded_spec.article_id is not None
+            old = get_article_by_id(superseded_spec.article_id)
+            if old.id in seen_superseded_ids:
+                raise RecommendationError(
+                    f"line {line}: Article {old.id} is superseded more than once"
+                )
+            seen_superseded_ids.add(old.id)
+            if (
+                old.name != superseded_spec.name
+                or old.doi != recommendation.doi
+                or old.name == recommendation.name
+            ):
+                raise RecommendationError(
+                    f"line {line}: superseded Article {old.id} name/DOI guard mismatch"
+                )
+            if not (
+                (old.kind is ArticleKind.electronic and old.parent is None)
+                or (
+                    old.kind is ArticleKind.alternative_version
+                    and existing is not None
+                    and old.parent == existing
+                )
+            ):
+                raise RecommendationError(
+                    f"line {line}: superseded Article {old.id} has a conflicting kind or parent"
+                )
+            superseded_articles.append(old)
         if recommendation.doi is not None:
             collisions = [
                 article
                 for article in articles_with_doi(recommendation.doi)
                 if existing is None or article.id != existing.id
+                if article.id not in {old.id for old in superseded_articles}
             ]
             if collisions:
                 raise RecommendationError(
@@ -1018,6 +1067,7 @@ def build_plan(
                 raw.get("journal") if isinstance(raw.get("journal"), str) else None
             ),
             already_applied=False,
+            superseded_articles=tuple(superseded_articles),
         )
         if existing is not None:
             _check_field_snapshot(existing, action)
@@ -1105,6 +1155,8 @@ def print_review_table(rows: Iterable[Recommendation]) -> None:
             )
         if row.parent is not None:
             generic_recommendations._print_review_detail("parent", repr(row.parent))
+        for spec in row.supersedes:
+            generic_recommendations._print_review_detail("supersedes", repr(spec))
         if row.file is not None:
             generic_recommendations._print_review_detail("file", repr(row.file))
 
@@ -1136,6 +1188,10 @@ def add_virtual_models(
                     if spec.ref is not None:
                         builder.copy(person, context=context)
                         references[spec.ref] = person
+            for old in action.superseded_articles:
+                alternative = builder.copy(old, context=context)
+                alternative.kind = ArticleKind.alternative_version
+                alternative.parent = article
             continue
         cg: CitationGroup | None = None
         if action.citation_group is not None:
@@ -1203,6 +1259,10 @@ def add_virtual_models(
         planned_articles[action.recommendation.name] = article
         if action.recommendation.ref is not None:
             references[action.recommendation.ref] = article
+        for old in action.superseded_articles:
+            alternative = builder.copy(old, context=context)
+            alternative.kind = ArticleKind.alternative_version
+            alternative.parent = article
     return references
 
 
@@ -1289,6 +1349,10 @@ def execute_plan(
         )
         if action.crossref_journal is not None:
             print(f"  CrossRef journal: {action.crossref_journal}")
+        for old in action.superseded_articles:
+            print(
+                f"  Supersede Article {old.id} {old.name!r}; retain its file as an alternative version"
+            )
         if not apply:
             continue
         cg = action.citation_group.citation_group if action.citation_group else None
@@ -1335,6 +1399,9 @@ def execute_plan(
         if not action.destination_path.exists():
             install_file(action.source_path, action.destination_path, file.sha256)
         run_auxiliary(article, add_history=True)
+        for old in action.superseded_articles:
+            if old.kind is not ArticleKind.alternative_version or old.parent != article:
+                old.make_alternative_version(article)
         if action.source_path.exists():
             action.source_path.unlink()
     mode = "Applied" if apply else "Dry run"
