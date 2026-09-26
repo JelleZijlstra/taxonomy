@@ -46,6 +46,66 @@ from .lint import (
 from .name import Name, NameTag, TypeTag
 
 
+def test_infer_bhl_page_from_name_and_classification_anchors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from taxonomy.apis import bhl
+    from taxonomy.db.models.base import LintResource
+    from taxonomy.db.models.classification_entry.ce import ClassificationEntryTag
+
+    from .lint import infer_bhl_page_id
+
+    article = models.Article.virtual(
+        name="Unnumbered book",
+        url="https://www.biodiversitylibrary.org/item/1",
+        start_page=None,
+        tags=(),
+    )
+    name = Name.virtual(
+        type_tags=(
+            TypeTag.AuthorityPageLink(
+                "https://www.biodiversitylibrary.org/page/100",
+                confirmed=True,
+                page="10",
+            ),
+        )
+    )
+    entry = models.ClassificationEntry.virtual(
+        tags=(
+            ClassificationEntryTag.PageLink(
+                "https://www.biodiversitylibrary.org/page/80", "12"
+            ),
+        )
+    )
+    monkeypatch.setattr(models.Article, "get_new_names", lambda _: [name])
+    monkeypatch.setattr(models.Article, "get_classification_entries", lambda _: [entry])
+    pages: list[dict[str, Any]] = [
+        {"PageID": page_id, "PageNumbers": [], "PageTypes": []}
+        for page_id in (100, 90, 80)
+    ]
+    monkeypatch.setattr(bhl, "get_item_metadata", lambda _: {"Pages": pages})
+    cfg = LintConfig(
+        autofix=False, available_resources=frozenset({LintResource.NETWORK})
+    )
+    assert infer_bhl_page_id("11", name, article, cfg) == (
+        90,
+        "interpolated between known page links",
+    )
+    assert infer_bhl_page_id("11", entry, article, cfg) == (
+        90,
+        "interpolated between known page links",
+    )
+    assert infer_bhl_page_id("13", name, article, cfg) is None
+    assert infer_bhl_page_id("xi", name, article, cfg) is None
+    monkeypatch.setattr(bhl, "get_item_metadata", Mock(side_effect=AssertionError))
+    assert (
+        infer_bhl_page_id(
+            "11", name, article, LintConfig(available_resources=frozenset())
+        )
+        is None
+    )
+
+
 @pytest.mark.parametrize("second_text", ["At the river", "In the mountains"])
 def test_unique_type_locality_compares_text_not_provenance(second_text: str) -> None:
     article = models.Article.virtual(name="source.pdf")

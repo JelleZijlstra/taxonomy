@@ -177,6 +177,44 @@ def get_page_id_to_index(item_id: int) -> dict[int, int]:
     return {page["PageID"]: i for i, page in enumerate(item_metadata["Pages"])}
 
 
+def infer_page_from_anchors(
+    item_id: int, page_number: int, anchors: Iterable[tuple[int, int]]
+) -> int | None:
+    """Interpolate between known printed pages using the item's scan order.
+
+    Page IDs need not be consecutive or increasing. Include every scan, including
+    plates and blanks, so an insertion prevents interpolation across that gap.
+    """
+    metadata = get_item_metadata(item_id)
+    if metadata is None:
+        return None
+    pages = metadata["Pages"]
+    indices = {page["PageID"]: i for i, page in enumerate(pages)}
+    by_number: dict[int, set[int]] = {}
+    for number, page_id in anchors:
+        if page_id in indices:
+            by_number.setdefault(number, set()).add(indices[page_id])
+    lower = max((n for n in by_number if n < page_number), default=None)
+    upper = min((n for n in by_number if n > page_number), default=None)
+    if lower is None or upper is None:
+        return None
+    if len(by_number[lower]) != 1 or len(by_number[upper]) != 1:
+        return None
+    (start,) = by_number[lower]
+    (end,) = by_number[upper]
+    if end - start != upper - lower:
+        return None
+    target_index = start + page_number - lower
+    if page_number in by_number and by_number[page_number] != {target_index}:
+        return None
+    # Do not override contradictory numbering supplied by BHL.
+    for index in range(start, end + 1):
+        bhl_number = _get_number_from_page(pages[index])
+        if bhl_number is not None and bhl_number != lower + index - start:
+            return None
+    return pages[target_index]["PageID"]
+
+
 def get_filtered_pages_and_indices(
     item_id: int,
 ) -> tuple[dict[int, int], list[dict[str, Any]]]:

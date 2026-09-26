@@ -5851,6 +5851,51 @@ def infer_bhl_page_from_article(nam: Name, cfg: LintConfig) -> Iterable[LintResu
 def infer_bhl_page_id(
     page: str, obj: object, art: Article, cfg: LintConfig
 ) -> tuple[int, str] | None:
+    inferred = _infer_bhl_page_id_from_metadata(page, obj, art, cfg)
+    if inferred is not None:
+        return inferred
+    if not page.isdecimal() or not cfg.is_resource_available(LintResource.NETWORK):
+        return None
+    item_ids = set(art.get_possible_bhl_item_ids())
+    if not item_ids:
+        return None
+    links = [
+        (tag.page, tag.url)
+        for nam in art.get_new_names()
+        for tag in nam.type_tags
+        if isinstance(tag, TypeTag.AuthorityPageLink)
+    ]
+    links.extend(
+        (tag.page, tag.url)
+        for ce in art.get_classification_entries()
+        for tag in ce.tags
+        if isinstance(tag, ClassificationEntryTag.PageLink)
+    )
+    if art.start_page is not None and art.url is not None:
+        links.append((art.start_page, art.url))
+    anchors = [
+        (int(number), parsed.page_id)
+        for number, url in links
+        if number.isdecimal()
+        and isinstance(parsed := urlparse.parse_url(url), urlparse.BhlPage)
+    ]
+    candidates = {
+        inferred_page
+        for item_id in item_ids
+        # This fallback fills missing numbering, not ambiguous numbered pages.
+        if not bhl.get_possible_pages(item_id, page)
+        and (inferred_page := bhl.infer_page_from_anchors(item_id, int(page), anchors))
+        is not None
+    }
+    if len(candidates) == 1:
+        (page_id,) = candidates
+        return page_id, "interpolated between known page links"
+    return None
+
+
+def _infer_bhl_page_id_from_metadata(
+    page: str, obj: object, art: Article, cfg: LintConfig
+) -> tuple[int, str] | None:
     if art.id == 9306 and page.isnumeric():
         # {Marsupialia, Monotremata-British Museum.pdf}. BHL version doesn't have
         # page numbers but we can interpolate them.

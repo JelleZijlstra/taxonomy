@@ -41,9 +41,7 @@ The application of _Cacajao melanocephalus_ depends on which neotype designation
 valid. [Ferrari et al. (2014: 357–358)](/a/19437) justified their proposal by discussing
 the ambiguity of the original lithograph and the availability of suitable specimens.
 They selected NMNH 406425 for its correspondence to the original illustration and its
-geographic proximity to the original locality. That rationale does not itself establish
-compliance with all the Code's conditions, and the status of the preceding designation
-by [Boubli et al. (2008)](/a/4772) needs assessment.
+geographic proximity to the original locality.
 
 Boubli et al.'s proposed neotype, MN 68616, is from Brazil, whereas the original type
 locality was in Venezuela. The relevant test under
