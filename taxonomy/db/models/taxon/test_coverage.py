@@ -1,6 +1,5 @@
 """Coverage inheritance and the distinction between missing and incorrect links."""
 
-from collections.abc import Iterable
 from unittest.mock import Mock
 
 import pytest
@@ -17,8 +16,6 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models import Article, Name, Taxon
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.lint import Lint
-from taxonomy.db.models.lint_types import LintIssue
 from taxonomy.db.models.name import TypeTag
 from taxonomy.db.models.name import lint as name_lint
 from taxonomy.db.models.tags import TaxonTag
@@ -302,38 +299,3 @@ def test_type_genus_exempt_nomenclature_status(status: NomenclatureStatus) -> No
 def test_type_genus_only_applies_to_family_group(group: Group) -> None:
     name = make_name(make_taxon(level=CoverageLevel.high), group)
     assert list(name_lint.check_type_genus(name, CFG)) == []
-
-
-def test_partially_skipped_lint_preserves_ignore_then_rechecks() -> None:
-    taxon = make_taxon(level=CoverageLevel.low)
-    name = make_name(taxon)
-    name.type_tags = (TypeTag.IgnoreLint("partial"),)  # type: ignore[assignment]
-    registry = Lint(Name, name_lint.get_ignores, ignore_field="type_tags")
-
-    @registry.add("partial", can_remove_ignore=lambda nam: nam.taxon.is_high_coverage())
-    def partial(nam: Name, cfg: LintConfig) -> Iterable[str]:
-        return ()
-
-    assert list(registry.run(name, CFG)) == []
-    assert name.type_tags == (TypeTag.IgnoreLint("partial"),)
-    taxon.tags = (TaxonTag.Coverage(CoverageLevel.high),)  # type: ignore[assignment]
-    assert any(
-        isinstance(msg, LintIssue) and msg.code == "unused_ignore"
-        for msg in registry.run(name, CFG)
-    )
-
-
-def test_conflict_in_ignore_predicate_is_reported() -> None:
-    taxon = make_taxon()
-    taxon.tags = (  # type: ignore[assignment]
-        TaxonTag.Coverage(CoverageLevel.high),
-        TaxonTag.Coverage(CoverageLevel.low),
-    )
-    name = make_name(taxon)
-    registry = Lint(Name, name_lint.get_ignores, ignore_field="type_tags")
-
-    @registry.add("partial", can_remove_ignore=lambda nam: nam.taxon.is_high_coverage())
-    def partial(nam: Name, cfg: LintConfig) -> Iterable[str]:
-        return ()
-
-    assert any("conflicting coverage" in str(msg) for msg in registry.run(name, CFG))

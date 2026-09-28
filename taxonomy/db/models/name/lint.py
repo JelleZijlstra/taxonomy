@@ -3658,12 +3658,13 @@ def check_type(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
                 yield f"type {nam.type} is in group {nam.type.group!r}, not species"
 
 
-@LINT.add("type_genus", can_remove_ignore=lambda nam: nam.taxon.is_high_coverage())
+@LINT.add("type_genus")
 def check_type_genus(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if (
         nam.group is Group.family
         and nam.type is None
         and "type" in nam.get_required_fields()
+        and nam.taxon.is_high_coverage()
     ):
         yield "high-coverage family-group name is missing a type genus"
 
@@ -3960,8 +3961,10 @@ def autoset_corrected_original_name(
         yield f"could not infer corrected original name from {nam.original_name!r}"
 
 
-@LINT.add("data_level", can_remove_ignore=lambda nam: nam.taxon.is_high_coverage())
+@LINT.add("data_level")
 def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    if not nam.taxon.is_high_coverage():
+        return
     ocdl, ocdl_reason = nam.original_citation_data_level()
     ndl, ndl_reason = nam.name_data_level()
     match ocdl:
@@ -4348,9 +4351,9 @@ def must_have_verbatim(nam: Name) -> str | None:
     return None
 
 
-@LINT.add("derived_tags", can_remove_ignore=lambda nam: nam.taxon.is_high_coverage())
+@LINT.add("derived_tags")
 def check_required_derived_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if not has_accessible_original_citation(nam):
+    if not has_accessible_original_citation(nam) or not nam.taxon.is_high_coverage():
         return
     for tags, exp in nam.get_required_derived_tags():
         if not any(nam.has_type_tag(tag) for tag in tags) and exp.should_apply(
@@ -7478,12 +7481,8 @@ def should_be_variant(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"should be marked as a variant of one of {candidates}"
 
 
-@LINT.add(
-    "has_parent_species", can_remove_ignore=lambda nam: nam.taxon.is_high_coverage()
-)
+@LINT.add("has_parent_species")
 def check_has_parent_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if not nam.taxon.is_high_coverage():
-        return
     # The remaining known gaps are from 1840 through 1950. Apply this lint to
     # the completed ranges and to newly added names while that interval is
     # being worked through.
@@ -7496,6 +7495,8 @@ def check_has_parent_species(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     art = nam.original_citation
     if art is None:
+        return
+    if not nam.taxon.is_high_coverage():
         return
     if nam.taxon.age is not AgeClass.extant:
         return

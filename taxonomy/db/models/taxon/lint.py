@@ -122,7 +122,7 @@ def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
         yield _switch_basename_issue(message, taxon, resolved)
 
 
-@LINT.add("nominal_genus", can_remove_ignore=Taxon.is_high_coverage)
+@LINT.add("nominal_genus")
 def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
     nominal_genus_tags = list(
         taxon.get_tags(taxon.tags, models.tags.TaxonTag.NominalGenus)
@@ -198,7 +198,7 @@ def check_basal_tags(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
             yield "has unnecessary Basal tag"
 
 
-@LINT.add("age", can_remove_ignore=Taxon.is_high_coverage)
+@LINT.add("age")
 def check_age(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
     if taxon.age is AgeClass.extant and taxon.is_high_coverage():
         children = list(taxon.get_children())

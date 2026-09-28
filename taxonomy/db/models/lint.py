@@ -381,8 +381,6 @@ class LintWrapper(Generic[ModelT]):
     required_resources: frozenset[LintResource] = frozenset()
     optional_resources: frozenset[LintResource] = frozenset()
     skip_virtual: bool = False
-    # A partially applicable lint cannot prove that an old suppression is unused.
-    can_remove_ignore: Callable[[ModelT], bool] | None = None
 
     @property
     def requires_network(self) -> bool:
@@ -430,11 +428,6 @@ class LintWrapper(Generic[ModelT]):
             return {self.label}
         try:
             issues = list(self.linter(obj, cfg))
-            can_remove_ignore = (
-                bool(issues)
-                or self.can_remove_ignore is None
-                or self.can_remove_ignore(obj)
-            )
         except Exception as e:
             traceback.print_exc()
             yield LintIssue(
@@ -446,8 +439,8 @@ class LintWrapper(Generic[ModelT]):
             return {self.label}
         if not issues:
             # A partially evaluated lint cannot establish that an IgnoreLint is
-            # obsolete. Retain it while resources or applicability are incomplete.
-            if self.missing_optional_resources(cfg) or not can_remove_ignore:
+            # obsolete.
+            if self.missing_optional_resources(cfg):
                 return {self.label}
             return set()
         ignored_lints = self.lint.get_ignored_lints(obj)
@@ -603,7 +596,6 @@ class Lint(Generic[ModelT]):
         required_resources: Collection[LintResource] = (),
         optional_resources: Collection[LintResource] = (),
         skip_virtual: bool = False,
-        can_remove_ignore: Callable[[ModelT], bool] | None = None,
         clear_caches: Callable[[], None] | None = None,
     ) -> Callable[[Linter[ModelT]], LintWrapper[ModelT]]:
 
@@ -629,7 +621,6 @@ class Lint(Generic[ModelT]):
                 required_resources=frozenset(required),
                 optional_resources=frozenset(optional),
                 skip_virtual=skip_virtual,
-                can_remove_ignore=can_remove_ignore,
             )
             if disabled:
                 self.disabled_linters.append(lint_wrapper)
