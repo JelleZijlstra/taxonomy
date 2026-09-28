@@ -12,7 +12,7 @@ from typing import assert_never
 from taxonomy import getinput, urlparse
 from taxonomy.apis import bhl
 from taxonomy.apis.zoobank import clean_lsid, is_valid_lsid
-from taxonomy.db import helpers, models
+from taxonomy.db import detail_pages, helpers, models
 from taxonomy.db.constants import (
     SYNONYM_RANKS,
     AgeClass,
@@ -21,6 +21,7 @@ from taxonomy.db.constants import (
     Rank,
     Status,
 )
+from taxonomy.db.models import detail as detail_lint
 from taxonomy.db.models.article.article import Article, ArticleTag
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import (
@@ -42,11 +43,17 @@ from taxonomy.db.models.name.lint import (
     maybe_infer_page_from_other_name,
     name_combination_name_sort_key,
 )
-from taxonomy.db.models.name.name import clean_original_name
+from taxonomy.db.models.name.name import DETAIL_TAG_TO_CE_TAG, clean_original_name
 from taxonomy.db.models.person import AuthorTag, Person
 from taxonomy.db.models.taxon import Taxon
 
-from .ce import ClassificationEntry, ClassificationEntryStatus, ClassificationEntryTag
+from .ce import (
+    DETAIL_METADATA_FIELDS,
+    DETAIL_TAGS,
+    ClassificationEntry,
+    ClassificationEntryStatus,
+    ClassificationEntryTag,
+)
 
 
 def get_ignores(ce: ClassificationEntry) -> Iterable[IgnoreLint]:
@@ -178,6 +185,11 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
                     url=new_url, page=tag.page if tag.page is not None else "NA"
                 )
             )
+        elif isinstance(tag, DETAIL_TAGS):
+            tag = yield from models.name.lint.check_tag_with_page(
+                tag, ce.article, cfg, ce, allow_missing_page=True
+            )
+            new_tags.append(tag)
         elif isinstance(tag, ClassificationEntryTag.CorrectedName):
             if ce.get_corrected_name_without_tags() == tag.text:
                 yield "removing redundant CorrectedName tag"
@@ -2107,23 +2119,44 @@ def infer_data_from_mapped(
         elif tags:
             message = f"multiple possible type localities from mapped name: {', '.join(f'"{tag.text}"' for tag in tags)}"
             yield message
-    existing_specimen_details = {
-        tag.text
-        for tag in ce.tags
-        if isinstance(tag, ClassificationEntryTag.TypeSpecimenData)
-    }
-    specimen_details = [
-        tag
-        for tag in ce.mapped_name.get_tags(
-            ce.mapped_name.type_tags, models.name.TypeTag.SpecimenDetail
-        )
-        if tag.source == ce.article and tag.text not in existing_specimen_details
-    ]
-    if specimen_details:
-        for detail in specimen_details:
-            new_tag = ClassificationEntryTag.TypeSpecimenData(detail.text)
-            message = f"inferred type specimen detail from mapped name: {detail}"
-            yield add_tag_issue(message, ce, new_tag)
+    for tag_type, ce_tag_type in DETAIL_TAG_TO_CE_TAG.items():
+        for detail in ce.mapped_name.get_tags(ce.mapped_name.type_tags, tag_type):
+            if detail.source != ce.article or detail.classification_entry not in (
+                None,
+                ce,
+            ):
+                continue
+            matching = [
+                tag
+                for tag in ce.get_tags(ce.tags, ce_tag_type)
+                if tag.text == detail.text
+            ]
+            if not matching:
+                new_tag = ce_tag_type(
+                    text=detail.text,
+                    **{
+                        field: getattr(detail, field)
+                        for field in DETAIL_METADATA_FIELDS
+                    },
+                )
+                message = f"inferred {ce_tag_type.__name__} from mapped name: {detail}"
+                yield add_tag_issue(message, ce, new_tag)
+            else:
+                for tag in matching:
+                    updated = tag
+                    for field in DETAIL_METADATA_FIELDS:
+                        value = getattr(detail, field)
+                        current = getattr(tag, field)
+                        if value is not None:
+                            if current is None:
+                                updated = updated.replace(**{field: value})
+                            elif current != value:
+                                yield f"{tag} has {field} {current!r} that does not match mapped name detail: {value!r}"
+                    if updated != tag:
+                        yield fixes_issue(
+                            f"inferred detail metadata from mapped name: {detail}",
+                            replace_tag_fix(ce, tag, updated),
+                        )
 
 
 @LINT.add("vacuous_type_locality")
@@ -2351,3 +2384,21 @@ def original_parent_matches(ce: ClassificationEntry, cfg: LintConfig) -> Iterabl
     ):
         message = f"original parent genus {mapped_original_parent} does not match CE parent genus {ce_parent_genus.mapped_name}"
         yield message
+
+
+@LINT.add("detail_pages")
+def infer_detail_pages(
+    obj: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
+    yield from detail_lint.infer_detail_pages(obj)
+
+
+@LINT.add(
+    "detail_pages_from_text",
+    required_resources={LintResource.SLOW},
+    clear_caches=detail_pages.clear_caches,
+)
+def infer_detail_pages_from_text(
+    obj: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
+    yield from detail_lint.infer_detail_pages_from_text(obj, cfg)

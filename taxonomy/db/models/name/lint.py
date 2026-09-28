@@ -26,7 +26,7 @@ import requests
 from taxonomy import adt, getinput, urlparse
 from taxonomy.apis import bhl, plss
 from taxonomy.apis.zoobank import clean_lsid, get_zoobank_data, is_valid_lsid
-from taxonomy.db import coordinate_lint, helpers, models
+from taxonomy.db import coordinate_lint, detail_pages, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
     ArticleKind,
@@ -49,10 +49,12 @@ from taxonomy.db.constants import (
     Status,
     TypeSpeciesDesignation,
 )
+from taxonomy.db.models import detail as detail_lint
 from taxonomy.db.models.article import Article, ArticleTag, PresenceStatus
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.classification_entry.ce import (
+    DETAIL_METADATA_FIELDS,
     ClassificationEntry,
     ClassificationEntryTag,
 )
@@ -96,7 +98,9 @@ from taxonomy.db.models.taxon import Taxon
 from . import parse_citations
 from .guess_repository import get_most_likely_repository
 from .name import (
+    DETAIL_TAG_TO_CE_TAG,
     PREOCCUPIED_TAGS,
+    SOURCE_TAGS,
     STATUS_TO_TAG,
     LectotypeDesignationTerm,
     Name,
@@ -513,22 +517,60 @@ def _check_links_in_type_tag(
 def _check_detail_type_tag(
     tag: TypeTag, nam: Name, cfg: LintConfig, tags_by_type: TagsByType
 ) -> Generator[LintResult, None, Sequence[TypeTag]]:
-    yield from ()
-    if (
-        isinstance(
-            tag,
-            (
-                TypeTag.LocationDetail,
-                TypeTag.SpecimenDetail,
-                TypeTag.EtymologyDetail,
-                TypeTag.TypeSpeciesDetail,
-                TypeTag.CitationDetail,
-            ),
-        )
-        and not tag.text
-        and tag.source is None
-    ):
+    if not isinstance(tag, SOURCE_TAGS):
+        return [tag]
+    if not tag.text and tag.source is None:
         return []
+    if tag.classification_entry is None and not isinstance(tag, TypeTag.LocationDetail):
+        for other in tags_by_type.get(type(tag), ()):
+            if (
+                other is not tag
+                and other.source == tag.source
+                and other.text == tag.text
+                and other.classification_entry is not None
+                and all(
+                    getattr(tag, field) in (None, getattr(other, field))
+                    for field in DETAIL_METADATA_FIELDS
+                )
+            ):
+                yield f"remove redundant tag {tag} (obviated by {other})"
+                return []
+    if tag.classification_entry is not None:
+        ce = tag.classification_entry
+        if ce.article != tag.source:
+            yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
+        if (
+            ce.mapped_name is not None
+            and ce.mapped_name.resolve_variant() != nam
+            and ce.mapped_name != nam
+        ):
+            yield f"{tag} has classification entry {ce} that does not match name {nam}"
+        if isinstance(tag, TypeTag.LocationDetail):
+            if ce.type_locality != tag.text:
+                yield f"{tag} has classification entry {ce} whose type locality {ce.type_locality!r} does not match text"
+        else:
+            ce_tag_type = DETAIL_TAG_TO_CE_TAG[type(tag)]
+            matching = [
+                other
+                for other in ce.get_tags(ce.tags, ce_tag_type)
+                if other.text == tag.text
+            ]
+            if not matching:
+                yield f"{tag} has classification entry {ce} whose {ce_tag_type.__name__} does not match text"
+            elif len(matching) == 1 and ce.article == tag.source:
+                for field in DETAIL_METADATA_FIELDS:
+                    expected = getattr(matching[0], field)
+                    current = getattr(tag, field)
+                    if expected is not None:
+                        if current is None:
+                            tag = tag.replace(**{field: expected})
+                        elif current != expected:
+                            yield f"{tag} has {field} {current!r} that does not match classification entry {ce}: {expected!r}"
+    elif cfg.experimental and has_classification(tag.source):
+        yield f"{tag} has no classification entry, but source {tag.source} has some"
+    tag = yield from check_tag_with_page(
+        tag, tag.source, cfg, nam, allow_missing_page=True
+    )
     return [tag]
 
 
@@ -657,29 +699,9 @@ def _check_all_type_tags(
                 yield f"bad altitude tag {tag}"
 
         case TypeTag.LocationDetail():
-            tag = yield from check_tag_with_page(
-                tag, tag.source, cfg, nam, allow_missing_page=True
-            )
             if is_empty_location_detail(tag.text):
                 new_tag = TypeTag.NoLocation(source=tag.source)
                 return [new_tag]
-
-            if tag.classification_entry is not None:
-                ce = tag.classification_entry
-                if ce.article != tag.source:
-                    yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
-                if (
-                    ce.mapped_name is not None
-                    and ce.mapped_name.resolve_variant() != nam
-                    and ce.mapped_name != nam
-                ):
-                    yield f"{tag} has classification entry {ce} that does not match name {nam}"
-                if ce.type_locality != tag.text:
-                    yield f"{tag} has classification entry {ce} whose type locality {ce.type_locality!r} does not match text"
-            elif cfg.experimental and has_classification(
-                tag.source
-            ):  # produces 12k issues, probably not achievable
-                yield f"{tag} has no classification entry, but source {tag.source} has some"
 
             obviating_location_tag: TypeTag.LocationDetail | None = None  # type: ignore[name-defined]
             for other_tag in by_type[TypeTag.LocationDetail]:
@@ -732,48 +754,11 @@ def _check_all_type_tags(
                     )
                 ]
 
-        case TypeTag.SpecimenDetail():
-            if tag.classification_entry is not None:
-                ce = tag.classification_entry
-                if ce.article != tag.source:
-                    yield f"{tag} has classification entry {ce} that does not match source {tag.source}"
-                if (
-                    ce.mapped_name is not None
-                    and ce.mapped_name.resolve_variant() != nam
-                    and ce.mapped_name != nam
-                ):
-                    yield f"{tag} has classification entry {ce} that does not match name {nam}"
-                type_specimen_datas = [
-                    tag.text
-                    for tag in ce.tags
-                    if isinstance(
-                        tag,
-                        models.classification_entry.ClassificationEntryTag.TypeSpecimenData,
-                    )
-                ]
-                if tag.text not in type_specimen_datas:
-                    yield f"{tag} has classification entry {ce} whose type specimen data {type_specimen_datas} does not match text"
-            else:
-                obviating_specimen_tag: TypeTag.SpecimenDetail | None = None  # type: ignore[name-defined]
-                for other_tag in by_type[TypeTag.SpecimenDetail]:
-                    if (
-                        isinstance(other_tag, TypeTag.SpecimenDetail)
-                        and other_tag is not tag
-                        and other_tag.source == tag.source
-                        and other_tag.text == tag.text
-                        and other_tag.classification_entry is not None
-                    ):
-                        obviating_specimen_tag = other_tag
-                        break
-                if obviating_specimen_tag is not None:
-                    yield f"remove redundant tag {tag} (obviated by {obviating_specimen_tag})"
-                    return []
-
         case TypeTag.DefinitionDetail():
             # Phylonyms book PDF has "Tis" and "Te" for "This" and "The"
             text = re.sub(r"\bT(?=e\b|is\b)", "Th", tag.text)
             text = text.replace("defnition", "definition")
-            tag = TypeTag.DefinitionDetail(text, tag.source)
+            tag = tag.replace(text=text)
 
         case TypeTag.Coordinates():
             try:
@@ -7023,6 +7008,40 @@ def _location_detail_covers_classification_entry(
     )
 
 
+def _infer_detail_from_classification_entry(
+    nam: Name, expected: TypeTag, ce: ClassificationEntry
+) -> Iterable[LintResult]:
+    matching = [
+        tag
+        for tag in nam.get_tags(nam.type_tags, type(expected))
+        if tag.source == expected.source
+        and tag.text == expected.text
+        and tag.classification_entry in (None, ce)
+    ]
+    if not matching:
+        message = f"adding {type(expected).__name__} from {ce} to {nam}: {expected}"
+        yield add_tag_issue(message, nam, expected, field="type_tags")
+        return
+    for existing in matching:
+        updated = existing.replace(classification_entry=ce)
+        for field in DETAIL_METADATA_FIELDS:
+            value = getattr(expected, field)
+            current = getattr(existing, field)
+            if value is not None:
+                if current is None:
+                    updated = updated.replace(**{field: value})
+                elif current != value:
+                    yield f"{existing} has {field} {current!r} that does not match classification entry {ce}: {value!r}"
+        if updated != existing:
+            yield replace_tag_issue(
+                f"updating {type(expected).__name__} from {ce}",
+                nam,
+                existing,
+                updated,
+                field="type_tags",
+            )
+
+
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     ces = list(nam.get_classification_entries())
@@ -7030,13 +7049,20 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintR
         return
     tag_name = nam.resolve_variant(unavailable_version=False)
     for ce in ces:
-        for ce_tag in ce.tags:
-            if not isinstance(ce_tag, ClassificationEntryTag.EtymologyDetail):
-                continue
-            tag = TypeTag.EtymologyDetail(ce_tag.text, ce.article)
-            if tag not in tag_name.type_tags:
-                message = f"adding etymology from {ce} to {tag_name}: {tag}"
-                yield add_tag_issue(message, tag_name, tag, field="type_tags")
+        for tag_type, ce_tag_type in DETAIL_TAG_TO_CE_TAG.items():
+            for ce_tag in ce.tags:
+                if not isinstance(ce_tag, ce_tag_type):
+                    continue
+                tag = tag_type(
+                    text=ce_tag.text,
+                    source=ce.article,
+                    classification_entry=ce,
+                    **{
+                        field: getattr(ce_tag, field)
+                        for field in DETAIL_METADATA_FIELDS
+                    },
+                )
+                yield from _infer_detail_from_classification_entry(tag_name, tag, ce)
         if nam.group is Group.species:
             location = ce.type_locality
             if location and not any(
@@ -7048,27 +7074,23 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintR
                 )
                 message = f"adding location detail from {ce} to {tag_name}: {tag}"
                 yield add_tag_issue(message, tag_name, tag, field="type_tags")
-            type_specimen = None
-            for tag in ce.tags:
-                if isinstance(tag, ClassificationEntryTag.TypeSpecimenData):
-                    type_specimen = tag.text
-                    break
-            if type_specimen is not None and not any(
-                tag.classification_entry == ce
-                for tag in tag_name.get_tags(tag_name.type_tags, TypeTag.SpecimenDetail)
-            ):
-                tag = TypeTag.SpecimenDetail(
-                    type_specimen, ce.article, classification_entry=ce
-                )
-                message = f"adding specimen detail from {ce} to {tag_name}: {tag}"
-                yield add_tag_issue(message, tag_name, tag, field="type_tags")
         if (
             tag_name.original_citation is None
             and ce.citation is not None
             and (nam.group is not Group.family or nam.year == ce.year)
         ):
             tag = TypeTag.CitationDetail(ce.citation, ce.article)
-            if tag not in tag_name.type_tags:
+            if not any(
+                existing.text == tag.text and existing.source == tag.source
+                for existing in tag_name.get_tags(
+                    tag_name.type_tags, TypeTag.CitationDetail
+                )
+            ) and not any(
+                detail.text == ce.citation
+                for detail in ce.get_tags(
+                    ce.tags, ClassificationEntryTag.CitationDetail
+                )
+            ):
                 message = f"adding verbatim citation from {ce} to {nam}: {tag}"
                 yield add_tag_issue(message, tag_name, tag, field="type_tags")
 
@@ -7726,3 +7748,17 @@ def enforce_must_have(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.citation_group.must_have(nam.numeric_year()):
         yield f"{nam} is in {nam.citation_group}, but has no original_citation"
+
+
+@LINT.add("detail_pages")
+def infer_detail_pages(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    yield from detail_lint.infer_detail_pages(obj)
+
+
+@LINT.add(
+    "detail_pages_from_text",
+    required_resources={LintResource.SLOW},
+    clear_caches=detail_pages.clear_caches,
+)
+def infer_detail_pages_from_text(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    yield from detail_lint.infer_detail_pages_from_text(obj, cfg)

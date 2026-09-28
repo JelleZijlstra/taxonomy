@@ -42,6 +42,14 @@ And the following tags:
 - _TextualRank_: If _rank_ is set to "other", this tag holds the rank as given in the
   source.
 - _TypeSpecimenData_: Data given about the name's type specimen in the source.
+- _EtymologyDetail_: A quotation about the origin or grammatical treatment of the name.
+- _TypeSpeciesDetail_: A quotation about the type species.
+- _CollectionDetail_: A quotation about the repository of type material.
+- _CitationDetail_: A quotation discussing the original citation.
+- _DefinitionDetail_: A quotation of a phylogenetic definition.
+- _NomenclatureDetail_: A quotation discussing nomenclature.
+- _SourceDetail_: A quotation about source material used for the name.
+- _DescriptionDetail_: A quoted description of the animal.
 - _OriginalCombination_: The original combination for the name, as given in the source.
 - _OriginalPageDescribed_: The page on which the name was coined, according to the
   source.
@@ -53,6 +61,19 @@ And the following tags:
 - _TreatedAsDubious_: The source treats the name as dubious or otherwise does not
   include it in its main classification. The intended use case is to allow species
   counts.
+
+`TypeSpecimenData` and the detail tags above also support optional `comment`, `page`,
+`translation`, and `page_link` fields. Their source is the ClassificationEntry's
+`article`. Lint uses the same page normalization, source-page checks, and BHL link
+inference as Name detail tags. Mapped entries supply quotations and metadata to Name
+detail tags, including a reference back to the entry. For the original mapped entry,
+Name quotations from the same Article can also populate ClassificationEntry detail tags.
+Missing metadata is filled; conflicting values are reported for review. The
+`type_locality` field continues to supply Name `LocationDetail` quotations, and
+`TypeSpecimenData` corresponds to Name `SpecimenDetail`. The `detail_pages` and
+`detail_pages_from_text` lints use the same conservative
+[page-inference rules as Name detail tags](name.md), including annotation extraction,
+containing quotations, and cached text searches. Existing populated pages are retained.
 
 ## External information
 

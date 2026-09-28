@@ -527,7 +527,9 @@ names should have at least one. They fall into several groups:
 
 - Sourced quotations. The text of every `*Detail` tag must be a direct quotation from
   the cited source, with only transcription-level normalization such as joining line
-  breaks. Occasionally, comments may be added in square brackets.
+  breaks. Occasionally, comments may be added in square brackets. All source-bearing
+  detail tags support `comment`, `page`, `translation`, `page_link`, and
+  `classification_entry` in addition to `text` and `source`.
   - _SpecimenDetail_: Sourced quotation with information about the material on which a
     species was based. Every type specimen should be supported by a _SpecimenDetail_
     field that confirms the identity of the type specimen.
@@ -565,6 +567,7 @@ names should have at least one. They fall into several groups:
     species-group name.
   - _InterpretedTypeLocality_: Editorial interpretation of the type locality of a
     species-group name.
+
 - Structured information about the type
   - _CollectedBy_: The [person](/docs/person) who collected the type specimen.
   - _Involved_: A [person](/docs/person) who was involved in the history of the type

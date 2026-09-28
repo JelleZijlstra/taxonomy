@@ -20,6 +20,7 @@ from taxonomy.db.constants import (
     Markdown,
     NomenclatureStatus,
     Rank,
+    SourceDetailText,
     SourceLanguage,
     SpecimenDetailText,
 )
@@ -692,7 +693,14 @@ class ClassificationEntryTag(ADT):
     TextualRank(text=Managed, tag=2)  # type: ignore[name-defined]
     CorrectedName(text=Managed, tag=3)  # type: ignore[name-defined]
     PageLink(url=URL, page=Managed, tag=4)  # type: ignore[name-defined]
-    TypeSpecimenData(text=SpecimenDetailText, tag=5)  # type: ignore[name-defined]
+    TypeSpecimenData(  # type: ignore[name-defined]
+        text=SpecimenDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=5,
+    )
     OriginalCombination(text=Managed, tag=6)  # type: ignore[name-defined]
     OriginalPageDescribed(text=Managed, tag=7)  # type: ignore[name-defined]
     IgnoreLint(label=Managed, comment=NotRequired[Markdown], tag=8)  # type: ignore[name-defined]
@@ -723,7 +731,14 @@ class ClassificationEntryTag(ADT):
     Materialize(parent_taxon_id=NotRequired[int], tag=20)  # type: ignore[name-defined]
     # Source-backed etymology text. Name lint copies this to an EtymologyDetail
     # whose source is the CE's Article after the CE has been mapped.
-    EtymologyDetail(text=Markdown, tag=21)  # type: ignore[name-defined]
+    EtymologyDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=21,
+    )
     # The CE is the original description of the mapped Name. Materialize uses the
     # CE's Article as original_citation and its authority to select the applicable
     # authors from that Article (some nomenclatural acts have a subset of authors).
@@ -749,6 +764,77 @@ class ClassificationEntryTag(ADT):
     # cross Article boundaries and does not claim a source-local hierarchy.
     MaterializeParent(ce=ClassificationEntry, tag=25)  # type: ignore[name-defined]
 
+    TypeSpeciesDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=26,
+    )
+    CollectionDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=27,
+    )
+    CitationDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=28,
+    )
+    DefinitionDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=29,
+    )
+    NomenclatureDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=30,
+    )
+    SourceDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=31,
+    )
+    DescriptionDetail(  # type: ignore[name-defined]
+        text=SourceDetailText,
+        comment=NotRequired[Markdown],
+        page=NotRequired[Managed],
+        translation=NotRequired[Markdown],
+        page_link=NotRequired[URL],
+        tag=32,
+    )
+
+
+DETAIL_TAGS = (
+    ClassificationEntryTag.TypeSpecimenData,
+    ClassificationEntryTag.EtymologyDetail,
+    ClassificationEntryTag.TypeSpeciesDetail,
+    ClassificationEntryTag.CollectionDetail,
+    ClassificationEntryTag.CitationDetail,
+    ClassificationEntryTag.DefinitionDetail,
+    ClassificationEntryTag.NomenclatureDetail,
+    ClassificationEntryTag.SourceDetail,
+    ClassificationEntryTag.DescriptionDetail,
+)
+
+DETAIL_METADATA_FIELDS = ("comment", "page", "translation", "page_link")
 
 _NAME_CHARS = r"[a-zæüöïœ]+"
 
