@@ -805,33 +805,9 @@ class LabeledName(NamedTuple):
     is_high_quality: bool
 
 
-HIGH_QUALITY = {
-    "Probainognathia",  # including mammals
-    "Cephalochordata",
-    "Loricifera",
-    "Cycliophora",
-    "Micrognathozoa",
-    "Gnathostomulida",
-    "Gymnophiona",
-    "Avemetatarsalia",  # pterosaurs and some dinosaurs
-    "Eusuchia",  # crocodiles
-    "Choristodera",
-    "Ichthyosauria",
-    "Rhynchocephalia",
-    "Allocaudata",
-}
-LOW_QUALITY = {"Neornithes", "Ornithischia", "root"}
-
-
 def is_high_quality(taxon: Taxon) -> bool:
-    if taxon.valid_name in HIGH_QUALITY:
-        return True
-    elif taxon.valid_name in LOW_QUALITY:
-        return False
-    elif taxon.parent is None:
-        return False
-    else:
-        return is_high_quality(taxon.parent)
+    """Compatibility wrapper for reports using the inherited coverage policy."""
+    return taxon.is_high_coverage()
 
 
 def label_name(name: Name) -> LabeledName:

@@ -6,6 +6,7 @@ from typing import NotRequired, Protocol
 from taxonomy import adt
 from taxonomy.db.constants import (
     URL,
+    CoverageLevel,
     DistributionOrigin,
     DistributionPresence,
     Managed,
@@ -142,6 +143,12 @@ class TaxonTag(adt.ADT):
         cutoff_year=NotRequired[int],
         comment=NotRequired[Markdown],
         tag=11,
+    )
+
+    # Inherited by descendants; the nearest explicit value wins. No tag means
+    # inherit, and an entirely unmarked lineage defaults to low coverage.
+    Coverage(  # type: ignore[name-defined]
+        level=CoverageLevel, comment=NotRequired[Markdown], tag=12
     )
 
 

@@ -16,6 +16,7 @@ from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import (
     AgeClass,
+    CoverageLevel,
     Group,
     NameDataLevel,
     NomenclatureStatus,
@@ -142,6 +143,34 @@ class Taxon(BaseModel):
 
     def has_tag(self, tag: type[models.tags.TaxonTag]) -> bool:
         return any(self.get_tags(self.tags, tag))
+
+    def get_coverage(self) -> tuple[CoverageLevel, Taxon | None]:
+        """Return effective coverage and its source, or (low, None) by default.
+
+        Do not cache this: edits and virtual proposals can change both tags and
+        parents during a lint run. Coverage follows ancestry, not Name links.
+        """
+        current: Taxon | None = self
+        seen: set[Taxon] = set()
+        while current is not None:
+            if current in seen:
+                raise ValueError(
+                    f"parent cycle while resolving coverage at taxon {current.id}"
+                )
+            seen.add(current)
+            tags = list(current.get_tags(current.tags, models.tags.TaxonTag.Coverage))
+            # A redirect's parent is its target; obsolete tags on the redirect
+            # must not override the target's coverage.
+            if tags and current.age is not AgeClass.redirect:
+                levels = {tag.level for tag in tags}
+                if len(levels) != 1:
+                    raise ValueError(f"conflicting coverage tags on taxon {current.id}")
+                return tags[0].level, current
+            current = current.parent
+        return CoverageLevel.low, None
+
+    def is_high_coverage(self) -> bool:
+        return self.get_coverage()[0] is CoverageLevel.high
 
     def group(self) -> Group:
         return helpers.group_of_rank(self.rank)

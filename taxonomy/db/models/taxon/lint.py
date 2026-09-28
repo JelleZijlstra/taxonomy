@@ -34,9 +34,20 @@ def add_ignore(taxon: Taxon, label: str, comment: str) -> None:
 LINT = Lint(Taxon, get_ignores, add_ignore)
 
 
+@LINT.add("coverage")
+def check_coverage(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
+    tags = list(taxon.get_tags(taxon.tags, models.tags.TaxonTag.Coverage))
+    if len(tags) > 1:
+        yield f"has multiple coverage tags: {tags}"
+    try:
+        taxon.get_coverage()
+    except ValueError as exc:
+        yield str(exc)
+
+
 @LINT.add("parent")
 def check_parent(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
-    if taxon.parent is None and taxon.id != 1:
+    if taxon.parent is None and (taxon.virtual_origin_id or taxon.id) != 1:
         yield f"{taxon}: missing parent"
     if taxon.parent is not None and not taxon.age.can_have_parent_of_age(
         taxon.parent.age
@@ -111,7 +122,7 @@ def check_base_name(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
         yield _switch_basename_issue(message, taxon, resolved)
 
 
-@LINT.add("nominal_genus")
+@LINT.add("nominal_genus", can_remove_ignore=Taxon.is_high_coverage)
 def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
     nominal_genus_tags = list(
         taxon.get_tags(taxon.tags, models.tags.TaxonTag.NominalGenus)
@@ -143,7 +154,8 @@ def check_nominal_genus(taxon: Taxon, cfg: LintConfig) -> Iterable[LintResult]:
                     f"adding NominalGenus tag: {candidates[0]}", taxon, tag
                 )
                 return
-        yield "should have NominalGenus tag"
+        if taxon.is_high_coverage():
+            yield "should have NominalGenus tag"
 
 
 @LINT.add("valid_name")
@@ -186,9 +198,9 @@ def check_basal_tags(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
             yield "has unnecessary Basal tag"
 
 
-@LINT.add("age")
+@LINT.add("age", can_remove_ignore=Taxon.is_high_coverage)
 def check_age(taxon: Taxon, cfg: LintConfig) -> Iterable[str]:
-    if taxon.age is AgeClass.extant:
+    if taxon.age is AgeClass.extant and taxon.is_high_coverage():
         children = list(taxon.get_children())
         if children and not any(child.age is AgeClass.extant for child in children):
             yield "extant taxon has no extant children"

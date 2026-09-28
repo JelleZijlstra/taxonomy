@@ -33,6 +33,13 @@ class GrammaticalGender(enum.IntEnum):
                 return "N"
 
 
+class CoverageLevel(enum.IntEnum):
+    """Commitment to comprehensive taxonomic coverage of a subtree."""
+
+    low = 1
+    high = 2
+
+
 class AgeClass(enum.IntEnum):
     extant = 0
     holocene = 1

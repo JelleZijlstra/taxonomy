@@ -2087,7 +2087,7 @@ class Name(BaseModel):
             yield SPECIMEN_TAGS
 
     def get_required_derived_tags(
-        self,
+        self, *, ignore_coverage: bool = False
     ) -> Iterable[tuple[tuple[TypeTagCons, ...], ExperimentalLintCondition]]:
         if self.group is Group.species:
             if self.collection and self.collection.id == MULTIPLE_COLLECTION:
@@ -2125,7 +2125,9 @@ class Name(BaseModel):
                 yield (TypeTag.ProbableRepository,), ExperimentalLintCondition(
                     only_with_tags_from_original=SPECIMEN_TAGS
                 )
-        if self.group is Group.genus:
+        if self.group is Group.genus and (
+            ignore_coverage or self.taxon.is_high_coverage()
+        ):
             if self.nomenclature_status.requires_type():
                 if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
                     yield (
@@ -2142,7 +2144,12 @@ class Name(BaseModel):
             if not any(self.has_type_tag(tag) for tag in group):
                 yield group
 
-    def get_required_fields(self) -> Iterable[str]:
+    def get_required_fields(self, *, ignore_coverage: bool = False) -> Iterable[str]:
+        """Fields required under the taxon's coverage policy.
+
+        ignore_coverage=True exposes the full requirements for explicit audits
+        and inference that only connects objects already present.
+        """
         if (
             self.status is Status.spurious
             or self.nomenclature_status is NomenclatureStatus.informal
@@ -2174,10 +2181,14 @@ class Name(BaseModel):
                 yield "type_tags"
             if self.group is Group.genus:
                 if (
-                    (self.type is None and self.genus_type_kind is None)
-                    or (
-                        self.genus_type_kind is None
-                        and self.original_citation is not None
+                    (
+                        (
+                            self.type is not None
+                            or ignore_coverage
+                            or self.taxon.is_high_coverage()
+                        )
+                        and self.genus_type_kind is None
+                        and (self.type is None or self.original_citation is not None)
                     )
                     or (
                         self.genus_type_kind is not None
@@ -2200,7 +2211,8 @@ class Name(BaseModel):
 
         if self.nomenclature_status.requires_type():
             if self.group is Group.family:
-                yield "type"
+                if ignore_coverage or self.taxon.is_high_coverage():
+                    yield "type"
             elif self.group is Group.species:
                 yield "type_locality"
                 # These are special Collections that indicate there is no preserved specimen.
@@ -2215,6 +2227,7 @@ class Name(BaseModel):
                 if (
                     self.genus_type_kind
                     is not constants.TypeSpeciesDesignation.undesignated
+                    and (ignore_coverage or self.taxon.is_high_coverage())
                 ):
                     yield "type"
                 if self.type is not None:
@@ -2225,6 +2238,7 @@ class Name(BaseModel):
             and self.nomenclature_status.requires_original_parent()
             and not self.has_type_tag(TypeTag.NoOriginalParent)
             and models.name.lint.should_require_subgenus_original_parent(self)
+            and (ignore_coverage or self.taxon.is_high_coverage())
         ):
             yield "original_parent"
 
