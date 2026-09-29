@@ -17,7 +17,7 @@ from taxonomy.db.models.classification_entry.lint import (
     infer_data_from_mapped,
 )
 from taxonomy.db.models.lint_types import LintResult
-from taxonomy.db.models.name import lint
+from taxonomy.db.models.name.lint import ce_mapping, other, type_tags
 from taxonomy.db.models.name.name import (
     DETAIL_TAG_TO_CE_TAG,
     SOURCE_TAGS,
@@ -160,13 +160,13 @@ def test_detail_sync_both_directions_and_idempotence(
     ce.tags = (ce_type("quotation", **_METADATA),)  # type: ignore[assignment]
     if existing:
         name.type_tags = (*name.type_tags, name_type("quotation", ce.article))  # type: ignore[assignment]
-    issues = list(lint.infer_tags_from_mapped_entries.linter(name, _CFG))
+    issues = list(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG))
     assert len(issues) == 1
     _apply(issues)
     (detail,) = name.get_tags(name.type_tags, name_type)
     assert detail.classification_entry == ce
     assert all(getattr(detail, field) == value for field, value in _METADATA.items())
-    assert list(lint.infer_tags_from_mapped_entries.linter(name, _CFG)) == []
+    assert list(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG)) == []
     ce.tags = (ce_type("quotation"),) if existing else ()  # type: ignore[assignment]
     _apply(infer_data_from_mapped.linter(ce, _CFG))
     assert ce.tags == (ce_type("quotation", **_METADATA),)
@@ -179,19 +179,19 @@ def test_detail_page_cleanup_inference_and_validation(
 ) -> None:
     name, ce = _models(monkeypatch)
     tag = tag_type("quotation", ce.article, comment="p. 12", translation="translation")
-    issues, tags = _finish(lint._check_detail_type_tag(tag, name, _CFG, {}))
+    issues, tags = _finish(type_tags._check_detail_type_tag(tag, name, _CFG, {}))
     assert issues == []
     (tag,) = tags
     assert tag.page == "12"
     assert tag.comment is None
     assert tag.translation == "translation"
     ce.article.url = "https://www.biodiversitylibrary.org/item/1"
-    monkeypatch.setattr(lint, "infer_bhl_page_id", lambda *_: (12345, "test"))
-    issues, tags = _finish(lint._check_detail_type_tag(tag, name, _CFG, {}))
+    monkeypatch.setattr(other, "infer_bhl_page_id", lambda *_: (12345, "test"))
+    issues, tags = _finish(type_tags._check_detail_type_tag(tag, name, _CFG, {}))
     assert issues == []
     assert tags[0].page_link == "https://www.biodiversitylibrary.org/page/12345"
     issues, _ = _finish(
-        lint._check_detail_type_tag(tag.replace(page="30"), name, _CFG, {})
+        type_tags._check_detail_type_tag(tag.replace(page="30"), name, _CFG, {})
     )
     assert issues
 
@@ -215,11 +215,11 @@ def test_detail_checks_ce_provenance_text_and_metadata(
     name, ce = _models(monkeypatch)
     ce.tags = (ce_type("quotation", **_METADATA),)  # type: ignore[assignment]
     tag = name_type("quotation", ce.article, classification_entry=ce)
-    issues, tags = _finish(lint._check_detail_type_tag(tag, name, _CFG, {}))
+    issues, tags = _finish(type_tags._check_detail_type_tag(tag, name, _CFG, {}))
     assert issues == []
     assert tags == [tag.replace(**_METADATA)]
     issues, tags = _finish(
-        lint._check_detail_type_tag(tag.replace(page="13"), name, _CFG, {})
+        type_tags._check_detail_type_tag(tag.replace(page="13"), name, _CFG, {})
     )
     assert any("does not match classification entry" in str(issue) for issue in issues)
     assert tags[0].page == "13"
@@ -227,7 +227,9 @@ def test_detail_checks_ce_provenance_text_and_metadata(
     ce.mapped_name = Name.virtual()
     ce.tags = (ce_type("different quotation"),)  # type: ignore[assignment]
     issues, _ = _finish(
-        lint._check_detail_type_tag(tag.replace(source=wrong_source), name, _CFG, {})
+        type_tags._check_detail_type_tag(
+            tag.replace(source=wrong_source), name, _CFG, {}
+        )
     )
     assert len(issues) == 3
     assert any("does not match source" in str(issue) for issue in issues)
@@ -241,7 +243,7 @@ def test_all_specimen_quotations_are_synced(monkeypatch: pytest.MonkeyPatch) -> 
         ClassificationEntryTag.TypeSpecimenData("First"),  # type: ignore[assignment]
         ClassificationEntryTag.TypeSpecimenData("Second"),
     )
-    _apply(lint.infer_tags_from_mapped_entries.linter(name, _CFG))
+    _apply(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG))
     assert {
         tag.text for tag in name.get_tags(name.type_tags, TypeTag.SpecimenDetail)
     } == {"First", "Second"}
@@ -252,7 +254,7 @@ def test_definition_cleanup_preserves_metadata(monkeypatch: pytest.MonkeyPatch) 
     tag = TypeTag.DefinitionDetail(
         "Te defnition", ce.article, classification_entry=ce, **_METADATA
     )
-    issues, tags = _finish(lint._check_all_type_tags(tag, name, _CFG, {}))
+    issues, tags = _finish(type_tags._check_all_type_tags(tag, name, _CFG, {}))
     assert issues == []
     assert tags == [tag.replace(text="The definition")]
 
@@ -267,7 +269,7 @@ def test_sync_preserves_conflicting_metadata(
     detail = name_type("quotation", ce.article, classification_entry=ce, page="13")
     name.type_tags = (*name.type_tags, detail)  # type: ignore[assignment]
     ce.tags = (ce_type("quotation", page="12"),)  # type: ignore[assignment]
-    name_issues = list(lint.infer_tags_from_mapped_entries.linter(name, _CFG))
+    name_issues = list(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG))
     ce_issues = list(infer_data_from_mapped.linter(ce, _CFG))
     assert len(name_issues) == len(ce_issues) == 1
     assert all(isinstance(issue, str) for issue in [*name_issues, *ce_issues])
@@ -297,7 +299,7 @@ def test_redundant_detail_cleanup_preserves_metadata(
         unlinked = unlinked.replace(**{extra_field: _METADATA[extra_field]})
     linked = TypeTag.SpecimenDetail("quotation", ce.article, classification_entry=ce)
     issues, tags = _finish(
-        lint._check_detail_type_tag(
+        type_tags._check_detail_type_tag(
             unlinked, name, _CFG, {TypeTag.SpecimenDetail: [unlinked, linked]}
         )
     )

@@ -244,7 +244,7 @@ def process_mdd_type(text: str) -> str | None:
         for rgx, sub in MDD_TYPE_REGEXES:
             piece = re.sub(rgx, sub, piece)
         if "BMNH" in piece:
-            piece = models.name.lint.clean_up_bmnh_type(piece)
+            piece = models.name.lint.type_specimen.clean_up_bmnh_type(piece)
         final.append(piece)
     return ", ".join(sorted(final))
 
@@ -477,7 +477,7 @@ def _get_hesp_type_specimen_name(nam: Name) -> Name:
 
 
 def clean_hesp_type(nam: Name) -> str | None:
-    result = ", ".join(models.name.lint.get_all_type_specimen_texts(nam))
+    result = ", ".join(models.name.lint.type_specimen.get_all_type_specimen_texts(nam))
     if not result:
         return None
     return result

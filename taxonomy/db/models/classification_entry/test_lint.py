@@ -31,7 +31,7 @@ from taxonomy.db.models.classification_entry.lint import (
 )
 from taxonomy.db.models.lint_types import LintIssue
 from taxonomy.db.models.name import Name, NameTag
-from taxonomy.db.models.name.lint import infer_tags_from_mapped_entries
+from taxonomy.db.models.name.lint.ce_mapping import infer_tags_from_mapped_entries
 from taxonomy.db.models.person import AuthorTag
 
 _ARTICLE = Article.virtual(name="classification source")

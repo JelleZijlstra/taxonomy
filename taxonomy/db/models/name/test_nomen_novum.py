@@ -13,7 +13,7 @@ from taxonomy.db.constants import (
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.taxon import Taxon
 
-from .lint import _check_variant_tag, check_nomen_novum_for_unavailable_name
+from .lint.tags import _check_variant_tag, check_nomen_novum_for_unavailable_name
 from .name import Name, NameTag
 
 

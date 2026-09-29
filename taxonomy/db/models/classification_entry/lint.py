@@ -38,11 +38,11 @@ from taxonomy.db.models.lint import (
 )
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.name import Name, NameTag, TypeTag
-from taxonomy.db.models.name.lint import (
+from taxonomy.db.models.name.lint.page_link import (
     infer_bhl_page_id,
     maybe_infer_page_from_other_name,
-    name_combination_name_sort_key,
 )
+from taxonomy.db.models.name.lint.variants import name_combination_name_sort_key
 from taxonomy.db.models.name.name import DETAIL_TAG_TO_CE_TAG, clean_original_name
 from taxonomy.db.models.person import AuthorTag, Person
 from taxonomy.db.models.taxon import Taxon
@@ -177,7 +177,7 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
                         yield f"ReferencedUsage tag {tag} (resolving to {referenced}) does not match mapped_name {mapped}"
                 new_tags.append(tag)
         elif isinstance(tag, ClassificationEntryTag.PageLink):
-            new_url = yield from models.name.lint.check_page_link(
+            new_url = yield from models.name.page.check_page_link(
                 tag_url=tag.url, tag_page=tag.page, page_described=ce.page
             )
             new_tags.append(
@@ -186,7 +186,7 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
                 )
             )
         elif isinstance(tag, DETAIL_TAGS):
-            tag = yield from models.name.lint.check_tag_with_page(
+            tag = yield from models.name.lint.type_tags.check_tag_with_page(
                 tag, ce.article, cfg, ce, allow_missing_page=True
             )
             new_tags.append(tag)
@@ -478,7 +478,7 @@ def _materialized_nomenclature_status(ce: ClassificationEntry) -> NomenclatureSt
     statuses = set(get_applicable_nomenclature_statuses(ce))
     if not statuses:
         return NomenclatureStatus.available
-    return min(statuses, key=models.name.lint.nomenclature_status_priority)
+    return min(statuses, key=models.name.lint.tags.nomenclature_status_priority)
 
 
 def _citation_values_for_materialized_name(
@@ -1559,10 +1559,14 @@ def check_corrected_name(
                 if not re.fullmatch(r"[A-Z][a-z]+( [a-z]+){1,3}", corrected_name):
                     yield f"incorrect species name format: {corrected_name}"
             case Group.high:
-                if not re.fullmatch(models.name.lint.CON_HIGH_REGEX, corrected_name):
+                if not re.fullmatch(
+                    models.name.lint.original_name.CON_HIGH_REGEX, corrected_name
+                ):
                     yield f"incorrect name format: {corrected_name}"
             case Group.family | Group.genus:
-                if not re.fullmatch(models.name.lint.CON_REGEX, corrected_name):
+                if not re.fullmatch(
+                    models.name.lint.original_name.CON_REGEX, corrected_name
+                ):
                     yield f"incorrect name format: {corrected_name}"
             case _:
                 assert_never(group)
@@ -2025,7 +2029,7 @@ def get_applicable_nomenclature_statuses(
             yield tag.status
     if ce.rank is Rank.infrasubspecific:
         yield NomenclatureStatus.infrasubspecific
-    yield from models.name.lint.get_inherent_nomenclature_statuses_from_article(
+    yield from models.name.lint.tags.get_inherent_nomenclature_statuses_from_article(
         ce.article
     )
 
@@ -2054,11 +2058,11 @@ def check_maps_to_unavailable(
         yield f"mapped to unavailable name {mapped} (via {ce.mapped_name}), but lacks CECondition tag"
         return
     most_serious = min(
-        applicable_statuses, key=models.name.lint.nomenclature_status_priority
+        applicable_statuses, key=models.name.lint.tags.nomenclature_status_priority
     )
-    if models.name.lint.nomenclature_status_priority(
+    if models.name.lint.tags.nomenclature_status_priority(
         most_serious
-    ) > models.name.lint.nomenclature_status_priority(status):
+    ) > models.name.lint.tags.nomenclature_status_priority(status):
         yield f"mapped to unavailable name {mapped} (via {ce.mapped_name}) of status {status}, but has less serious CECondition tag for status {most_serious}"
 
 
@@ -2165,7 +2169,7 @@ def check_vacuous_type_locality(
 ) -> Iterable[LintResult]:
     if ce.type_locality is None:
         return
-    if models.name.lint.is_empty_location_detail(ce.type_locality):
+    if models.name.lint.type_tags.is_empty_location_detail(ce.type_locality):
         message = f"type locality is vacuous: {ce.type_locality!r}"
         yield field_issue(message, ce, "type_locality", None)
 
@@ -2238,7 +2242,9 @@ def check_page(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
 def check_matches_citation(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[str]:
     if ce.page is None:
         return
-    yield from models.name.lint.check_page_matches_citation(ce.article, ce.page)
+    yield from models.name.lint.page_described.check_page_matches_citation(
+        ce.article, ce.page
+    )
 
 
 @LINT.add("parent_rank")

@@ -29,7 +29,6 @@ from taxonomy.db.models.lint import (
 from taxonomy.db.models.lint_types import LintIssue, LintResult
 from taxonomy.db.models.period import Period
 from taxonomy.db.models.region import Region, RegionTag
-from taxonomy.db.models.tags import LocationTag, is_coordinate_provenance_tag
 
 from .age import is_recent_location
 from .model import Location
@@ -516,11 +515,11 @@ class GeoNamesCoordinateCandidate:
 
 
 def get_ignores(location: Location) -> Iterable[IgnoreLint]:
-    return location.get_tags(location.tags, LocationTag.IgnoreLint)
+    return location.get_tags(location.tags, models.tags.LocationTag.IgnoreLint)
 
 
 def add_ignore(location: Location, label: str, comment: str) -> None:
-    location.add_tag(LocationTag.IgnoreLint(label, comment=comment))
+    location.add_tag(models.tags.LocationTag.IgnoreLint(label, comment=comment))
 
 
 LINT = Lint(Location, get_ignores, add_ignore)
@@ -701,17 +700,21 @@ def _get_location_extent(location: Location) -> coordinate_lint.CoordinateExtent
 def _replace_plss_tag_issue(
     message: str,
     location: Location,
-    old_tag: LocationTag.PLSS,  # type: ignore[name-defined]
-    new_tag: LocationTag.PLSS,  # type: ignore[name-defined]
+    old_tag: models.tags.LocationTag.PLSS,  # type: ignore[name-defined]
+    new_tag: models.tags.LocationTag.PLSS,  # type: ignore[name-defined]
 ) -> LintIssue:
     """Replace a PLSS tag and keep PLSS coordinate provenance attached to it."""
     fixes = [replace_tag_fix(location, old_tag, new_tag)]
     if old_tag.plss_id != new_tag.plss_id:
-        for tag in location.get_tags(location.tags, LocationTag.CoordinatesFromPLSS):
+        for tag in location.get_tags(
+            location.tags, models.tags.LocationTag.CoordinatesFromPLSS
+        ):
             if tag.plss_id == old_tag.plss_id:
                 fixes.append(
                     replace_tag_fix(
-                        location, tag, LocationTag.CoordinatesFromPLSS(new_tag.plss_id)
+                        location,
+                        tag,
+                        models.tags.LocationTag.CoordinatesFromPLSS(new_tag.plss_id),
                     )
                 )
     return fixes_issue(message, *fixes)
@@ -719,7 +722,7 @@ def _replace_plss_tag_issue(
 
 @LINT.add("plss_tag")
 def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
-    tags = list(location.get_tags(location.tags, LocationTag.PLSS))
+    tags = list(location.get_tags(location.tags, models.tags.LocationTag.PLSS))
     if len(tags) > 1:
         yield f"has multiple PLSS tags: {tags}"
     for tag in tags:
@@ -748,7 +751,7 @@ def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
 
 @LINT.add("general_plss")
 def check_general_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
-    if location.is_general() and location.has_tag(LocationTag.PLSS):
+    if location.is_general() and location.has_tag(models.tags.LocationTag.PLSS):
         yield (
             "general location should not have a precise PLSS tag; move the tag to an exact Location or remove the General status"
         )
@@ -848,7 +851,7 @@ def _common_plss_description(
 
 @LINT.add("plss", requires_network=True)
 def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
-    tags = list(location.get_tags(location.tags, LocationTag.PLSS))
+    tags = list(location.get_tags(location.tags, models.tags.LocationTag.PLSS))
     evidence = [] if tags else _get_linked_plss_evidence(location)
     if not tags and not evidence:
         return
@@ -934,7 +937,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
                                 field_fix(location, "longitude", longitude),
                                 add_tag_fix(
                                     location,
-                                    LocationTag.CoordinatesFromPLSS(
+                                    models.tags.LocationTag.CoordinatesFromPLSS(
                                         tag_township.plss_id
                                     ),
                                 ),
@@ -1034,7 +1037,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     assert common_description is not None
     most_specific_township = first_township
     most_specific = common_description
-    expected = LocationTag.PLSS(
+    expected = models.tags.LocationTag.PLSS(
         most_specific.canonical_text, most_specific_township.plss_id
     )
     if location.is_general():
@@ -1063,7 +1066,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
                         field_fix(location, "longitude", longitude),
                         add_tag_fix(
                             location,
-                            LocationTag.CoordinatesFromPLSS(
+                            models.tags.LocationTag.CoordinatesFromPLSS(
                                 most_specific_township.plss_id
                             ),
                         ),
@@ -1078,7 +1081,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
 
 @LINT.add("fully_divided_region")
 def check_fully_divided_region(location: Location, cfg: LintConfig) -> Iterable[str]:
-    if location.is_general() or location.has_tag(LocationTag.Unplaced):
+    if location.is_general() or location.has_tag(models.tags.LocationTag.Unplaced):
         return
     region = location.region
     if not region.has_children() or region.has_tag(RegionTag.IncompletelyDivided):
@@ -1094,7 +1097,7 @@ def check_coordinate_child_region(location: Location, cfg: LintConfig) -> Iterab
         location.latitude is None
         or location.longitude is None
         or location.is_general()
-        or location.has_tag(LocationTag.Unplaced)
+        or location.has_tag(models.tags.LocationTag.Unplaced)
     ):
         return
     region = location.region
@@ -1485,7 +1488,7 @@ def _coordinate_collision_key(
         # may therefore deliberately reuse the extent of a containing island,
         # mountain range, or expedition corridor.
         or any(
-            isinstance(tag, LocationTag.Unplaced)
+            isinstance(tag, models.tags.LocationTag.Unplaced)
             for tag in getattr(location, "tags", ()) or ()
         )
         or location.latitude is None
@@ -1536,14 +1539,16 @@ def _coordinate_collision_plss_key(location: Location) -> plss.PLSSDescription |
     """Return the one PLSS description that deliberately supplied the extent."""
     tags = tuple(location.tags or ())
     provenance = tuple(
-        tag for tag in tags if isinstance(tag, LocationTag.CoordinatesFromPLSS)
+        tag
+        for tag in tags
+        if isinstance(tag, models.tags.LocationTag.CoordinatesFromPLSS)
     )
     if len(provenance) != 1:
         return None
     matching = tuple(
         tag
         for tag in tags
-        if isinstance(tag, LocationTag.PLSS)
+        if isinstance(tag, models.tags.LocationTag.PLSS)
         if tag.plss_id == provenance[0].plss_id
     )
     if len(matching) != 1:
@@ -1813,7 +1818,10 @@ def _get_nearby_regions(location: Location) -> tuple[Region, ...]:
     if parsed_name.modifier is None:
         return ()
     return tuple(
-        tag.region for tag in location.get_tags(location.tags, LocationTag.NearbyRegion)
+        tag.region
+        for tag in location.get_tags(
+            location.tags, models.tags.LocationTag.NearbyRegion
+        )
     )
 
 
@@ -1898,7 +1906,7 @@ def check_coordinates(location: Location, cfg: LintConfig) -> Iterable[LintResul
             (location, "longitude", longitude),
         )
     is_general = location.is_general()
-    is_reviewed_unplaced = location.has_tag(LocationTag.Unplaced)
+    is_reviewed_unplaced = location.has_tag(models.tags.LocationTag.Unplaced)
     if is_general and extent.point is not None:
         yield "general location should use a coordinate range, not point coordinates"
         return
@@ -1937,7 +1945,7 @@ def _should_infer_coordinates(location: Location) -> bool:
     if (
         location.is_invalid()
         or location.is_general()
-        or location.has_tag(LocationTag.Unplaced)
+        or location.has_tag(models.tags.LocationTag.Unplaced)
     ):
         return False
     return not (
@@ -1974,7 +1982,7 @@ def _get_linked_coordinate_evidence(
                         longitude,
                         extent,
                         f"Name {name}",
-                        LocationTag.CoordinatesFromName(name),
+                        models.tags.LocationTag.CoordinatesFromName(name),
                     )
                 )
         for tag in _get_applicable_coordinate_text_tags(name):
@@ -1993,7 +2001,7 @@ def _get_linked_coordinate_evidence(
                         longitude,
                         extent,
                         f"Name {name} {type(tag).__name__} {tag.text!r}",
-                        LocationTag.CoordinatesFromName(name),
+                        models.tags.LocationTag.CoordinatesFromName(name),
                     )
                 )
     for record in location.occurrence_records:
@@ -2011,7 +2019,7 @@ def _get_linked_coordinate_evidence(
                         longitude,
                         extent,
                         f"OccurrenceRecord {record}",
-                        LocationTag.CoordinatesFromOccurrenceRecord(record),
+                        models.tags.LocationTag.CoordinatesFromOccurrenceRecord(record),
                     )
                 )
     return evidence
@@ -2041,7 +2049,7 @@ def _nominatim_provenance_tag(
 ) -> Any | None:
     if result.osm_type is None or result.osm_id is None:
         return None
-    return LocationTag.CoordinatesFromNominatim(
+    return models.tags.LocationTag.CoordinatesFromNominatim(
         result.osm_type, result.osm_id, result.category, use_bounding_box
     )
 
@@ -2374,7 +2382,9 @@ def _get_geonames_alternate_name_kind(
 @LINT.add("geonames_alternate_name")
 def check_geonames_alternate_name(location: Location, cfg: LintConfig) -> Iterable[str]:
     parsed_name = ParsedLocationName.parse(location.name)
-    for tag in location.get_tags(location.tags, LocationTag.CoordinatesFromGeoNames):
+    for tag in location.get_tags(
+        location.tags, models.tags.LocationTag.CoordinatesFromGeoNames
+    ):
         try:
             record = geonames.get_by_id(tag.geoname_id)
         except RuntimeError:
@@ -2404,7 +2414,7 @@ def check_geonames_coordinates(
 ) -> Iterable[LintResult]:
     if location.latitude is not None or location.longitude is not None:
         return
-    if location.has_tag(LocationTag.PLSS):
+    if location.has_tag(models.tags.LocationTag.PLSS):
         # PLSS describes the collecting site; wait for its polygon instead of
         # falling back to the centroid of a similarly named gazetteer feature.
         return
@@ -2477,7 +2487,7 @@ def check_geonames_coordinates(
             [nominatim_tag]
             if nominatim_tag is not None
             else [
-                LocationTag.CoordinatesFromGeoNames(
+                models.tags.LocationTag.CoordinatesFromGeoNames(
                     geonames_candidates[0].match.record.geoname_id
                 )
             ]
@@ -2488,7 +2498,9 @@ def check_geonames_coordinates(
         longitude = reference.longitude
         message = f"coordinates should be {latitude}, {longitude}, inferred from {_describe_geonames_match(reference.match)}; Nominatim returned no usable exact match"
         provenance_tags = [
-            LocationTag.CoordinatesFromGeoNames(reference.match.record.geoname_id)
+            models.tags.LocationTag.CoordinatesFromGeoNames(
+                reference.match.record.geoname_id
+            )
         ]
     yield fields_issue(
         message,
@@ -2560,7 +2572,7 @@ def check_nominatim_coordinates(
 ) -> Iterable[LintResult]:
     if location.latitude is not None or location.longitude is not None:
         return
-    if location.has_tag(LocationTag.PLSS):
+    if location.has_tag(models.tags.LocationTag.PLSS):
         return
     if not _should_infer_coordinates(location):
         return
@@ -2803,7 +2815,7 @@ def _get_possible_general_nominatim_candidates(
     point_provenance_categories = {
         tag.category
         for tag in location.get_tags(
-            location.tags, LocationTag.CoordinatesFromNominatim
+            location.tags, models.tags.LocationTag.CoordinatesFromNominatim
         )
         if not tag.use_bounding_box
     }
@@ -3117,7 +3129,7 @@ def check_nominatim_region_consistency(
                 location.region,
                 require_full_containment=(
                     not location.is_general()
-                    and not location.has_tag(LocationTag.Unplaced)
+                    and not location.has_tag(models.tags.LocationTag.Unplaced)
                 ),
                 allow_network=allow_network,
             )
@@ -3126,7 +3138,7 @@ def check_nominatim_region_consistency(
             suggested_region = None
             if (
                 not location.is_general()
-                and not location.has_tag(LocationTag.Unplaced)
+                and not location.has_tag(models.tags.LocationTag.Unplaced)
                 and location.region.parent is not None
             ):
                 suggested_region = _get_unique_containing_child_region(
@@ -3654,7 +3666,7 @@ def _get_plss_provenance_extent(
 ) -> tuple[coordinate_lint.CoordinateExtent | None, str | None]:
     tags = [
         tag
-        for tag in location.get_tags(location.tags, LocationTag.PLSS)
+        for tag in location.get_tags(location.tags, models.tags.LocationTag.PLSS)
         if tag.plss_id == provenance.plss_id
     ]
     if not tags:
@@ -3693,14 +3705,14 @@ def _get_plss_provenance_extent(
 def _get_coordinate_provenance_extents(
     location: Location, provenance: Any, *, allow_network: bool = True
 ) -> tuple[list[coordinate_lint.CoordinateExtent], str | None]:
-    if isinstance(provenance, LocationTag.CoordinatesManual):
+    if isinstance(provenance, models.tags.LocationTag.CoordinatesManual):
         return [], None
-    if provenance is LocationTag.CoordinatesFromLocationName:
+    if provenance is models.tags.LocationTag.CoordinatesFromLocationName:
         plan = _get_coordinate_modifier_plan(location.name)
         if plan is None or plan.parsed_coordinates is None:
             return [], "Location name no longer contains valid coordinates"
         return [plan.parsed_coordinates[2]], None
-    if isinstance(provenance, LocationTag.CoordinatesFromName):
+    if isinstance(provenance, models.tags.LocationTag.CoordinatesFromName):
         if (
             provenance.name.is_virtual
             and "type_locality" not in provenance.name.missing_virtual_fields
@@ -3798,7 +3810,7 @@ def _get_coordinate_provenance_extents(
         if not extents:
             return ([], f"Name {provenance.name.id} has no valid coordinate evidence")
         return extents, None
-    if isinstance(provenance, LocationTag.CoordinatesFromOccurrenceRecord):
+    if isinstance(provenance, models.tags.LocationTag.CoordinatesFromOccurrenceRecord):
         if (
             provenance.occurrence_record.is_virtual
             and "location" not in provenance.occurrence_record.missing_virtual_fields
@@ -3847,7 +3859,7 @@ def _get_coordinate_provenance_extents(
                 f"OccurrenceRecord {provenance.occurrence_record.id} has no valid coordinate evidence",
             )
         return extents, None
-    if isinstance(provenance, LocationTag.CoordinatesFromGeoNames):
+    if isinstance(provenance, models.tags.LocationTag.CoordinatesFromGeoNames):
         try:
             record = geonames.get_by_id(provenance.geoname_id)
         except RuntimeError as exc:
@@ -3864,12 +3876,12 @@ def _get_coordinate_provenance_extents(
                 f"GeoNames record {provenance.geoname_id} has invalid coordinates",
             )
         return [parsed[2]], None
-    if isinstance(provenance, LocationTag.CoordinatesFromNominatim):
+    if isinstance(provenance, models.tags.LocationTag.CoordinatesFromNominatim):
         if not allow_network:
             return [], None
         _, extents, issue = _get_nominatim_provenance_extents(location, provenance)
         return extents, issue
-    if isinstance(provenance, LocationTag.CoordinatesFromPLSS):
+    if isinstance(provenance, models.tags.LocationTag.CoordinatesFromPLSS):
         if not allow_network:
             return [], None
         extent, issue = _get_plss_provenance_extent(location, provenance)
@@ -3974,7 +3986,7 @@ def _get_backfill_coordinate_provenance(
             location_extent, coordinate_plan.parsed_coordinates[2]
         )
     ):
-        return [LocationTag.CoordinatesFromLocationName]
+        return [models.tags.LocationTag.CoordinatesFromLocationName]
 
     linked_evidence = _get_linked_coordinate_evidence(location)
     matching_linked_provenance = list(
@@ -4002,8 +4014,8 @@ def _get_backfill_coordinate_provenance(
         return list(dict.fromkeys(evidence.provenance for evidence in linked_evidence))
 
     if allow_network:
-        for tag in location.get_tags(location.tags, LocationTag.PLSS):
-            provenance = LocationTag.CoordinatesFromPLSS(tag.plss_id)
+        for tag in location.get_tags(location.tags, models.tags.LocationTag.PLSS):
+            provenance = models.tags.LocationTag.CoordinatesFromPLSS(tag.plss_id)
             plss_extent, _ = _get_plss_provenance_extent(location, provenance)
             if plss_extent is not None and _coordinate_extents_are_equal(
                 location_extent, plss_extent
@@ -4054,7 +4066,7 @@ def _get_backfill_coordinate_provenance(
     ]
     if matching_geonames:
         return [
-            LocationTag.CoordinatesFromGeoNames(
+            models.tags.LocationTag.CoordinatesFromGeoNames(
                 matching_geonames[0].match.record.geoname_id
             )
         ]
@@ -4074,7 +4086,9 @@ def check_coordinate_provenance(
 ) -> Iterable[LintResult]:
     allow_network = cfg.is_resource_available(LintResource.NETWORK)
     provenance_tags = [
-        tag for tag in location.tags or () if is_coordinate_provenance_tag(tag)
+        tag
+        for tag in location.tags or ()
+        if models.tags.is_coordinate_provenance_tag(tag)
     ]
     if location.latitude is None or location.longitude is None:
         if provenance_tags:
@@ -4105,7 +4119,7 @@ def check_coordinate_provenance(
     evidence_extent_groups: list[list[coordinate_lint.CoordinateExtent]] = []
     skipped_remote_provenance = False
     for index, provenance in enumerate(provenance_tags):
-        if isinstance(provenance, LocationTag.CoordinatesFromNominatim):
+        if isinstance(provenance, models.tags.LocationTag.CoordinatesFromNominatim):
             if not allow_network:
                 skipped_remote_provenance = True
                 continue
@@ -4116,7 +4130,7 @@ def check_coordinate_provenance(
                 current_result is not None
                 and current_result.category != provenance.category
             ):
-                replacement = LocationTag.CoordinatesFromNominatim(
+                replacement = models.tags.LocationTag.CoordinatesFromNominatim(
                     provenance.osm_type,
                     provenance.osm_id,
                     current_result.category,
@@ -4144,7 +4158,7 @@ def check_coordinate_provenance(
                     issue = None
         else:
             if (
-                isinstance(provenance, LocationTag.CoordinatesFromPLSS)
+                isinstance(provenance, models.tags.LocationTag.CoordinatesFromPLSS)
                 and not allow_network
             ):
                 skipped_remote_provenance = True
@@ -4155,7 +4169,7 @@ def check_coordinate_provenance(
         if issue is not None:
             yield f"{provenance!r}: {issue}"
             continue
-        if isinstance(provenance, LocationTag.CoordinatesManual):
+        if isinstance(provenance, models.tags.LocationTag.CoordinatesManual):
             continue
         if extents:
             evidence_extent_groups.append(extents)

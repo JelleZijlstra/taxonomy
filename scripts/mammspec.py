@@ -56,7 +56,7 @@ def make_entry(
     nam: Name, taxon: Taxon, authority_nam: Name | None = None
 ) -> SynonymyEntry | None:
     statuses = list(
-        models.name.lint.get_applicable_nomenclature_statuses_from_tags(nam)
+        models.name.lint.tags.get_applicable_nomenclature_statuses_from_tags(nam)
     )
     colon = False
     references = []

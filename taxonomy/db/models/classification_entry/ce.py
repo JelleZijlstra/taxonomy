@@ -615,7 +615,7 @@ class ClassificationEntry(BaseModel):
             print("No mapped classification entry.")
         if not getinput.yes_no("Take over mapped name?"):
             return
-        issue = models.name.lint.take_over_name_issue(
+        issue = models.name.lint.variants.take_over_name_issue(
             f"changing original citation of {self.mapped_name} to {self.article}",
             self.mapped_name,
             self,

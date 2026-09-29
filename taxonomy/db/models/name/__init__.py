@@ -1,6 +1,6 @@
-from . import lint as lint
 from . import page as page
 from . import type_specimen as type_specimen
+from .lint import LINT as LINT
 from .name import Name as Name
 from .name import NameComment as NameComment
 from .name import NameTag as NameTag

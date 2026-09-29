@@ -392,7 +392,7 @@ def find_first_declension_adjectives(*, dry_run: bool = True) -> dict[str, int]:
             query=Name.select_valid().filter(
                 Name.species_name_complex == None, Name.group == Group.species
             ),
-            linter=models.name.lint.infer_species_name_complex,
+            linter=models.name.lint.name_complex.infer_species_name_complex,
         )
     return names_applied
 
@@ -1933,7 +1933,7 @@ def fix_justified_emendations() -> None:
             )
         )
     )
-    run_linter_and_fix(Name, models.name.lint.check_justified_emendations, query)
+    run_linter_and_fix(Name, models.name.lint.tags.check_justified_emendations, query)
 
 
 @command
@@ -2627,7 +2627,7 @@ def edit_organ(organ: constants.SpecimenOrgan | None = None) -> None:
         dirty = False
         for tag in relevant_tags:
             print(tag)
-            for issue in models.name.lint.check_organ_tag(tag):
+            for issue in models.name.lint.type_tags.check_organ_tag(tag):
                 print(issue)
                 dirty = True
         if check_lint and not dirty:
@@ -2817,7 +2817,11 @@ def lint_collections() -> None:
         issues = {
             nam: lints
             for nam in types
-            if (lints := list(models.name.lint.check_type_specimen(nam, cfg)))
+            if (
+                lints := list(
+                    models.name.lint.type_specimen.check_type_specimen(nam, cfg)
+                )
+            )
         }
         if not issues:
             print(f"{coll} ({len(types)} types) is clean")
@@ -2832,7 +2836,9 @@ def lint_collections() -> None:
         print(f"{len(types)} names, {len(issues)} with issues")
         coll.edit()
         run_linter_and_fix(
-            Name, query=coll.type_specimens, linter=models.name.lint.check_type_specimen
+            Name,
+            query=coll.type_specimens,
+            linter=models.name.lint.type_specimen.check_type_specimen,
         )
 
 

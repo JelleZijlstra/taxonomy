@@ -3,8 +3,10 @@ __all__ = [
     "LocationStatus",
     "ParsedLocationName",
     "get_expected_general_name",
+    "lint",
 ]
 
+from . import lint
 from .model import Location as Location
 from .model import LocationStatus as LocationStatus
 from .model import get_expected_general_name as get_expected_general_name

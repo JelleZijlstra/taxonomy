@@ -10,7 +10,7 @@ from typing import IO
 from taxonomy import getinput
 from taxonomy.db import constants, models
 from taxonomy.db.models import Article, Collection, Name, TypeTag
-from taxonomy.db.models.name import lint
+from taxonomy.db.models.name.lint.type_specimen import clean_up_bmnh_type
 
 from .lib import DATA_DIR, get_type_specimens
 
@@ -263,7 +263,7 @@ def make_cat_num(no: str) -> str:
         .removesuffix("[b]")
         .removesuffix(".")
     )
-    cat_num = lint.clean_up_bmnh_type(cat_num)
+    cat_num = clean_up_bmnh_type(cat_num)
     return cat_num.strip()
 
 

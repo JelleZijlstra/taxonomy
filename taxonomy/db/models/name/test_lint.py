@@ -5,6 +5,7 @@ from unittest.mock import Mock
 import pytest
 from clirm import VirtualReferenceError
 
+from taxonomy.apis import bhl
 from taxonomy.db import coordinate_lint, models
 from taxonomy.db.constants import (
     AgeClass,
@@ -20,15 +21,15 @@ from taxonomy.db.constants import (
     SpecimenOrgan,
     Status,
 )
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
+from taxonomy.db.models.classification_entry.ce import ClassificationEntryTag
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.person import AuthorTag
 
-from .lint import (
-    _create_name_variant_issue,
-    _merge_name_issue,
-    _redirect_name_issue,
-    check_collector_lifespan,
+from .lint.ce_mapping import infer_included_species, infer_tags_from_mapped_entries
+from .lint.other import _merge_name_issue, parse_date
+from .lint.page_link import infer_bhl_page_id
+from .lint.type_locality import (
     check_coordinates,
     check_general_type_locality,
     check_location_detail_coordinates,
@@ -38,9 +39,11 @@ from .lint import (
     check_type_locality_distribution_rules,
     check_type_locality_validity,
     check_unique_type_locality,
-    infer_included_species,
-    infer_tags_from_mapped_entries,
-    parse_date,
+)
+from .lint.type_tags import check_collector_lifespan
+from .lint.variants import (
+    _create_name_variant_issue,
+    _redirect_name_issue,
     take_over_name_issue,
 )
 from .name import Name, NameTag, TypeTag
@@ -49,11 +52,6 @@ from .name import Name, NameTag, TypeTag
 def test_infer_bhl_page_from_name_and_classification_anchors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from taxonomy.apis import bhl
-    from taxonomy.db.models.base import LintResource
-    from taxonomy.db.models.classification_entry.ce import ClassificationEntryTag
-
-    from .lint import infer_bhl_page_id
 
     article = models.Article.virtual(
         name="Unnumbered book",
@@ -1192,7 +1190,7 @@ def test_redirect_rule_flags_name_type_locality() -> None:
 def test_type_tag_group_restrictions(
     group: Group, tag: TypeTag, allowed: set[Group]
 ) -> None:
-    from .lint import ATTRIBUTES_BY_GROUP, check_disallowed_attributes
+    from .lint.other import ATTRIBUTES_BY_GROUP, check_disallowed_attributes
 
     name = Name.virtual(
         group=group, type_tags=(tag,), **dict.fromkeys(ATTRIBUTES_BY_GROUP)

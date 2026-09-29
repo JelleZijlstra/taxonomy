@@ -1111,7 +1111,9 @@ class HomonymData(ObjectType):
 def resolve_possible_homonyms(
     parent: ObjectType, info: ResolveInfo, genus_name: str, root_name: str
 ) -> HomonymData:
-    genera, names = models.name.lint.get_possible_homonyms(genus_name, root_name)
+    genera, names = models.name.lint.homonymy.get_possible_homonyms(
+        genus_name, root_name
+    )
     name_cls = build_object_type_from_model(Name)
     homonyms = [
         PossibleHomonym(

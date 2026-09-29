@@ -814,11 +814,11 @@ class Name(BaseModel):
         cfg = LintConfig(verbose=True)
         if self.has_type_tag(models.name.TypeTag.AuthorityPageLink):
             return
-        for _ in models.name.lint.infer_bhl_page(self, cfg):
+        for _ in models.name.lint.page_link.infer_bhl_page(self, cfg):
             pass
-        for _ in models.name.lint.infer_bhl_page_from_other_names(self, cfg):
+        for _ in models.name.lint.page_link.infer_bhl_page_from_other_names(self, cfg):
             pass
-        for _ in models.name.lint.infer_bhl_page_from_article(self, cfg):
+        for _ in models.name.lint.page_link.infer_bhl_page_from_article(self, cfg):
             pass
 
     def print_type_specimen(self) -> None:
@@ -2237,7 +2237,9 @@ class Name(BaseModel):
             and self.corrected_original_name is not None
             and self.nomenclature_status.requires_original_parent()
             and not self.has_type_tag(TypeTag.NoOriginalParent)
-            and models.name.lint.should_require_subgenus_original_parent(self)
+            and models.name.lint.original_parent.should_require_subgenus_original_parent(
+                self
+            )
             and (ignore_coverage or self.taxon.is_high_coverage())
         ):
             yield "original_parent"
@@ -2250,13 +2252,13 @@ class Name(BaseModel):
         except Exception as e:
             yield f"{self.id}: cannot display due to {e}"
             return
-        yield from models.name.lint.LINT.run(self, cfg)
+        yield from models.name.LINT.run(self, cfg)
         if not self.check_authors():
             yield f"{self}: discrepancy in authors"
 
     @classmethod
     def clear_lint_caches(cls) -> None:
-        models.name.lint.LINT.clear_caches()
+        models.name.LINT.clear_caches()
 
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         return field == "data"

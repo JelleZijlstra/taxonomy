@@ -1771,7 +1771,7 @@ class Article(BaseModel):
         new_names = list(self.get_new_names())
         issue = None
         for nam in new_names:
-            for issue in models.name.lint.check_year_matches(nam, LintConfig()):
+            for issue in models.name.lint.other.check_year_matches(nam, LintConfig()):
                 print(issue)
         if issue is None:
             return

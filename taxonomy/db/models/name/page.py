@@ -150,3 +150,29 @@ def check_page(
             return new_text
         yield message
     return page_text
+
+
+def check_page_link(
+    tag_url: str, tag_page: str, page_described: str | None
+) -> Generator[str, None, str]:
+    url = urlparse.parse_url(tag_url)
+    if isinstance(
+        url,
+        (
+            urlparse.BhlItem,
+            urlparse.BhlBibliography,
+            urlparse.BhlItem,
+            urlparse.GoogleBooksVolume,
+        ),
+    ):
+        yield f"invalid authority page link {url!r}"
+    for message in url.lint():
+        yield f"page link {tag_url}: {message}"
+    if page_described is not None and tag_page != "NA":
+        allowed_pages = get_unique_page_text(page_described)
+        if tag_page not in allowed_pages:
+            yield (
+                f"authority page link {tag_url} for page {tag_page!r}"
+                f" does not match any pages in page_described ({allowed_pages})"
+            )
+    return str(url)

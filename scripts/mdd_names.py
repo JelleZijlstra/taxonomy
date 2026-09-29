@@ -190,7 +190,7 @@ def get_type_specimen_link(nam: Name) -> str:
 
 
 def get_nomenclature_status_string(nam: Name) -> str:
-    applicable = models.name.lint.get_sorted_applicable_statuses(nam)
+    applicable = models.name.lint.tags.get_sorted_applicable_statuses(nam)
     if not applicable:
         return "available"
     return " | ".join(status.name for status in applicable)
@@ -471,7 +471,7 @@ def get_hesp_row(
     elif name.original_citation is None:
         # At most 3
         try:
-            candidates = models.name.lint.get_candidate_bhl_pages(name)
+            candidates = models.name.lint.page_link.get_candidate_bhl_pages(name)
             unchecked_links = " | ".join(
                 sorted(page.page_url for page in candidates)[:3]
             )
