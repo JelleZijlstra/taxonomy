@@ -9,7 +9,7 @@ from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.name import TypeTag
 
 from . import parse_citations
-from .lint import other
+from .lint import verbatim
 
 
 def test_parsed_citation_merge_preserves_url(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -32,11 +32,11 @@ def test_parsed_citation_merge_preserves_url(monkeypatch: pytest.MonkeyPatch) ->
         ),
     )
     monkeypatch.setattr(
-        other, "replace_tag_issue", lambda _message, _name, _old, new, **_kwargs: new
+        verbatim, "replace_tag_issue", lambda _message, _name, _old, new, **_kwargs: new
     )
 
     assert list(
-        other.add_structured_verbatim_citation.linter(name, cast(Any, None))
+        verbatim.add_structured_verbatim_citation.linter(name, cast(Any, None))
     ) == [
         TypeTag.StructuredVerbatimCitation(
             volume="1", start_page="2", end_page="3", url="https://example.com/work"
@@ -61,11 +61,11 @@ def test_field_normalization_preserves_url(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(cg_lint, "get_volume_regex", lambda _cg: r"\d+-\d+")
     monkeypatch.setattr(cg_lint, "describe_volume_regex", lambda _cg: "numeric range")
     monkeypatch.setattr(
-        other, "replace_tag_issue", lambda _message, _name, _old, new, **_kwargs: new
+        verbatim, "replace_tag_issue", lambda _message, _name, _old, new, **_kwargs: new
     )
 
     assert list(
-        other.check_structured_verbatim_citation_fields.linter(name, cast(Any, None))
+        verbatim.check_structured_verbatim_citation_fields.linter(name, cast(Any, None))
     ) == [
         TypeTag.StructuredVerbatimCitation(volume="1-2", url="https://example.com/work")
     ]

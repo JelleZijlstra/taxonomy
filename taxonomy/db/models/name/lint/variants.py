@@ -102,10 +102,6 @@ def maybe_take_over_name(
         yield f"replace name {nam} with {ce}"
 
 
-def _is_msw3(art: Article) -> bool:
-    return art.id == 9291 or (art.parent is not None and art.parent.id == 9291)
-
-
 def _name_variant_article_sort_key(art: Article) -> tuple[bool, date, int, int, int]:
     return (art.is_unpublished(), art.get_date_object(), art.id, 0, 0)
 

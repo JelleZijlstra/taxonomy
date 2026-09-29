@@ -2,7 +2,8 @@ import enum
 import re
 from collections.abc import Iterable
 
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.constants import Group
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.collection import (
     BMNH_COLLECTION,
     MULTIPLE_COLLECTION,
@@ -10,6 +11,7 @@ from taxonomy.db.models.collection import (
 )
 from taxonomy.db.models.lint import field_issue
 from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.models.name.guess_repository import get_most_likely_repository
 from taxonomy.db.models.name.name import Name, TypeTag
 from taxonomy.db.models.name.type_specimen import (
     BaseSpecimen,
@@ -409,3 +411,53 @@ def clean_up_bmnh_type(text: str) -> str:
     for rgx, replacement in _BMNH_REGEXES:
         text = re.sub(rgx, replacement, text)
     return text
+
+
+@LINT.add("guess_repository", required_resources={LintResource.SLOW})
+def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    if nam.collection is not None:
+        return
+    if nam.group is not Group.species:
+        return
+    if "collection" not in nam.get_required_fields():
+        return
+    if nam.has_type_tag(TypeTag.ProbableRepository):
+        expected_tag = None
+    else:
+        result = get_most_likely_repository(nam)
+        if result is None:
+            expected_tag = None
+        else:
+            repo, score = result
+            expected_tag = TypeTag.GuessedRepository(repo, score)
+    current_tags = list(nam.get_tags(nam.type_tags, TypeTag.GuessedRepository))
+    # TODO: fix pyanalyze
+    message = ""
+    new_tags = []
+    match (bool(current_tags), bool(expected_tag)):
+        case (True, True):
+            current_tag, *_ = current_tags
+            if current_tag == expected_tag:
+                return
+            if (
+                expected_tag is not None
+                and current_tag.repository == expected_tag.repository
+                and abs(current_tag.score - expected_tag.score) < 0.05
+            ):
+                return
+            message = (
+                f"changing inferred repository from {current_tag} to {expected_tag}"
+            )
+            new_tags = [
+                tag if tag != current_tag else expected_tag for tag in nam.type_tags
+            ]
+        case (True, False):
+            message = f"removing inferred repository {current_tags[0]}"
+            new_tags = [tag for tag in nam.type_tags if tag != current_tags[0]]
+        case (False, True):
+            message = f"inferred repository {expected_tag}"
+            new_tags = [*nam.type_tags, expected_tag]
+        case (False, False):
+            return
+
+    yield field_issue(message, nam, "type_tags", new_tags)

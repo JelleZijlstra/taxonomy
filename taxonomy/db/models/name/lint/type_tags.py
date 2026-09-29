@@ -5,7 +5,7 @@ from typing import Protocol, Self, TypeVar, assert_never
 
 from taxonomy import adt, getinput
 from taxonomy.apis.zoobank import clean_lsid, is_valid_lsid
-from taxonomy.db import coordinate_lint, helpers, models
+from taxonomy.db import coordinate_lint, detail_pages, helpers, models
 from taxonomy.db.constants import (
     AgeClass,
     ArticleKind,
@@ -18,8 +18,9 @@ from taxonomy.db.constants import (
     Status,
     TypeSpeciesDesignation,
 )
+from taxonomy.db.models import detail as detail_lint
 from taxonomy.db.models.article import Article
-from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.classification_entry.ce import DETAIL_METADATA_FIELDS
 from taxonomy.db.models.collection import MULTIPLE_COLLECTION
 from taxonomy.db.models.lint import field_issue
@@ -1385,3 +1386,17 @@ def check_collector_lifespan(nam: Name, cfg: LintConfig) -> Iterable[str]:
                     f"collector {collector_tag.person} died in {death}, before collection"
                     f" date {date_tag.date}"
                 )
+
+
+@LINT.add("detail_pages")
+def infer_detail_pages(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    yield from detail_lint.infer_detail_pages(obj)
+
+
+@LINT.add(
+    "detail_pages_from_text",
+    required_resources={LintResource.SLOW},
+    clear_caches=detail_pages.clear_caches,
+)
+def infer_detail_pages_from_text(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    yield from detail_lint.infer_detail_pages_from_text(obj, cfg)

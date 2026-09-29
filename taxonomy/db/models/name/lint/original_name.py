@@ -264,3 +264,13 @@ def autoset_corrected_original_name(
         yield field_issue(message, nam, "corrected_original_name", inferred)
     else:
         yield f"could not infer corrected original name from {nam.original_name!r}"
+
+
+@LINT.add("infer_original_name")
+def infer_original_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    if nam.original_name is not None:
+        return
+    if nam.group not in (Group.genus, Group.high):
+        return
+    message = f"inferred original name from root name {nam.root_name}"
+    yield field_issue(message, nam, "original_name", nam.root_name)

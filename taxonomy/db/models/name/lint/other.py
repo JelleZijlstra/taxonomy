@@ -17,11 +17,10 @@ import requests
 
 from taxonomy import adt, getinput
 from taxonomy.apis.zoobank import get_zoobank_data
-from taxonomy.db import detail_pages, helpers, models
+from taxonomy.db import helpers
 from taxonomy.db.constants import (
     AgeClass,
     ArticleKind,
-    ArticleType,
     CommentKind,
     DateSource,
     Group,
@@ -30,39 +29,26 @@ from taxonomy.db.constants import (
     NomenclatureStatus,
     OriginalCitationDataLevel,
     Rank,
-    SpeciesGroupType,
     Status,
-    TypeSpeciesDesignation,
 )
-from taxonomy.db.models import detail as detail_lint
 from taxonomy.db.models.article import ArticleTag, PresenceStatus
-from taxonomy.db.models.base import LintConfig, LintResource
-from taxonomy.db.models.citation_group import lint as cg_lint
+from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import (
     add_tag_issue,
     field_fix,
     field_issue,
     fields_issue,
     fixes_issue,
-    replace_tag_issue,
 )
 from taxonomy.db.models.lint_types import LintIssue, LintResult
-from taxonomy.db.models.name import parse_citations
-from taxonomy.db.models.name.guess_repository import get_most_likely_repository
 from taxonomy.db.models.name.name import ExperimentalLintCondition as Exp
 from taxonomy.db.models.name.name import Name, NameComment, NameTag, TypeTag
 from taxonomy.db.models.name.organ import CHECKED_ORGANS
-from taxonomy.db.models.name.type_specimen import type_specimens_equal
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
 
 from .base import LINT
-from .helpers import (
-    is_high_or_invalid_family,
-    is_valid_mammal,
-    iter_parents,
-    smallest_common_ancestor,
-)
+from .helpers import is_high_or_invalid_family, iter_parents, smallest_common_ancestor
 
 T = TypeVar("T")
 ADTT = TypeVar("ADTT", bound=adt.ADT)
@@ -144,85 +130,6 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         yield field_issue(
             "deduplicate and sort type tags", nam, "type_tags", tuple(tags)
         )
-
-
-@LINT.add("type_designation_strict")
-def check_type_designation_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    # Move to check_type_designation below if this is fixed for all names
-    if not is_valid_mammal(nam) or nam.has_type_tag(TypeTag.InterpretedTypeSpecimen):
-        return
-    match nam.genus_type_kind:
-        case TypeSpeciesDesignation.subsequent_designation:
-            if not any(
-                tag.type == nam.type
-                for tag in nam.get_tags(nam.type_tags, TypeTag.TypeDesignation)
-            ):
-                yield "missing a reference for type species designation"
-        case TypeSpeciesDesignation.subsequent_monotypy:
-            if not any(
-                tag.type == nam.type
-                for tag in nam.get_tags(nam.type_tags, TypeTag.TypeDesignation)
-            ):
-                yield "missing a reference for type species designation"
-
-    match nam.species_type_kind:
-        case SpeciesGroupType.lectotype:
-            if nam.type_specimen is None:
-                yield "type specimen is not set"
-                return
-            if not any(
-                type_specimens_equal(tag.lectotype, nam.type_specimen)
-                for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
-            ):
-                yield "missing a reference for lectotype designation"
-        case SpeciesGroupType.neotype:
-            if nam.type_specimen is None:
-                yield "type specimen is not set"
-                return
-            if not any(
-                type_specimens_equal(tag.neotype, nam.type_specimen)
-                for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
-            ):
-                yield "missing a reference for neotype designation"
-        case None:
-            if (
-                nam.original_citation is not None
-                and nam.group is Group.species
-                and "type_specimen" in nam.get_required_fields()
-                and Exp().should_apply(nam, cfg)
-            ):
-                yield "missing type specimen"
-
-
-@LINT.add("type_designation")
-def check_type_designation(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    match nam.genus_type_kind:
-        case TypeSpeciesDesignation.designated_by_the_commission:
-            tag = nam.get_type_tag(TypeTag.CommissionTypeDesignation)
-            if tag is None:
-                yield "type species is set to designated_by_the_commission, but missing CommissionTypeDesignation tag"
-
-    match nam.species_type_kind:
-        case SpeciesGroupType.lectotype:
-            if (
-                nam.type_specimen is not None
-                and nam.has_type_tag(TypeTag.LectotypeDesignation)
-                and not any(
-                    type_specimens_equal(tag.lectotype, nam.type_specimen)
-                    for tag in nam.get_tags(nam.type_tags, TypeTag.LectotypeDesignation)
-                )
-            ):
-                yield "missing a reference for lectotype designation"
-        case SpeciesGroupType.neotype:
-            if (
-                nam.type_specimen is not None
-                and nam.has_type_tag(TypeTag.NeotypeDesignation)
-                and not any(
-                    type_specimens_equal(tag.neotype, nam.type_specimen)
-                    for tag in nam.get_tags(nam.type_tags, TypeTag.NeotypeDesignation)
-                )
-            ):
-                yield "missing a reference for neotype designation"
 
 
 @LINT.add("redundant_fields")
@@ -414,96 +321,6 @@ def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 f"should not have type tag {type(tag).__name__} in group "
                 f"{nam.group.name} (allowed groups: {allowed})"
             )
-
-
-@LINT.add("type_taxon")
-def correct_type_taxon(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    """Moves names to child taxa if the type allows it."""
-    if nam.group not in (Group.genus, Group.family):
-        return
-    if nam.type is None:
-        return
-    if nam.taxon == nam.type.taxon:
-        return
-    expected_taxon = nam.type.taxon.parent
-    while (
-        expected_taxon is not None
-        and expected_taxon.base_name.group != nam.group
-        and expected_taxon != nam.taxon
-    ):
-        expected_taxon = expected_taxon.parent
-    if expected_taxon is None:
-        return
-    if nam.taxon != expected_taxon:
-        message = f"expected taxon to be {expected_taxon} not {nam.taxon}"
-        if expected_taxon.is_child_of(nam.taxon):
-            yield field_issue(message, nam, "taxon", expected_taxon)
-        else:
-            yield message
-
-
-@LINT.add("type")
-def check_type(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    """Checks for the type taxon."""
-    if nam.type is None:
-        return
-    if not nam.type.taxon.is_child_of(nam.taxon):
-        yield f"type {nam.type} is not a child of {nam.taxon}"
-    if nam.type.get_date_object() > nam.get_date_object() and not nam.has_type_tag(
-        TypeTag.GenusCoelebs
-    ):
-        yield f"type {nam.type} ({nam.type.get_date_object()}) is younger than {nam} ({nam.get_date_object()})"
-
-    if (
-        (target := nam.type.get_tag_target(NameTag.UnavailableVersionOf)) is not None
-        and nam.get_date_object() >= target.get_date_object()
-        and not nam.has_name_tag(NameTag.UnavailableVersionOf)
-    ):
-        message = f"type is an unavailable version of {target}"
-        yield field_issue(message, nam, "type", target)
-
-    match nam.group:
-        case Group.family:
-            if nam.type.group is not Group.genus:
-                yield f"type {nam.type} is in group {nam.type.group!r}, not genus"
-        case Group.genus:
-            if nam.type.group is not Group.species:
-                yield f"type {nam.type} is in group {nam.type.group!r}, not species"
-
-
-@LINT.add("type_genus")
-def check_type_genus(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if (
-        nam.group is Group.family
-        and nam.type is None
-        and "type" in nam.get_required_fields()
-        and nam.taxon.is_high_coverage()
-    ):
-        yield "high-coverage family-group name is missing a type genus"
-
-
-@LINT.add("infer_family_group_type")
-def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    if (
-        nam.group is not Group.family
-        or nam.type is not None
-        or "type" not in nam.get_required_fields(ignore_coverage=True)
-    ):
-        return
-    stem = nam.get_family_group_stem()
-    possible_types = [
-        child_nam
-        for child_nam in nam.taxon.all_names()
-        if child_nam.group is Group.genus
-        and child_nam.name_complex is not None
-        and child_nam.safe_get_stem() == stem
-    ]
-    if len(possible_types) != 1:
-        if cfg.verbose:
-            print(f"{nam}: could not infer type for family {nam.root_name}")
-        return
-    message = f"inferred type {possible_types[0]} for family {nam}"
-    yield field_issue(message, nam, "type", possible_types[0])
 
 
 @LINT.add("autoset_original_rank")
@@ -749,7 +566,7 @@ def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if has_accessible_original_citation(nam):
         citation = nam.original_citation
         assert citation is not None
-        if nam.page_described is None:
+        if nam.page_described is None and "page_described" in nam.get_required_fields():
             yield "has original citation but no page_described"
         if nam.original_name is None:
             yield "has original citation but no original_name"
@@ -854,170 +671,6 @@ def check_composites(nam: Name, cfg: LintConfig) -> Iterable[str]:
             )
 
 
-@LINT.add("structured_verbatim_citation")
-def add_structured_verbatim_citation(
-    nam: Name, cfg: LintConfig
-) -> Iterable[LintResult]:
-    """Add or update a StructuredVerbatimCitation tag based on verbatim_citation.
-
-    Uses regex heuristics in parse_citations.py to extract series/volume/issue/pages
-    from Name.verbatim_citation. Only emits/updates the tag if at least one field is
-    parsed.
-    """
-    if nam.verbatim_citation is None:
-        return
-    parsed = parse_citations.parse_citation(nam.verbatim_citation)
-    if not any(
-        [parsed.series, parsed.volume, parsed.issue, parsed.start_page, parsed.end_page]
-    ):
-        return
-    new_tag = TypeTag.StructuredVerbatimCitation(
-        series=parsed.series,
-        volume=parsed.volume,
-        issue=parsed.issue,
-        start_page=parsed.start_page,
-        end_page=parsed.end_page,
-    )
-    existing = nam.get_type_tag(TypeTag.StructuredVerbatimCitation)
-
-    if existing is None:
-        msg = f"add StructuredVerbatimCitation from verbatim_citation: {new_tag}"
-        yield add_tag_issue(msg, nam, new_tag, field="type_tags")
-        return
-    else:
-        # Only re-add series if the journal supports it
-        if existing.series:
-            series = existing.series
-        elif (
-            new_tag.series
-            and nam.citation_group
-            and models.citation_group.lint.get_series_regex(nam.citation_group)
-        ):
-            series = new_tag.series
-        else:
-            series = None
-
-        merged = TypeTag.StructuredVerbatimCitation(
-            series=series,
-            volume=existing.volume or new_tag.volume,
-            issue=existing.issue or new_tag.issue,
-            start_page=existing.start_page or new_tag.start_page,
-            end_page=existing.end_page or new_tag.end_page,
-            url=existing.url,
-        )
-        if merged != existing:
-            msg = f"update StructuredVerbatimCitation from {existing} to {merged}"
-            yield replace_tag_issue(msg, nam, existing, merged, field="type_tags")
-
-
-@LINT.add("structured_verbatim_citation_fields")
-def check_structured_verbatim_citation_fields(
-    nam: Name, cfg: LintConfig
-) -> Iterable[LintResult]:
-    """Validate StructuredVerbatimCitation fields against CitationGroup rules.
-
-    - Series/volume/issue must match the CitationGroup's regex tags when present;
-      otherwise defaults are used from cg_lint.
-    - If start_page and end_page are both present and numeric, end_page >= start_page.
-    """
-    # Find a citation group to validate against
-    cg = nam.get_citation_group()
-    if cg is None:
-        return
-
-    for tag in nam.get_tags(nam.type_tags, TypeTag.StructuredVerbatimCitation):
-        # series
-        series_regex = cg_lint.get_series_regex(cg)
-        if series_regex is not None:
-            if tag.series is not None and not re.fullmatch(series_regex, tag.series):
-                yield (
-                    f"series {tag.series!r} does not match regex {series_regex!r} for {cg}"
-                )
-        elif tag.series is not None and cg.type is ArticleType.JOURNAL:
-            # Only enforced for journals as per Article logic
-            yield f"is in {cg}, which does not support series"
-
-        # volume
-        if tag.volume is not None:
-            normalized_volume = tag.volume.replace("–", "-")
-            if normalized_volume != tag.volume:
-                msg = (
-                    f"normalize SVC volume dash {tag.volume!r} -> {normalized_volume!r}"
-                )
-                new_tag = TypeTag.StructuredVerbatimCitation(
-                    volume=normalized_volume,
-                    issue=tag.issue,
-                    start_page=tag.start_page,
-                    end_page=tag.end_page,
-                    series=tag.series,
-                    url=tag.url,
-                )
-                yield replace_tag_issue(msg, nam, tag, new_tag, field="type_tags")
-                tag = new_tag
-            rgx = cg_lint.get_volume_regex(cg)
-            if not re.fullmatch(rgx, tag.volume):
-                yield (
-                    f"volume {tag.volume!r} does not match {cg_lint.describe_volume_regex(cg)} (CG {cg})"
-                )
-
-        # issue
-        if tag.issue is not None:
-            normalized_issue = re.sub(r"[–_]", "-", tag.issue)
-            normalized_issue = re.sub(r"^(\d+)/(\d+)$", r"\1–\2", normalized_issue)
-            if normalized_issue != tag.issue:
-                msg = f"normalize SVC issue formatting {tag.issue!r} -> {normalized_issue!r}"
-                new_tag = TypeTag.StructuredVerbatimCitation(
-                    volume=tag.volume,
-                    issue=normalized_issue,
-                    start_page=tag.start_page,
-                    end_page=tag.end_page,
-                    series=tag.series,
-                    url=tag.url,
-                )
-                yield replace_tag_issue(msg, nam, tag, new_tag, field="type_tags")
-                tag = new_tag
-            rgx = cg_lint.get_issue_regex(cg)
-            if not re.fullmatch(rgx, tag.issue):
-                yield (
-                    f"issue {tag.issue!r} does not match {cg_lint.describe_issue_regex(cg)} (CG {cg})"
-                )
-
-        # pages: ensure end >= start if both numeric
-        if (
-            tag.start_page
-            and tag.end_page
-            and tag.start_page.isdigit()
-            and tag.end_page.isdigit()
-        ):
-            start_page = tag.start_page
-            end_page = tag.end_page
-            # Autofix shorthand like "452-58" -> "452-458" when it increases end_page beyond start_page
-            if len(end_page) < len(start_page):
-                try:
-                    prefix = start_page[: len(start_page) - len(end_page)]
-                    candidate = prefix + end_page
-                    if int(candidate) > int(start_page):
-                        msg = f"expand SVC end_page {end_page!r} -> {candidate!r}"
-                        new_tag = TypeTag.StructuredVerbatimCitation(
-                            volume=tag.volume,
-                            issue=tag.issue,
-                            start_page=start_page,
-                            end_page=candidate,
-                            series=tag.series,
-                            url=tag.url,
-                        )
-                        yield replace_tag_issue(
-                            msg, nam, tag, new_tag, field="type_tags"
-                        )
-                        end_page = candidate
-                except ValueError:
-                    pass
-            if int(end_page) < int(start_page):
-                yield (
-                    f"end_page {end_page!r} is less than start_page {start_page!r} in StructuredVerbatimCitation"
-                )
-
-
 @LINT.add("move_to_lowest_rank")
 def move_to_lowest_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     query = Taxon.select_valid().filter(Taxon.base_name == nam)
@@ -1039,16 +692,6 @@ def move_to_lowest_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.taxon != lowest:
         message = f"changing taxon of {nam} to {lowest}"
         yield field_issue(message, nam, "taxon", lowest)
-
-
-@LINT.add("infer_original_name")
-def infer_original_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    if nam.original_name is not None:
-        return
-    if nam.group not in (Group.genus, Group.high):
-        return
-    message = f"inferred original name from root name {nam.root_name}"
-    yield field_issue(message, nam, "original_name", nam.root_name)
 
 
 @LINT.add_duplicate_finder(
@@ -1116,56 +759,6 @@ def duplicate_name(name: Name) -> tuple[object, ...]:
         name.page_described,
         name.original_rank,
     )
-
-
-@LINT.add("guess_repository", required_resources={LintResource.SLOW})
-def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    if nam.collection is not None:
-        return
-    if nam.group is not Group.species:
-        return
-    if "collection" not in nam.get_required_fields():
-        return
-    if nam.has_type_tag(TypeTag.ProbableRepository):
-        expected_tag = None
-    else:
-        result = get_most_likely_repository(nam)
-        if result is None:
-            expected_tag = None
-        else:
-            repo, score = result
-            expected_tag = TypeTag.GuessedRepository(repo, score)
-    current_tags = list(nam.get_tags(nam.type_tags, TypeTag.GuessedRepository))
-    # TODO: fix pyanalyze
-    message = ""
-    new_tags = []
-    match (bool(current_tags), bool(expected_tag)):
-        case (True, True):
-            current_tag, *_ = current_tags
-            if current_tag == expected_tag:
-                return
-            if (
-                expected_tag is not None
-                and current_tag.repository == expected_tag.repository
-                and abs(current_tag.score - expected_tag.score) < 0.05
-            ):
-                return
-            message = (
-                f"changing inferred repository from {current_tag} to {expected_tag}"
-            )
-            new_tags = [
-                tag if tag != current_tag else expected_tag for tag in nam.type_tags
-            ]
-        case (True, False):
-            message = f"removing inferred repository {current_tags[0]}"
-            new_tags = [tag for tag in nam.type_tags if tag != current_tags[0]]
-        case (False, True):
-            message = f"inferred repository {expected_tag}"
-            new_tags = [*nam.type_tags, expected_tag]
-        case (False, False):
-            return
-
-    yield field_issue(message, nam, "type_tags", new_tags)
 
 
 @LINT.add("original_rank")
@@ -1310,17 +903,3 @@ def enforce_must_have(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.citation_group.must_have(nam.numeric_year()):
         yield f"{nam} is in {nam.citation_group}, but has no original_citation"
-
-
-@LINT.add("detail_pages")
-def infer_detail_pages(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    yield from detail_lint.infer_detail_pages(obj)
-
-
-@LINT.add(
-    "detail_pages_from_text",
-    required_resources={LintResource.SLOW},
-    clear_caches=detail_pages.clear_caches,
-)
-def infer_detail_pages_from_text(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    yield from detail_lint.infer_detail_pages_from_text(obj, cfg)

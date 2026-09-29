@@ -17,7 +17,7 @@ from taxonomy.db.models.classification_entry.lint import (
     infer_data_from_mapped,
 )
 from taxonomy.db.models.lint_types import LintResult
-from taxonomy.db.models.name.lint import ce_mapping, other, type_tags
+from taxonomy.db.models.name.lint import ce_mapping, type_tags
 from taxonomy.db.models.name.name import (
     DETAIL_TAG_TO_CE_TAG,
     SOURCE_TAGS,
@@ -186,7 +186,7 @@ def test_detail_page_cleanup_inference_and_validation(
     assert tag.comment is None
     assert tag.translation == "translation"
     ce.article.url = "https://www.biodiversitylibrary.org/item/1"
-    monkeypatch.setattr(other, "infer_bhl_page_id", lambda *_: (12345, "test"))
+    monkeypatch.setattr(type_tags, "infer_bhl_page_id", lambda *_: (12345, "test"))
     issues, tags = _finish(type_tags._check_detail_type_tag(tag, name, _CFG, {}))
     assert issues == []
     assert tags[0].page_link == "https://www.biodiversitylibrary.org/page/12345"

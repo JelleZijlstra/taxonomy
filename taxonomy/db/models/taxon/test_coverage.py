@@ -179,7 +179,8 @@ def test_existing_type_still_checked(monkeypatch: pytest.MonkeyPatch) -> None:
     genus.type = make_name(taxon, Group.family)
     monkeypatch.setattr(Taxon, "is_child_of", lambda *args: True)
     assert any(
-        "not species" in str(msg) for msg in name_lint.other.check_type(genus, CFG)
+        "not species" in str(msg)
+        for msg in name_lint.typification.check_type(genus, CFG)
     )
 
 
@@ -195,7 +196,7 @@ def test_family_type_inference_still_runs_in_low_coverage(
     monkeypatch.setattr(Name, "get_family_group_stem", lambda _: "Example")
     monkeypatch.setattr(Name, "safe_get_stem", lambda _: "Example")
     monkeypatch.setattr(Taxon, "all_names", lambda _: [genus])
-    messages = list(name_lint.other.infer_family_group_type(family, CFG))
+    messages = list(name_lint.typification.infer_family_group_type(family, CFG))
     assert len(messages) == 1
     assert "inferred type" in str(messages[0])
     assert family.type is None
@@ -273,14 +274,14 @@ def test_type_genus_required_without_original_citation() -> None:
     name = make_name(taxon, Group.family)
     name.status = Status.synonym
     assert name.original_citation is None
-    issues = list(name_lint.other.check_type_genus(name, CFG))
+    issues = list(name_lint.typification.check_type_genus(name, CFG))
     assert len(issues) == 1
     assert "missing a type genus" in str(issues[0])
     taxon.tags = (TaxonTag.Coverage(CoverageLevel.low),)  # type: ignore[assignment]
-    assert list(name_lint.other.check_type_genus(name, CFG)) == []
+    assert list(name_lint.typification.check_type_genus(name, CFG)) == []
     taxon.tags = ()  # type: ignore[assignment]
     name.type = make_name(make_taxon())
-    assert list(name_lint.other.check_type_genus(name, CFG)) == []
+    assert list(name_lint.typification.check_type_genus(name, CFG)) == []
 
 
 @pytest.mark.parametrize(
@@ -294,10 +295,10 @@ def test_type_genus_required_without_original_citation() -> None:
 def test_type_genus_exempt_nomenclature_status(status: NomenclatureStatus) -> None:
     name = make_name(make_taxon(level=CoverageLevel.high), Group.family)
     name.nomenclature_status = status
-    assert list(name_lint.other.check_type_genus(name, CFG)) == []
+    assert list(name_lint.typification.check_type_genus(name, CFG)) == []
 
 
 @pytest.mark.parametrize("group", [Group.genus, Group.species, Group.high])
 def test_type_genus_only_applies_to_family_group(group: Group) -> None:
     name = make_name(make_taxon(level=CoverageLevel.high), group)
-    assert list(name_lint.other.check_type_genus(name, CFG)) == []
+    assert list(name_lint.typification.check_type_genus(name, CFG)) == []

@@ -11,5 +11,7 @@ from . import tags as tags
 from . import type_locality as type_locality
 from . import type_specimen as type_specimen
 from . import type_tags as type_tags
+from . import typification as typification
 from . import variants as variants
+from . import verbatim as verbatim
 from .base import LINT as LINT
