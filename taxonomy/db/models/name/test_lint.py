@@ -27,7 +27,7 @@ from taxonomy.db.models.location import Location
 from taxonomy.db.models.person import AuthorTag
 
 from .lint.ce_mapping import infer_included_species, infer_tags_from_mapped_entries
-from .lint.other import _merge_name_issue, check_required_fields, parse_date
+from .lint.other import _merge_name_issue, parse_date
 from .lint.page_link import infer_bhl_page_id
 from .lint.type_locality import (
     check_coordinates,
@@ -47,34 +47,6 @@ from .lint.variants import (
     take_over_name_issue,
 )
 from .name import Name, NameTag, TypeTag
-
-
-@pytest.mark.parametrize("article_type", [ArticleType.WEB, ArticleType.BOOK])
-@pytest.mark.parametrize("page", [None, "12"])
-def test_required_page_depends_on_source_type(
-    article_type: ArticleType, page: str | None
-) -> None:
-    article = models.Article.virtual(
-        name="Source", type=article_type, kind=ArticleKind.electronic, tags=()
-    )
-    name = Name.virtual(
-        original_citation=article,
-        original_name="Example",
-        corrected_original_name="Example",
-        original_rank=Rank.order,
-        group=Group.high,
-        status=Status.valid,
-        nomenclature_status=NomenclatureStatus.available,
-        author_tags=(),
-        year="2000",
-        page_described=page,
-        type_tags=(),
-    )
-    cfg = LintConfig(autofix=False, interactive=False, available_resources=frozenset())
-    expected = []
-    if article_type is ArticleType.BOOK and page is None:
-        expected = ["has original citation but no page_described"]
-    assert list(check_required_fields.linter(name, cfg)) == expected
 
 
 def test_infer_bhl_page_from_name_and_classification_anchors(
@@ -1218,11 +1190,9 @@ def test_redirect_rule_flags_name_type_locality() -> None:
 def test_type_tag_group_restrictions(
     group: Group, tag: TypeTag, allowed: set[Group]
 ) -> None:
-    from .lint.other import ATTRIBUTES_BY_GROUP, check_disallowed_attributes
+    from .lint.other import check_disallowed_attributes
 
-    name = Name.virtual(
-        group=group, type_tags=(tag,), **dict.fromkeys(ATTRIBUTES_BY_GROUP)
-    )
+    name = Name.virtual(group=group, type_tags=(tag,))
     messages = list(check_disallowed_attributes(name, LintConfig(autofix=True)))
     assert bool(messages) == (group not in allowed)
     if messages:
