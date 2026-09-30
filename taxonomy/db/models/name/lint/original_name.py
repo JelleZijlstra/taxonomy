@@ -2,7 +2,7 @@ import re
 from collections.abc import Iterable
 from typing import assert_never
 
-from taxonomy.db import helpers
+from taxonomy.db import helpers, models
 from taxonomy.db.constants import Group, NomenclatureStatus, SpeciesNameKind, Status
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import field_issue
@@ -253,7 +253,7 @@ def autoset_corrected_original_name(
 ) -> Iterable[LintResult]:
     if nam.original_name is None or nam.corrected_original_name is not None:
         return
-    if "corrected_original_name" not in nam.get_required_fields():
+    if not models.name.required_fields.is_desired(nam, "corrected_original_name"):
         return
     inferred = nam.infer_corrected_original_name(aggressive=aggressive)
     if inferred:

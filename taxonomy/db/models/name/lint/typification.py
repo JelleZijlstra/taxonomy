@@ -2,6 +2,7 @@
 
 from collections.abc import Iterable
 
+from taxonomy.db import models
 from taxonomy.db.constants import Group, SpeciesGroupType, TypeSpeciesDesignation
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import field_issue
@@ -56,7 +57,7 @@ def check_type_designation_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
             if (
                 nam.original_citation is not None
                 and nam.group is Group.species
-                and "type_specimen" in nam.get_required_fields()
+                and models.name.required_fields.is_desired(nam, "type_specimen")
                 and Exp().should_apply(nam, cfg)
             ):
                 yield "missing type specimen"
@@ -148,23 +149,12 @@ def check_type(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
                 yield f"type {nam.type} is in group {nam.type.group!r}, not species"
 
 
-@LINT.add("type_genus")
-def check_type_genus(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if (
-        nam.group is Group.family
-        and nam.type is None
-        and "type" in nam.get_required_fields()
-        and nam.taxon.is_high_coverage()
-    ):
-        yield "high-coverage family-group name is missing a type genus"
-
-
 @LINT.add("infer_family_group_type")
 def infer_family_group_type(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if (
         nam.group is not Group.family
         or nam.type is not None
-        or "type" not in nam.get_required_fields(ignore_coverage=True)
+        or not models.name.required_fields.is_desired(nam, "type")
     ):
         return
     stem = nam.get_family_group_stem()

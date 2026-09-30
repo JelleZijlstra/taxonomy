@@ -1485,24 +1485,10 @@ class BaseModel(Model):
         yield from self.get_field_names()
 
     def get_empty_required_fields(self) -> Iterable[str]:
-        deprecated_fields = set(self.get_deprecated_fields())
         for field in self.get_required_fields():
             value = getattr(self, field)
-            if field in deprecated_fields:
-                if value is not None and value != ():
-                    yield field
-            elif value is None or value == ():
+            if value is None or value == ():
                 yield field
-
-    def get_deprecated_fields(self) -> Iterable[str]:
-        return ()
-
-    def get_nonempty_deprecated_fields(self) -> Iterable[str]:
-        return (
-            field
-            for field in self.get_deprecated_fields()
-            if getattr(self, field) is not None
-        )
 
     def fill_required_fields(self, skip_fields: Container[str] = frozenset()) -> bool:
         """Edit all required fields that are empty. Returns whether any field was edited."""

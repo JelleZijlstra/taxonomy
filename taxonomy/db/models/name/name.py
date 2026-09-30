@@ -31,7 +31,6 @@ from taxonomy.db import constants, coordinate_lint, helpers, models
 from taxonomy.db.constants import (
     URL,
     AgeClass,
-    ArticleType,
     EmendationJustification,
     FillDataLevel,
     Group,
@@ -65,12 +64,7 @@ from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
     ClassificationEntryTag,
 )
-from taxonomy.db.models.collection import (
-    LOST_COLLECTION,
-    MULTIPLE_COLLECTION,
-    UNTRACED_COLLECTION,
-    Collection,
-)
+from taxonomy.db.models.collection import MULTIPLE_COLLECTION, Collection
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name_complex import NameComplex, SpeciesNameComplex
@@ -954,11 +948,7 @@ class Name(BaseModel):
         for field in super().get_empty_required_fields():
             fields.append(field)
             yield field
-        if (
-            fields
-            and fields[-1] != "type_tags"
-            and "type_tags" in self.get_required_fields()
-        ):
+        if fields and fields[-1] != "type_tags":
             # Always make the user edit type_tags if some other field was unfilled,
             # even if we edited type_tags previously in this run.
             yield "type_tags"
@@ -1907,19 +1897,20 @@ class Name(BaseModel):
 
     def knowledge_level(self, *, verbose: bool = False) -> int:
         """Returns whether all necessary attributes of the name have been filled in."""
-        required_fields = set(self.get_required_fields())
-        if "original_citation" in required_fields and self.original_citation is None:
+        orig_cite_status = models.name.required_fields.get_status(
+            self, models.Name.original_citation
+        )
+        if (
+            orig_cite_status.requiredness.is_desired()
+            and not orig_cite_status.is_nonempty
+        ):
             if verbose:
                 print("0 because no original citation")
             return 0
-        deprecated_fields = set(self.get_deprecated_fields())
+        required_fields = set(self.get_required_fields())
         for field in required_fields:
-            if field in deprecated_fields:
-                if getattr(self, field) is not None:
-                    if verbose:
-                        print(f"1 because {field} is set")
-                    return 1
-            elif getattr(self, field) is None:
+            value = getattr(self, field)
+            if value is None or value == ():
                 if verbose:
                     print(f"1 because {field} is missing")
                 return 1
@@ -2144,105 +2135,11 @@ class Name(BaseModel):
             if not any(self.has_type_tag(tag) for tag in group):
                 yield group
 
-    def get_required_fields(self, *, ignore_coverage: bool = False) -> Iterable[str]:
-        """Fields required under the taxon's coverage policy.
-
-        ignore_coverage=True exposes the full requirements for explicit audits
-        and inference that only connects objects already present.
-        """
-        if (
-            self.status is Status.spurious
-            or self.nomenclature_status is NomenclatureStatus.informal
-        ):
-            return
-        yield "original_name"
-        if self.original_name is not None:
-            yield "corrected_original_name"
-        if self.corrected_original_name is not None:
-            yield "original_rank"
-
-        yield "author_tags"
-        yield "year"
-        if not (
-            self.original_citation is not None
-            and self.original_citation.type is ArticleType.WEB
-        ):
-            yield "page_described"
-        yield "original_citation"
-        if self.original_citation is None:
-            yield "verbatim_citation"
-            if self.verbatim_citation is not None:
-                yield "citation_group"
-
-        if self.nomenclature_status.requires_type():
-            # Yield this early because it's often easier to first get all the *Detail
-            # tags and then fill in the required fields.
-            if self.group is Group.species:
-                yield "type_tags"
-            if self.group is Group.genus:
-                if (
-                    (
-                        (
-                            self.type is not None
-                            or ignore_coverage
-                            or self.taxon.is_high_coverage()
-                        )
-                        and self.genus_type_kind is None
-                        and (self.type is None or self.original_citation is not None)
-                    )
-                    or (
-                        self.genus_type_kind is not None
-                        and self.genus_type_kind.requires_tag()
-                    )
-                    or self.requires_etymology()
-                ):
-                    yield "type_tags"
-
-        if (
-            self.group is Group.genus
-            and self.nomenclature_status.requires_name_complex()
-        ):
-            yield "name_complex"
-        if (
-            self.group is Group.species
-            and self.nomenclature_status.requires_name_complex()
-        ):
-            yield "species_name_complex"
-
-        if self.nomenclature_status.requires_type():
-            if self.group is Group.family:
-                if ignore_coverage or self.taxon.is_high_coverage():
-                    yield "type"
-            elif self.group is Group.species:
-                yield "type_locality"
-                # These are special Collections that indicate there is no preserved specimen.
-                if self.collection is None or (
-                    self.collection.id not in (LOST_COLLECTION, UNTRACED_COLLECTION)
-                ):
-                    yield "type_specimen"
-                yield "collection"
-                if self.type_specimen is not None or self.collection is not None:
-                    yield "species_type_kind"
-            elif self.group is Group.genus:
-                if (
-                    self.genus_type_kind
-                    is not constants.TypeSpeciesDesignation.undesignated
-                    and (ignore_coverage or self.taxon.is_high_coverage())
-                ):
-                    yield "type"
-                if self.type is not None:
-                    yield "genus_type_kind"
-        if (
-            (self.group is Group.species or self.original_rank is Rank.subgenus)
-            and self.corrected_original_name is not None
-            and self.nomenclature_status.requires_original_parent()
-            and not self.has_type_tag(TypeTag.NoOriginalParent)
-            and models.name.lint.original_parent.should_require_subgenus_original_parent(
-                self
-            )
-            and (ignore_coverage or self.taxon.is_high_coverage())
-        ):
-            yield "original_parent"
+    def get_required_fields(self) -> Iterable[str]:
+        for field in Name.clirm_fields:
+            requiredness, _ = models.name.required_fields.get_requiredness(self, field)
+            if requiredness.is_desired():
+                yield field
 
     def lint(
         self, cfg: LintConfig = LintConfig(autofix=False, interactive=False)

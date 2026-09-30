@@ -82,6 +82,7 @@ from .db.models.base import LintConfig, Linter, LintResource, ModelT
 from .db.models.ignored_doi import IgnoreReason
 from .db.models.item_file import ItemFile
 from .db.models.name import citation_match
+from .db.models.name.required_fields import is_desired
 from .db.models.person import PersonLevel
 
 T = TypeVar("T")
@@ -199,8 +200,7 @@ def export_missing_original_citations(taxon: Taxon, filename: str) -> None:
     names = models.name.name.get_ordered_names(
         name
         for name in taxon.all_names()
-        if name.original_citation is None
-        and "original_citation" in name.get_required_fields()
+        if name.original_citation is None and is_desired(name, "original_citation")
     )
     with Path(filename).open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(
@@ -338,7 +338,7 @@ def add_types() -> None:
         )
         .order_by(Name.original_citation)
     ):
-        if "type" not in name.get_required_fields():
+        if not is_desired(name, "type"):
             continue
         if name.original_citation is None:
             continue
@@ -826,9 +826,7 @@ def label_name(name: Name) -> LabeledName:
 @command
 def labeled_authorless_names(attribute: str = "author_tags") -> list[LabeledName]:
     nams = Name.select_valid().filter(getattr(Name, attribute) == None)
-    return [
-        label_name(name) for name in nams if attribute in name.get_required_fields()
-    ]
+    return [label_name(name) for name in nams if is_desired(name, attribute)]
 
 
 # Statistics
@@ -847,7 +845,7 @@ def _type_locality_summary_labels(name: Name) -> summary_tree.ObjectLabels:
         "type_locality_set": name.type_locality is not None
     }
     if name.type_locality is None:
-        labels["type_locality_required"] = "type_locality" in name.get_required_fields()
+        labels["type_locality_required"] = is_desired(name, "type_locality")
         labels["taxon_age"] = (
             "Recent"
             if name.taxon.age in {AgeClass.extant, AgeClass.recently_extinct}
@@ -1218,7 +1216,7 @@ def set_name_complex_in_taxon(taxon: Taxon) -> None:
         for nam in taxon.all_names()
         if nam.group is Group.genus
         and nam.name_complex is None
-        and "name_complex" in nam.get_required_fields()
+        and is_desired(nam, "name_complex")
     ]
     _set_name_complex_for_names(nams)
 
@@ -1226,7 +1224,7 @@ def set_name_complex_in_taxon(taxon: Taxon) -> None:
 def _set_name_complex_for_names(nams: Sequence[Name]) -> None:
     print(f"{len(nams)} total names")
     for nam in sorted(nams, key=lambda nam: "".join(reversed(nam.root_name.lower()))):
-        if "name_complex" not in nam.get_required_fields():
+        if not is_desired(nam, "name_complex"):
             print(f"Skipping {nam} ({nam.nomenclature_status})")
             continue
         nam.display()
@@ -1451,7 +1449,7 @@ def names_with_location_detail_without_type_loc(
         tags = list(nam.get_tags(nam.type_tags, TypeTag.LocationDetail))
         if not tags:
             continue
-        if "type_locality" not in nam.get_required_fields():
+        if not is_desired(nam, "type_locality"):
             continue
         if substring is not None:
             if not any(substring in tag.text for tag in tags):
@@ -1490,7 +1488,7 @@ def names_with_type_detail_without_type(taxon: Taxon | None = None) -> Iterable[
         tags = list(nam.get_tags(nam.type_tags, TypeTag.TypeSpeciesDetail))
         if not tags:
             continue
-        if "type" not in nam.get_required_fields():
+        if not is_desired(nam, "type"):
             continue
         nams_with_key.append(([(tag.source.name, tag.text) for tag in tags], nam, tags))
     for _, nam, tags in sorted(nams_with_key):
@@ -3086,7 +3084,7 @@ def add_coordinates(names: Iterable[Name]) -> None:
     nams = [
         nam
         for nam in names
-        if "type_locality" in nam.get_required_fields()
+        if is_desired(nam, "type_locality")
         and not nam.has_type_tag(TypeTag.Coordinates)
     ]
     print(f"{len(nams)} names without coordinates")
@@ -3495,7 +3493,7 @@ def fill_in_type_localities() -> None:
             for tag in nam.type_tags
         ):
             continue
-        if "type_locality" not in nam.get_required_fields():
+        if not is_desired(nam, "type_locality"):
             continue
         getinput.print_header(species)
         art = nam.original_citation

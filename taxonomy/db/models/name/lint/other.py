@@ -13,6 +13,7 @@ from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
 from typing import TypeVar
 
+import clirm
 import requests
 
 from taxonomy import adt, getinput
@@ -34,6 +35,7 @@ from taxonomy.db.constants import (
 from taxonomy.db.models.article import ArticleTag, PresenceStatus
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import (
+    LintWrapper,
     add_tag_issue,
     field_fix,
     field_issue,
@@ -41,6 +43,7 @@ from taxonomy.db.models.lint import (
     fixes_issue,
 )
 from taxonomy.db.models.lint_types import LintIssue, LintResult
+from taxonomy.db.models.name import required_fields
 from taxonomy.db.models.name.name import ExperimentalLintCondition as Exp
 from taxonomy.db.models.name.name import Name, NameComment, NameTag, TypeTag
 from taxonomy.db.models.name.organ import CHECKED_ORGANS
@@ -132,8 +135,10 @@ def dedupe_and_sort_tags(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         )
 
 
-@LINT.add("redundant_fields")
-def check_redundant_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
+@LINT.add("nomen_novum_redundant_fields")
+def check_nomen_novum_redundant_fields(
+    nam: Name, cfg: LintConfig
+) -> Iterable[LintResult]:
     if nam.nomenclature_status is not NomenclatureStatus.nomen_novum:
         return
     parent = nam.get_tag_target(NameTag.NomenNovumFor)
@@ -234,18 +239,6 @@ def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
             )
 
 
-ATTRIBUTES_BY_GROUP = {
-    "name_complex": (Group.genus,),
-    "species_name_complex": (Group.species,),
-    "type": (Group.family, Group.genus),
-    "type_locality": (Group.species,),
-    "type_specimen": (Group.species,),
-    "collection": (Group.species,),
-    "genus_type_kind": (Group.genus,),
-    "species_type_kind": (Group.species,),
-}
-
-
 TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
     **dict.fromkeys(
         (
@@ -308,11 +301,6 @@ TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
 
 @LINT.add("disallowed_attributes")
 def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    for field_name, groups in ATTRIBUTES_BY_GROUP.items():
-        if nam.group not in groups:
-            value = getattr(nam, field_name)
-            if value is not None:
-                yield f"should not have attribute {field_name} (value {value})"
     for tag in nam.type_tags:
         tag_groups = TYPE_TAGS_BY_GROUP.get(type(tag))
         if tag_groups is not None and nam.group not in tag_groups:
@@ -559,64 +547,24 @@ def has_accessible_original_citation(nam: Name) -> bool:
     )
 
 
-@LINT.add("required_fields")
-def check_required_fields(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    if nam.verbatim_citation and not nam.citation_group:
-        yield "has verbatim citation but no citation group"
-    if has_accessible_original_citation(nam):
-        citation = nam.original_citation
-        assert citation is not None
-        if nam.page_described is None and "page_described" in nam.get_required_fields():
-            yield "has original citation but no page_described"
-        if nam.original_name is None:
-            yield "has original citation but no original_name"
-        if nam.original_rank is None:
-            yield "has original citation but no original_rank"
-        if nam.author_tags is None:
-            message = "has original citation but no author_tags"
-            if citation.issupplement() and citation.parent is not None:
-                authors = citation.parent.author_tags
-            else:
-                authors = citation.author_tags
-            if authors is None:
-                yield message
-            else:
-                yield field_issue(message, nam, "author_tags", authors)
-        if nam.year is None:
-            message = "has original citation but no year"
-            yield field_issue(message, nam, "year", citation.year)
-        if (
-            nam.name_complex is None
-            and nam.group is Group.genus
-            and nam.nomenclature_status.requires_name_complex()
-        ):
-            yield "genus-group name with no name complex"
-        if (
-            nam.species_name_complex is None
-            and nam.group is Group.species
-            and nam.nomenclature_status.requires_name_complex()
-        ):
-            yield "species-group name with no species name complex"
-    must_have_verbatim_reason = must_have_verbatim(nam)
-    if must_have_verbatim_reason is not None:
-        yield f"{must_have_verbatim_reason} must have verbatim citation"
-    if nam.species_type_kind is None and nam.nomenclature_status.requires_type():
-        if nam.type_specimen is not None:
-            yield "has type_specimen but no species_type_kind"
-        if nam.has_type_tag(TypeTag.Age) or nam.has_type_tag(TypeTag.Gender):
-            yield "has type specimen age or gender but no species_type_kind"
-
-
-def must_have_verbatim(nam: Name) -> str | None:
-    if nam.original_citation is not None:
-        return None
-    if nam.verbatim_citation is not None:
-        return None
-    if nam.numeric_year() > 1970:
-        return "recent name"
-    if nam.nomenclature_status is NomenclatureStatus.subsequent_usage:
-        return "subsequent usage"
-    return None
+@LINT.add("infer_author_year")
+def infer_author_year(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    if nam.original_citation is None:
+        return
+    citation = nam.original_citation
+    if nam.author_tags is None:
+        message = "has original citation but no author_tags"
+        if citation.issupplement() and citation.parent is not None:
+            authors = citation.parent.author_tags
+        else:
+            authors = citation.author_tags
+        if authors is None:
+            yield message
+        else:
+            yield field_issue(message, nam, "author_tags", authors)
+    if nam.year is None:
+        message = "has original citation but no year"
+        yield field_issue(message, nam, "year", citation.year)
 
 
 @LINT.add("derived_tags")
@@ -903,3 +851,35 @@ def enforce_must_have(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     if nam.citation_group.must_have(nam.numeric_year()):
         yield f"{nam} is in {nam.citation_group}, but has no original_citation"
+
+
+def make_required_fields_linter(field: clirm.Field) -> LintWrapper[Name]:
+    @LINT.add(f"required_{field.attribute_name}")
+    def required_field_linter(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
+        status = required_fields.get_status(nam, field)
+        if status.message is None:
+            extra = ""
+        else:
+            extra = f": {status.message}"
+        match status.requiredness:
+            case required_fields.Requiredness.disallowed:
+                if status.is_nonempty:
+                    yield f"{nam} has disallowed field {field.attribute_name} (value {status.value}){extra}"
+            case (
+                required_fields.Requiredness.optional
+                | required_fields.Requiredness.desired
+            ):
+                pass
+            case required_fields.Requiredness.required:
+                if not status.is_nonempty:
+                    yield f"{nam} is missing required field {field.attribute_name}{extra}"
+            case required_fields.Requiredness.required_high_coverage:
+                if nam.taxon.is_high_coverage() and not status.is_nonempty:
+                    yield f"{nam} is missing required field {field.attribute_name}{extra}"
+
+    return required_field_linter
+
+
+required_fields_linters = [
+    make_required_fields_linter(field) for field in Name.clirm_fields.values()
+]

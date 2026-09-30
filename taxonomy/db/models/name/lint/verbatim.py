@@ -102,7 +102,7 @@ def verbatim_to_citation_detail(nam: Name, cfg: LintConfig) -> Iterable[LintResu
 def verbatim_citation_from_tags(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.verbatim_citation:
         return
-    if "verbatim_citation" not in nam.get_required_fields():
+    if not models.name.required_fields.is_desired(nam, "verbatim_citation"):
         return
     tags = list(nam.get_tags(nam.type_tags, TypeTag.CitationDetail))
     if not tags:

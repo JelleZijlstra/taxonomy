@@ -143,10 +143,11 @@ def fill_data_for_names(
             return False
         if nam.original_citation.lacks_full_text():
             return False
-        if field is not None and (
-            getattr(nam, field) is not None or field not in nam.get_required_fields()
-        ):
-            return False
+        if field is not None:
+            field_obj = getattr(models.Name, field)
+            status = models.name.required_fields.get_status(nam, field_obj)
+            if not status.requiredness.is_desired() or status.is_nonempty:
+                return False
         if min_year is not None and nam.year is not None:
             return min_year <= nam.numeric_year()
         else:

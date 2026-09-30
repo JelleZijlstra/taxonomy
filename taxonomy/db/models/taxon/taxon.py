@@ -1450,6 +1450,10 @@ class Taxon(BaseModel):
             getinput.print_header(author)
             author.reassign_names_with_verbatim(filter_for_name=True)
 
+    def _name_is_missing_field(self, name: models.Name, field_obj: Field) -> bool:
+        status = models.name.required_fields.get_status(name, field_obj)
+        return (not status.is_nonempty) and status.requiredness.is_desired()
+
     def names_missing_field(
         self,
         field: str,
@@ -1457,19 +1461,21 @@ class Taxon(BaseModel):
         min_year: int | None = None,
         exclude: Container[Taxon] = frozenset(),
     ) -> set[models.Name]:
+        field_obj = getattr(models.Name, field)
         return {
             name
             for name in self.all_names(age=age, min_year=min_year, exclude=exclude)
-            if getattr(name, field) is None and field in name.get_required_fields()
+            if self._name_is_missing_field(name, field_obj)
         }
 
     def names_missing_field_lazy(
         self, field: str, limit: int = 1000
     ) -> Iterable[models.Name]:
+        field_obj = getattr(models.Name, field)
         for i, name in enumerate(self.all_names_lazy()):
             if i >= limit:
                 return
-            if getattr(name, field) is None and field in name.get_required_fields():
+            if self._name_is_missing_field(name, field_obj):
                 yield name
 
     def print_names_missing_field(self) -> None:
@@ -1509,17 +1515,11 @@ class Taxon(BaseModel):
         counts_by_group: dict[Group, int] = defaultdict(int)
         for name in names:
             counts_by_group[name.group] += 1
-            deprecated = set(name.get_deprecated_fields())
             required = set(name.get_required_fields())
-            for field in required | deprecated:
-                if field in deprecated:
-                    required_counts[field] += 1
-                    if getattr(name, field) is None:
-                        counts[field] += 1
-                else:
-                    required_counts[field] += 1
-                    if getattr(name, field) is not None:
-                        counts[field] += 1
+            for field in required:
+                required_counts[field] += 1
+                if getattr(name, field) is not None:
+                    counts[field] += 1
 
         total = len(names)
         output: dict[str, Any] = {"total": total}

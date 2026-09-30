@@ -134,7 +134,7 @@ def get_training_names() -> list[tuple[Name, bool]]:
             and nam.taxon.get_derived_field("class_") == mammalia,
         )
         for nam in nams
-        if "type_specimen" in nam.get_required_fields()
+        if models.name.required_fields.is_desired(nam, "type_specimen")
     ]
 
 

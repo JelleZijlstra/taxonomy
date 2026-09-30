@@ -42,6 +42,7 @@ from taxonomy.db.models.classification_entry.ce import ClassificationEntry
 from taxonomy.db.models.collection import LOST_COLLECTION, UNTRACED_COLLECTION
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name.name import Name, NameTag, TypeTag
+from taxonomy.db.models.name.required_fields import is_desired
 from taxonomy.db.models.tags import TaxonTag
 from taxonomy.db.models.taxon.lint import check_full_expected_base_name
 from taxonomy.db.models.taxon.taxon import Taxon
@@ -381,10 +382,7 @@ def get_type_specimen_text(name: Name) -> tuple[str, list[str]]:
         assert tag is not None, name
         type_specimen = f"In {tag.repository.label}? ({name.species_type_kind.name})"
     else:
-        if (
-            name.group is Group.species
-            and "type_specimen" in name.get_required_fields()
-        ):
+        if name.group is Group.species and is_desired(name, "type_specimen"):
             todos.append("Type specimen missing")
         type_specimen = ""
     return type_specimen, todos
@@ -455,10 +453,7 @@ def get_row(taxon: Taxon, name: Name, taxon_to_ces: TaxonToCEs) -> Row:
                 )
         elif name.group is Group.genus:
             todos.append("Check type designation: genus without type designation")
-    elif (
-        name.group in (Group.family, Group.genus)
-        and "type" in name.get_required_fields()
-    ):
+    elif name.group in (Group.family, Group.genus) and is_desired(name, "type"):
         todos.append("Missing type")
 
     tl_prefix = get_type_locality_prefix(name.type_locality)

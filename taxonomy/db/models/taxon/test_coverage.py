@@ -126,24 +126,6 @@ def test_root_coverage_proposal_does_not_require_parent(
     assert list(taxon_lint.check_parent(root, CFG)) == []
 
 
-@pytest.mark.parametrize("group", [Group.genus, Group.family, Group.species])
-def test_missing_related_fields_follow_coverage(group: Group) -> None:
-    taxon = make_taxon(level=CoverageLevel.low)
-    name = make_name(taxon, group)
-    field = "original_parent" if group is Group.species else "type"
-    assert field not in name.get_required_fields()
-    assert field in name.get_required_fields(ignore_coverage=True)
-    assert "year" in name.get_required_fields()
-    if group is Group.species:
-        assert "type_locality" in name.get_required_fields()
-    if group is Group.genus:
-        assert "type_tags" not in name.get_required_fields()
-    taxon.tags = (TaxonTag.Coverage(CoverageLevel.high),)  # type: ignore[assignment]
-    assert field in name.get_required_fields()
-    if group is Group.genus:
-        assert "type_tags" in name.get_required_fields()
-
-
 def test_included_species_requirement_and_cross_boundary_links() -> None:
     covered = make_taxon(level=CoverageLevel.high)
     incidental = make_taxon(level=CoverageLevel.low)
@@ -156,7 +138,6 @@ def test_included_species_requirement_and_cross_boundary_links() -> None:
         TypeTag.IncludedSpecies in tags
         for tags, _ in genus.get_required_derived_tags(ignore_coverage=True)
     )
-    assert "genus_type_kind" in genus.get_required_fields()
     incidental.tags = (TaxonTag.Coverage(CoverageLevel.high),)  # type: ignore[assignment]
     assert any(
         TypeTag.IncludedSpecies in tags for tags, _ in genus.get_required_derived_tags()
@@ -266,39 +247,3 @@ def test_nominal_genus_missing_and_inferred(monkeypatch: pytest.MonkeyPatch) -> 
         "adding NominalGenus" in str(msg)
         for msg in taxon_lint.check_nominal_genus(taxon, CFG)
     )
-
-
-def test_type_genus_required_without_original_citation() -> None:
-    parent = make_taxon(level=CoverageLevel.high)
-    taxon = make_taxon(parent=parent)
-    name = make_name(taxon, Group.family)
-    name.status = Status.synonym
-    assert name.original_citation is None
-    issues = list(name_lint.typification.check_type_genus(name, CFG))
-    assert len(issues) == 1
-    assert "missing a type genus" in str(issues[0])
-    taxon.tags = (TaxonTag.Coverage(CoverageLevel.low),)  # type: ignore[assignment]
-    assert list(name_lint.typification.check_type_genus(name, CFG)) == []
-    taxon.tags = ()  # type: ignore[assignment]
-    name.type = make_name(make_taxon())
-    assert list(name_lint.typification.check_type_genus(name, CFG)) == []
-
-
-@pytest.mark.parametrize(
-    "status",
-    [
-        NomenclatureStatus.not_based_on_a_generic_name,
-        NomenclatureStatus.nomen_nudum,
-        NomenclatureStatus.informal,
-    ],
-)
-def test_type_genus_exempt_nomenclature_status(status: NomenclatureStatus) -> None:
-    name = make_name(make_taxon(level=CoverageLevel.high), Group.family)
-    name.nomenclature_status = status
-    assert list(name_lint.typification.check_type_genus(name, CFG)) == []
-
-
-@pytest.mark.parametrize("group", [Group.genus, Group.species, Group.high])
-def test_type_genus_only_applies_to_family_group(group: Group) -> None:
-    name = make_name(make_taxon(level=CoverageLevel.high), group)
-    assert list(name_lint.typification.check_type_genus(name, CFG)) == []

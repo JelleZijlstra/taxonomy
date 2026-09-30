@@ -1,4 +1,5 @@
 from . import page as page
+from . import required_fields as required_fields
 from . import type_specimen as type_specimen
 from .lint import LINT as LINT
 from .name import Name as Name

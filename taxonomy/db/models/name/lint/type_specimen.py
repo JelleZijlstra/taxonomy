@@ -2,6 +2,7 @@ import enum
 import re
 from collections.abc import Iterable
 
+from taxonomy.db import models
 from taxonomy.db.constants import Group
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.collection import (
@@ -419,7 +420,7 @@ def guess_repository(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         return
     if nam.group is not Group.species:
         return
-    if "collection" not in nam.get_required_fields():
+    if not models.name.required_fields.is_desired(nam, "collection"):
         return
     if nam.has_type_tag(TypeTag.ProbableRepository):
         expected_tag = None
