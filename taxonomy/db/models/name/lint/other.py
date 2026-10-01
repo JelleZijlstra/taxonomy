@@ -850,33 +850,52 @@ def enforce_must_have(nam: Name, cfg: LintConfig) -> Iterable[str]:
         yield f"{nam} is in {nam.citation_group}, but has no original_citation"
 
 
+def _lint_requiredness_status(
+    nam: Name, label: str, status: required_fields.FieldStatus
+) -> Iterable[str]:
+    if status.message is None:
+        extra = ""
+    else:
+        extra = f": {status.message}"
+    match status.requiredness:
+        case required_fields.Requiredness.disallowed:
+            if status.is_nonempty:
+                yield f"{nam} has disallowed {label} (value {status.value}){extra}"
+        case (
+            required_fields.Requiredness.optional | required_fields.Requiredness.desired
+        ):
+            pass
+        case required_fields.Requiredness.required:
+            if not status.is_nonempty:
+                yield f"{nam} is missing required {label}{extra}"
+        case required_fields.Requiredness.required_high_coverage:
+            if nam.taxon.is_high_coverage() and not status.is_nonempty:
+                yield f"{nam} is missing required {label}{extra}"
+
+
 def make_required_fields_linter(field: clirm.Field) -> LintWrapper[Name]:
     @LINT.add(f"required_{field.attribute_name}")
     def required_field_linter(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         status = required_fields.get_status(nam, field)
-        if status.message is None:
-            extra = ""
-        else:
-            extra = f": {status.message}"
-        match status.requiredness:
-            case required_fields.Requiredness.disallowed:
-                if status.is_nonempty:
-                    yield f"{nam} has disallowed field {field.attribute_name} (value {status.value}){extra}"
-            case (
-                required_fields.Requiredness.optional
-                | required_fields.Requiredness.desired
-            ):
-                pass
-            case required_fields.Requiredness.required:
-                if not status.is_nonempty:
-                    yield f"{nam} is missing required field {field.attribute_name}{extra}"
-            case required_fields.Requiredness.required_high_coverage:
-                if nam.taxon.is_high_coverage() and not status.is_nonempty:
-                    yield f"{nam} is missing required field {field.attribute_name}{extra}"
+        yield from _lint_requiredness_status(
+            nam, f"field {field.attribute_name}", status
+        )
 
     return required_field_linter
 
 
-required_fields_linters = [
-    make_required_fields_linter(field) for field in Name.clirm_fields.values()
-]
+required_fields_linters = {
+    field.attribute_name: make_required_fields_linter(field)
+    for field in Name.clirm_fields.values()
+}
+
+
+@LINT.add("type_tags_presence")
+def check_type_tags_presence(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    for tag_cls in TypeTag._tag_to_member.values():
+        status = required_fields.get_type_tag_status(nam, tag_cls, cfg=cfg)
+        yield from _lint_requiredness_status(
+            nam,
+            f"type tag {tag_cls.__name__ if hasattr(tag_cls, '__name__') else str(tag_cls)}",
+            status,
+        )

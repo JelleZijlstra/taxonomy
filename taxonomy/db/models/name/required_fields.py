@@ -11,12 +11,26 @@ from taxonomy.db.constants import (
     Group,
     NomenclatureStatus,
     Rank,
+    SpeciesGroupType,
     Status,
     TypeSpeciesDesignation,
 )
-from taxonomy.db.models.collection import LOST_COLLECTION, UNTRACED_COLLECTION
+from taxonomy.db.models.base import LintConfig
+from taxonomy.db.models.collection import (
+    LOST_COLLECTION,
+    MULTIPLE_COLLECTION,
+    UNTRACED_COLLECTION,
+)
 
-from .name import Name, TypeTag
+from .name import (
+    ETYMOLOGY_TAGS,
+    SPECIMEN_TAGS,
+    ExperimentalLintCondition,
+    Name,
+    TypeTag,
+    TypeTagCons,
+    get_tags_from_original_citation,
+)
 
 
 class Requiredness(enum.Enum):
@@ -45,13 +59,17 @@ class Requiredness(enum.Enum):
                 assert_never(self)
 
 
+def has_accessible_original_citation(nam: Name) -> bool:
+    return (
+        nam.original_citation is not None
+        and not nam.original_citation.lacks_full_text()
+    )
+
+
 def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
     match field:
         case "original_name":
-            if (
-                nam.original_citation is not None
-                and not nam.original_citation.lacks_full_text()
-            ):
+            if has_accessible_original_citation(nam):
                 return Requiredness.required, None
             else:
                 return Requiredness.desired, None
@@ -65,10 +83,7 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
         case "original_rank":
             if nam.corrected_original_name is None:
                 return Requiredness.disallowed, None
-            elif (
-                nam.original_citation is not None
-                and not nam.original_citation.lacks_full_text()
-            ):
+            elif has_accessible_original_citation(nam):
                 return Requiredness.required, None
             else:
                 return Requiredness.desired, None
@@ -89,10 +104,7 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
                 and nam.original_citation.type is ArticleType.WEB
             ):
                 return Requiredness.optional, None
-            elif (
-                nam.original_citation is not None
-                and not nam.original_citation.lacks_full_text()
-            ):
+            elif has_accessible_original_citation(nam):
                 return Requiredness.required, None
             else:
                 return Requiredness.desired, None
@@ -131,10 +143,7 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
                 return Requiredness.disallowed, None
             elif not nam.nomenclature_status.requires_name_complex():
                 return Requiredness.optional, None
-            elif (
-                nam.original_citation is not None
-                and not nam.original_citation.lacks_full_text()
-            ):
+            elif has_accessible_original_citation(nam):
                 return Requiredness.required_high_coverage, None
             else:
                 return Requiredness.desired, None
@@ -144,8 +153,7 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
             elif not nam.nomenclature_status.requires_name_complex():
                 return Requiredness.optional, None
             elif (
-                nam.original_citation is not None
-                and not nam.original_citation.lacks_full_text()
+                has_accessible_original_citation(nam)
                 and nam.nomenclature_status.requires_name_complex()
             ):
                 return Requiredness.required, None
@@ -157,9 +165,8 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
             elif not nam.nomenclature_status.requires_type():
                 return Requiredness.optional, None
             elif (
-                nam.original_citation is not None
+                has_accessible_original_citation(nam)
                 and nam.taxon.age is AgeClass.extant
-                and not nam.original_citation.lacks_full_text()
             ):
                 return (
                     Requiredness.required,
@@ -248,7 +255,6 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
                 return Requiredness.optional, None
             elif (
                 nam.corrected_original_name is not None
-                and nam.nomenclature_status.requires_original_parent()
                 and not nam.has_type_tag(TypeTag.NoOriginalParent)
                 and models.name.lint.original_parent.should_require_subgenus_original_parent(
                     nam
@@ -286,9 +292,8 @@ def get_status(nam: Name, field: clirm.Field) -> FieldStatus:
     requiredness, message = get_requiredness(nam, field.attribute_name)
     value = getattr(nam, field.attribute_name)
     if isinstance(field, models.base.ADTField):
-        is_nonempty = bool(
-            value
-        )  # empty ADTField is represented as an empty tuple, not None
+        # empty ADTField is represented as an empty tuple, not None
+        is_nonempty = bool(value)
     else:
         is_nonempty = value is not None
     return FieldStatus(requiredness, message, is_nonempty, value)
@@ -297,3 +302,349 @@ def get_status(nam: Name, field: clirm.Field) -> FieldStatus:
 def is_desired(nam: Name, field_name: str) -> bool:
     requiredness, _ = get_requiredness(nam, field_name)
     return requiredness.is_desired()
+
+
+@dataclass(frozen=True)
+class TypeTagRequiredness:
+    """One obligation, satisfied by the primary tag or either alternative.
+
+    must_be_from_original_citation applies to both the primary tag and
+    alternative_with_citation. The plain alternative is source-independent.
+    Without that flag, all alternatives accept any source. A source constraint
+    concerns satisfying this obligation, not whether other-source tags may exist.
+    """
+
+    requiredness: Requiredness
+    message: str | None = None
+    must_be_from_original_citation: bool = False
+    alternative_with_citation: TypeTagCons | None = None
+    alternative: TypeTagCons | None = None
+
+
+def get_type_tag_status(
+    nam: Name,
+    tag_cls: TypeTagCons,
+    *,
+    cfg: LintConfig = LintConfig(autofix=False, interactive=False),
+) -> FieldStatus:
+    """Return the tag policy and whether its obligation is satisfied.
+
+    value is a tuple of matching tags, including any accepted alternatives.
+    is_nonempty means at least one tag satisfies the source constraint, rather
+    than merely that a tag of this class exists. For disallowed tags, the policy
+    has no alternatives or source constraint, so this reports their presence.
+    Coverage determines enforcement in the caller, not whether tags match here.
+    """
+    requirement = get_type_tag_requiredness(nam, tag_cls, cfg=cfg)
+    sourced_tag_ids = {tag_cls._tag}
+    if requirement.alternative_with_citation is not None:
+        sourced_tag_ids.add(requirement.alternative_with_citation._tag)
+    alternative_id = (
+        requirement.alternative._tag if requirement.alternative is not None else None
+    )
+    matching_tags = tuple(
+        tag
+        for tag in nam.type_tags
+        if (
+            tag._tag in sourced_tag_ids
+            and (
+                not requirement.must_be_from_original_citation
+                or (
+                    nam.original_citation is not None
+                    and getattr(tag, "source", None) == nam.original_citation
+                )
+            )
+        )
+        or tag._tag == alternative_id
+    )
+    return FieldStatus(
+        requiredness=requirement.requiredness,
+        message=requirement.message,
+        is_nonempty=bool(matching_tags),
+        value=matching_tags,
+    )
+
+
+TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
+    **dict.fromkeys(
+        (
+            TypeTag.Date,
+            TypeTag.Gender,
+            TypeTag.Age,
+            TypeTag.Organ,
+            TypeTag.Altitude,
+            TypeTag.Coordinates,
+            TypeTag.TypeLocality,
+            TypeTag.StratigraphyDetail,
+            TypeTag.Habitat,
+            TypeTag.Host,
+            TypeTag.LectotypeDesignation,
+            TypeTag.NeotypeDesignation,
+            TypeTag.SpecimenDetail,
+            TypeTag.LocationDetail,
+            TypeTag.Repository,
+            TypeTag.ProbableRepository,
+            TypeTag.CollectionDetail,
+            TypeTag.CollectedBy,
+            TypeTag.Involved,
+            TypeTag.NoLocation,
+            TypeTag.NoSpecimen,
+            TypeTag.NoDate,
+            TypeTag.NoCollector,
+            TypeTag.NoOrgan,
+            TypeTag.NoGender,
+            TypeTag.NoAge,
+            TypeTag.ImpreciseLocality,
+            TypeTag.TypeSpecimenLink,
+            TypeTag.FormerRepository,
+            TypeTag.ExtraRepository,
+            TypeTag.FutureRepository,
+            TypeTag.TypeSpecimenLinkFor,
+            TypeTag.GuessedRepository,
+            TypeTag.InterpretedTypeLocality,
+            TypeTag.InterpretedTypeSpecimen,
+            TypeTag.AdditionalTypeSpecimen,
+            TypeTag.OriginalTypification,
+            TypeTag.PartialTypeLocality,
+            TypeTag.TypeLocalityValidity,
+        ),
+        (Group.species,),
+    ),
+    **dict.fromkeys(
+        (
+            TypeTag.TypeDesignation,
+            TypeTag.IncludedSpecies,
+            TypeTag.GenusCoelebs,
+            TypeTag.TypeSpeciesDetail,
+            type(TypeTag.NoOriginalParent),
+        ),
+        (Group.genus,),
+    ),
+    TypeTag.CommissionTypeDesignation: (Group.genus, Group.family),
+    TypeTag.InterpretedTypeTaxon: (Group.genus, Group.family),
+}
+
+
+def get_type_tag_requiredness(
+    nam: Name,
+    tag_cls: TypeTagCons,
+    *,
+    cfg: LintConfig = LintConfig(autofix=False, interactive=False),
+) -> TypeTagRequiredness:
+    """Return the detail and derived-tag policy used for completeness checks.
+
+    Specialized lints may impose additional requirements. This function does not
+    check whether an obligation is satisfied; alternatives are part of its result.
+    """
+    # NoOriginalParent is a singleton constructor, rather than a tag class.
+    tag_type = tag_cls if isinstance(tag_cls, type) else type(tag_cls)
+    if tag_type in TYPE_TAGS_BY_GROUP:
+        allowed_groups = TYPE_TAGS_BY_GROUP[tag_type]
+        if nam.group not in allowed_groups:
+            return TypeTagRequiredness(
+                requiredness=Requiredness.disallowed,
+                message=f"{tag_type.__name__} is not allowed for group {nam.group!r}",
+            )
+
+    match tag_cls:
+        case TypeTag.EtymologyDetail:
+            if nam.requires_etymology():
+                return TypeTagRequiredness(
+                    requiredness=_detail_tag_requiredness(nam, cfg),
+                    must_be_from_original_citation=True,
+                    alternative_with_citation=TypeTag.NoEtymology,
+                )
+        case TypeTag.LocationDetail | TypeTag.SpecimenDetail:
+            if nam.numeric_year() >= 1900 and nam.nomenclature_status.requires_type():
+                return TypeTagRequiredness(
+                    requiredness=_detail_tag_requiredness(nam, cfg),
+                    must_be_from_original_citation=True,
+                    alternative_with_citation=(
+                        TypeTag.NoLocation
+                        if tag_cls is TypeTag.LocationDetail
+                        else TypeTag.NoSpecimen
+                    ),
+                )
+        case (
+            TypeTag.Date
+            | TypeTag.Age
+            | TypeTag.Gender
+            | TypeTag.Organ
+            | TypeTag.CollectedBy
+        ):
+            if (
+                nam.type_specimen
+                and nam.species_type_kind is not SpeciesGroupType.syntypes
+                and (
+                    not nam.is_ichno()
+                    if tag_cls is TypeTag.Organ
+                    else not nam.is_fossil()
+                )
+            ):
+                alternatives = {
+                    TypeTag.Date: TypeTag.NoDate,
+                    TypeTag.Age: TypeTag.NoAge,
+                    TypeTag.Gender: TypeTag.NoGender,
+                    TypeTag.Organ: TypeTag.NoOrgan,
+                    TypeTag.CollectedBy: TypeTag.NoCollector,
+                }
+                return TypeTagRequiredness(
+                    requiredness=_derived_tag_requiredness(
+                        nam,
+                        cfg,
+                        ExperimentalLintCondition(
+                            only_with_tags_from_original=SPECIMEN_TAGS
+                        ),
+                    ),
+                    alternative_with_citation=alternatives[tag_cls],
+                    alternative=(
+                        TypeTag.Involved if tag_cls is TypeTag.CollectedBy else None
+                    ),
+                )
+        case TypeTag.NamedAfter:
+            if (
+                nam.group is Group.species
+                and nam.is_patronym()
+                and not nam.nomenclature_status.is_variant()
+            ):
+                return TypeTagRequiredness(
+                    requiredness=_derived_tag_requiredness(
+                        nam,
+                        cfg,
+                        ExperimentalLintCondition(
+                            only_with_tags_from_original=ETYMOLOGY_TAGS
+                        ),
+                    )
+                )
+        case TypeTag.Repository:
+            if nam.collection is not None and nam.collection.id == MULTIPLE_COLLECTION:
+                return TypeTagRequiredness(
+                    requiredness=_derived_tag_requiredness(
+                        nam, cfg, ExperimentalLintCondition(always=True)
+                    )
+                )
+        case TypeTag.ProbableRepository:
+            if nam.type_specimen and nam.species_type_kind and not nam.collection:
+                return TypeTagRequiredness(
+                    requiredness=_derived_tag_requiredness(
+                        nam,
+                        cfg,
+                        ExperimentalLintCondition(
+                            only_with_tags_from_original=SPECIMEN_TAGS
+                        ),
+                    )
+                )
+        case TypeTag.IncludedSpecies:
+            if nam.nomenclature_status.requires_type() and (
+                nam.genus_type_kind is None or nam.genus_type_kind.requires_tag()
+            ):
+                return TypeTagRequiredness(
+                    requiredness=_derived_tag_requiredness(
+                        nam, cfg, ExperimentalLintCondition(always=True)
+                    ),
+                    alternative=TypeTag.GenusCoelebs,
+                )
+        case TypeTag.TextualOriginalRank:
+            if nam.original_rank is not None and nam.original_rank.needs_textual_rank:
+                return TypeTagRequiredness(
+                    requiredness=_derived_tag_requiredness(
+                        nam, cfg, ExperimentalLintCondition(always=True)
+                    )
+                )
+        case (
+            TypeTag._RawCollector
+            | TypeTag.Altitude
+            | TypeTag.Coordinates
+            | TypeTag.TypeLocality
+            | TypeTag.StratigraphyDetail
+            | TypeTag.Habitat
+            | TypeTag.Host
+            | TypeTag.TypeDesignation
+            | TypeTag.CommissionTypeDesignation
+            | TypeTag.LectotypeDesignation
+            | TypeTag.NeotypeDesignation
+            | TypeTag.GenusCoelebs
+            | TypeTag.TypeSpeciesDetail
+            | TypeTag.CollectionDetail
+            | TypeTag.CitationDetail
+            | TypeTag.DefinitionDetail
+            | TypeTag.DifferentAuthority
+            | TypeTag.NoEtymology
+            | TypeTag.NoLocation
+            | TypeTag.NoSpecimen
+            | TypeTag.NoDate
+            | TypeTag.NoCollector
+            | TypeTag.NoOrgan
+            | TypeTag.NoGender
+            | TypeTag.NoAge
+            | TypeTag.Involved
+            | TypeTag.ImpreciseLocality
+            | TypeTag.NomenclatureDetail
+            | TypeTag.IncorrectGrammar
+            | TypeTag.LSID
+            | TypeTag.TypeSpecimenLink
+            | TypeTag.IgnoreLint
+            | TypeTag.RejectedLSID
+            | TypeTag.PartialTaxon
+            | TypeTag.FormerRepository
+            | TypeTag.ExtraRepository
+            | TypeTag.FutureRepository
+            | TypeTag.TypeSpecimenLinkFor
+            | TypeTag.PhyloCodeNumber
+            | TypeTag.AuthorityPageLink
+            | TypeTag.GuessedRepository
+            | TypeTag.NoOriginalParent
+            | TypeTag.SourceDetail
+            | TypeTag.VerbatimName
+            | TypeTag.IgnorePotentialCitationFrom
+            | TypeTag.DescriptionDetail
+            | TypeTag.InterpretedTypeLocality
+            | TypeTag.InterpretedTypeSpecimen
+            | TypeTag.InterpretedTypeTaxon
+            | TypeTag.NomenclatureComments
+            | TypeTag.AdditionalTypeSpecimen
+            | TypeTag.OriginalTypification
+            | TypeTag.PhylogeneticDefinition
+            | TypeTag.InternalSpecifier
+            | TypeTag.ExternalSpecifier
+            | TypeTag.TreatAsEquivalentTo
+            | TypeTag.MustNotInclude
+            | TypeTag.MustBePartOf
+            | TypeTag.MustNotBePartOf
+            | TypeTag.MustBeExtinct
+            | TypeTag.StructuredVerbatimCitation
+            | TypeTag.PartialTypeLocality
+            | TypeTag.TypeLocalityValidity
+        ):
+            # Alternatives have no independent requirement; other tags retain
+            # their specialized validation in the lint package.
+            pass
+        case _:
+            raise ValueError(f"Unhandled type tag: {tag_cls}")
+    return TypeTagRequiredness(requiredness=Requiredness.optional)
+
+
+def _detail_tag_requiredness(nam: Name, cfg: LintConfig) -> Requiredness:
+    if (
+        has_accessible_original_citation(nam)
+        and nam.original_citation is not None
+        and not nam.original_citation.has_tag(
+            models.article.ArticleTag.NeedsTranslation
+        )
+        # Deliberately start enforcing completeness only after some original
+        # source data has been entered. Use the same evidence as the data level.
+        and any(get_tags_from_original_citation(nam))
+        and ExperimentalLintCondition(above_article_id=69_000).should_apply(nam, cfg)
+    ):
+        return Requiredness.required_high_coverage
+    return Requiredness.desired
+
+
+def _derived_tag_requiredness(
+    nam: Name, cfg: LintConfig, condition: ExperimentalLintCondition
+) -> Requiredness:
+    # Source evidence and experimental cutoffs affect enforcement, not whether
+    # a derived tag is useful for completing the name.
+    if has_accessible_original_citation(nam) and condition.should_apply(nam, cfg):
+        return Requiredness.required_high_coverage
+    return Requiredness.desired
