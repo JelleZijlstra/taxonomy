@@ -81,7 +81,7 @@ from .db.models import (
 from .db.models.base import LintConfig, Linter, LintResource, ModelT
 from .db.models.ignored_doi import IgnoreReason
 from .db.models.item_file import ItemFile
-from .db.models.name import citation_match
+from .db.models.name import citation_match, required_fields
 from .db.models.name.required_fields import is_desired
 from .db.models.person import PersonLevel
 
@@ -2982,6 +2982,63 @@ def fill_bhl_names(nams: Iterable[Name] | None = None) -> None:
         for tag in tags:
             subprocess.check_call(["open", tag.url])
         nam.edit()
+
+
+@command
+def report_missing_requiredness(
+    nams: Iterable[Name] | None = None,
+    *,
+    levels: Sequence[required_fields.Requiredness] = (
+        required_fields.Requiredness.pending_required_high_coverage,
+    ),
+    high_coverage_only: bool = True,
+    include_fields: bool = True,
+    include_type_tags: bool = True,
+    show_names: bool = False,
+) -> dict[str, list[Name]]:
+    """Count missing obligations, defaulting to the high-coverage pending backlog.
+
+    Pass a Name query to restrict the scope, or select other requiredness levels.
+    Returns the affected Names per field/tag; IgnoreLint does not hide missing data.
+    This is a read-only report and does not enable pending lint requirements.
+    """
+    if nams is None:
+        nams = Name.select_valid()
+    missing: dict[str, list[Name]] = defaultdict(list)
+    checked = affected = 0
+    for nam in nams:
+        if high_coverage_only and not nam.taxon.is_high_coverage():
+            continue
+        checked += 1
+        requirements = list(
+            required_fields.get_missing_requirements(
+                nam,
+                levels=levels,
+                include_fields=include_fields,
+                include_type_tags=include_type_tags,
+            )
+        )
+        if requirements:
+            affected += 1
+        for label, _ in requirements:
+            missing[label].append(nam)
+    rows = sorted(missing.items(), key=lambda item: (-len(item[1]), item[0]))
+    print(
+        f"{affected}/{checked} names have missing requirements at the selected levels"
+    )
+    print(f"{sum(map(len, missing.values()))} missing obligations")
+    getinput.print_table(
+        [
+            ["Requirement", "Missing names"],
+            *[[label, str(len(names))] for label, names in rows],
+        ]
+    )
+    if show_names:
+        for label, names in rows:
+            getinput.print_header(label)
+            for nam in names:
+                print(f"{nam.id}: {nam}")
+    return dict(missing)
 
 
 @command

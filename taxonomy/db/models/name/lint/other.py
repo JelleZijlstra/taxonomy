@@ -11,7 +11,7 @@ import re
 from collections import defaultdict
 from collections.abc import Iterable, Iterator
 from datetime import UTC, datetime
-from typing import TypeVar
+from typing import TypeVar, assert_never
 
 import clirm
 import requests
@@ -21,14 +21,11 @@ from taxonomy.apis.zoobank import get_zoobank_data
 from taxonomy.db import helpers
 from taxonomy.db.constants import (
     AgeClass,
-    ArticleKind,
     CommentKind,
     DateSource,
     Group,
-    NameDataLevel,
     NamingConvention,
     NomenclatureStatus,
-    OriginalCitationDataLevel,
     Rank,
     Status,
 )
@@ -45,7 +42,13 @@ from taxonomy.db.models.lint import (
 from taxonomy.db.models.lint_types import LintIssue, LintResult
 from taxonomy.db.models.name import required_fields
 from taxonomy.db.models.name.name import ExperimentalLintCondition as Exp
-from taxonomy.db.models.name.name import Name, NameComment, NameTag, TypeTag
+from taxonomy.db.models.name.name import (
+    Name,
+    NameComment,
+    NameTag,
+    TypeTag,
+    get_tags_from_original_citation,
+)
 from taxonomy.db.models.name.organ import CHECKED_ORGANS
 from taxonomy.db.models.person import AuthorTag, PersonLevel
 from taxonomy.db.models.taxon import Taxon
@@ -239,78 +242,6 @@ def check_year_matches(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
             )
 
 
-TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
-    **dict.fromkeys(
-        (
-            TypeTag.Date,
-            TypeTag.Gender,
-            TypeTag.Age,
-            TypeTag.Organ,
-            TypeTag.Altitude,
-            TypeTag.Coordinates,
-            TypeTag.TypeLocality,
-            TypeTag.StratigraphyDetail,
-            TypeTag.Habitat,
-            TypeTag.Host,
-            TypeTag.LectotypeDesignation,
-            TypeTag.NeotypeDesignation,
-            TypeTag.SpecimenDetail,
-            TypeTag.LocationDetail,
-            TypeTag.Repository,
-            TypeTag.ProbableRepository,
-            TypeTag.CollectionDetail,
-            TypeTag.CollectedBy,
-            TypeTag.Involved,
-            TypeTag.NoLocation,
-            TypeTag.NoSpecimen,
-            TypeTag.NoDate,
-            TypeTag.NoCollector,
-            TypeTag.NoOrgan,
-            TypeTag.NoGender,
-            TypeTag.NoAge,
-            TypeTag.ImpreciseLocality,
-            TypeTag.TypeSpecimenLink,
-            TypeTag.FormerRepository,
-            TypeTag.ExtraRepository,
-            TypeTag.FutureRepository,
-            TypeTag.TypeSpecimenLinkFor,
-            TypeTag.GuessedRepository,
-            TypeTag.InterpretedTypeLocality,
-            TypeTag.InterpretedTypeSpecimen,
-            TypeTag.AdditionalTypeSpecimen,
-            TypeTag.OriginalTypification,
-            TypeTag.PartialTypeLocality,
-            TypeTag.TypeLocalityValidity,
-        ),
-        (Group.species,),
-    ),
-    **dict.fromkeys(
-        (
-            TypeTag.TypeDesignation,
-            TypeTag.IncludedSpecies,
-            TypeTag.GenusCoelebs,
-            TypeTag.TypeSpeciesDetail,
-            type(TypeTag.NoOriginalParent),
-        ),
-        (Group.genus,),
-    ),
-    TypeTag.CommissionTypeDesignation: (Group.genus, Group.family),
-    TypeTag.InterpretedTypeTaxon: (Group.genus, Group.family),
-}
-
-
-@LINT.add("disallowed_attributes")
-def check_disallowed_attributes(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    for tag in nam.type_tags:
-        tag_groups = TYPE_TAGS_BY_GROUP.get(type(tag))
-        if tag_groups is not None and nam.group not in tag_groups:
-            allowed = ", ".join(group.name for group in tag_groups)
-            yield (
-                f"should not have type tag {type(tag).__name__} in group "
-                f"{nam.group.name} (allowed groups: {allowed})"
-            )
-
-
 @LINT.add("autoset_original_rank")
 def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_rank is not None:
@@ -327,21 +258,30 @@ def autoset_original_rank(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
 
 @LINT.add("data_level")
 def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if not nam.taxon.is_high_coverage():
+    if (
+        not nam.taxon.is_high_coverage()
+        or not required_fields.has_accessible_original_citation(nam)
+        or nam.original_citation is None
+        or nam.original_citation.has_tag(ArticleTag.NeedsTranslation)
+        or any(get_tags_from_original_citation(nam))
+    ):
         return
-    ocdl, ocdl_reason = nam.original_citation_data_level()
-    ndl, ndl_reason = nam.name_data_level()
-    match ocdl:
-        case OriginalCitationDataLevel.no_citation:
-            pass
-        case OriginalCitationDataLevel.no_data:
-            if ndl < NameDataLevel.missing_details_tags:
-                yield f"has no data from original ({ocdl_reason}), but missing important fields: {ndl_reason}"
-        case OriginalCitationDataLevel.some_data:
-            if Exp(above_article_id=69_000).should_apply(nam, cfg):
-                yield f"recent name has incomplete data from original ({ocdl_reason})"
-        case OriginalCitationDataLevel.all_required_data:
-            pass
+    # Required fields have their own linters. This is the remaining special
+    # case: desired fields must be filled before any original-source data exists.
+    missing = [
+        label.removeprefix("field ")
+        for label, _ in required_fields.get_missing_requirements(
+            nam,
+            levels=(
+                required_fields.Requiredness.desired,
+                required_fields.Requiredness.pending_required_high_coverage,
+            ),
+            include_type_tags=False,
+            cfg=cfg,
+        )
+    ]
+    if missing:
+        yield f"has no data from original, but missing important fields: {', '.join(sorted(missing))}"
 
 
 @LINT.add("citation_group")
@@ -536,14 +476,6 @@ def check_specific_authors(nam: Name, cfg: LintConfig) -> Iterable[str]:
                 )
 
 
-def has_accessible_original_citation(nam: Name) -> bool:
-    return (
-        nam.original_citation is not None
-        and nam.original_citation.kind is not ArticleKind.no_copy
-        and not nam.original_citation.has_tag(ArticleTag.NonOriginal)
-    )
-
-
 @LINT.add("infer_author_year")
 def infer_author_year(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.original_citation is None:
@@ -562,17 +494,6 @@ def infer_author_year(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     if nam.year is None:
         message = "has original citation but no year"
         yield field_issue(message, nam, "year", citation.year)
-
-
-@LINT.add("derived_tags")
-def check_required_derived_tags(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    if not has_accessible_original_citation(nam) or not nam.taxon.is_high_coverage():
-        return
-    for tags, exp in nam.get_required_derived_tags():
-        if not any(nam.has_type_tag(tag) for tag in tags) and exp.should_apply(
-            nam, cfg
-        ):
-            yield f"missing required derived tags {tags}"
 
 
 @LINT.add("synonym_group")
@@ -862,7 +783,9 @@ def _lint_requiredness_status(
             if status.is_nonempty:
                 yield f"{nam} has disallowed {label} (value {status.value}){extra}"
         case (
-            required_fields.Requiredness.optional | required_fields.Requiredness.desired
+            required_fields.Requiredness.optional
+            | required_fields.Requiredness.desired
+            | required_fields.Requiredness.pending_required_high_coverage
         ):
             pass
         case required_fields.Requiredness.required:
@@ -871,6 +794,8 @@ def _lint_requiredness_status(
         case required_fields.Requiredness.required_high_coverage:
             if nam.taxon.is_high_coverage() and not status.is_nonempty:
                 yield f"{nam} is missing required {label}{extra}"
+        case _:
+            assert_never(status.requiredness)
 
 
 def make_required_fields_linter(field: clirm.Field) -> LintWrapper[Name]:

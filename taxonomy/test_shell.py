@@ -2,8 +2,18 @@ import pytest
 
 from taxonomy import shell
 from taxonomy.db import models
-from taxonomy.db.constants import AgeClass, Group, NomenclatureStatus, Status
+from taxonomy.db.constants import (
+    AgeClass,
+    ArticleKind,
+    CoverageLevel,
+    Group,
+    NomenclatureStatus,
+    Rank,
+    Status,
+)
 from taxonomy.db.models import Name, Taxon, TypeTag
+from taxonomy.db.models.name.required_fields import Requiredness
+from taxonomy.db.models.tags import TaxonTag
 
 
 def _location(
@@ -24,6 +34,56 @@ def _location(
         latitude="1°N" if coordinates else None,
         longitude="2°E" if coordinates else None,
     )
+
+
+def test_report_missing_requiredness_scope_counts_and_options(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def make_pending_name(label: str, coverage: CoverageLevel) -> Name:
+        return Name.virtual(
+            root_name=label,
+            group=Group.species,
+            status=Status.valid,
+            nomenclature_status=NomenclatureStatus.available,
+            taxon=Taxon.virtual(
+                valid_name=label,
+                rank=Rank.genus,
+                age=AgeClass.extant,
+                tags=(TaxonTag.Coverage(coverage),),
+            ),
+            year="2000",
+            original_rank=Rank.species,
+            original_citation=models.Article.virtual(
+                name="original.pdf", kind=ArticleKind.electronic, tags=()
+            ),
+            type_tags=(),
+            tags=(),
+        )
+
+    high = make_pending_name("Covered", CoverageLevel.high)
+    low = make_pending_name("Incidental", CoverageLevel.low)
+    result = shell.report_missing_requiredness([high, low], include_fields=False)
+    assert result == {
+        "type tag EtymologyDetail": [high],
+        "type tag LocationDetail": [high],
+        "type tag SpecimenDetail": [high],
+    }
+    output = capsys.readouterr().out
+    assert "1/1 names" in output
+    assert "3 missing obligations" in output
+    result = shell.report_missing_requiredness(
+        [high, low], high_coverage_only=False, include_fields=False, show_names=True
+    )
+    assert result["type tag LocationDetail"] == [high, low]
+    output = capsys.readouterr().out
+    assert "2/2 names" in output
+    assert "6 missing obligations" in output
+    assert "Incidental" in output
+    result = shell.report_missing_requiredness(
+        [high], levels=(Requiredness.desired,), include_type_tags=False
+    )
+    assert "field type_specimen" in result
+    assert not any(label.startswith("type tag") for label in result)
 
 
 def _name(

@@ -1190,11 +1190,14 @@ def test_redirect_rule_flags_name_type_locality() -> None:
 def test_type_tag_group_restrictions(
     group: Group, tag: TypeTag, allowed: set[Group]
 ) -> None:
-    from .lint.other import check_disallowed_attributes
+    from .required_fields import Requiredness, get_type_tag_status
 
     name = Name.virtual(group=group, type_tags=(tag,))
-    messages = list(check_disallowed_attributes(name, LintConfig(autofix=True)))
-    assert bool(messages) == (group not in allowed)
-    if messages:
-        assert type(tag).__name__ in str(messages[0])
+    tag_cls = TypeTag._tag_to_member[tag._tag]
+    status = get_type_tag_status(name, tag_cls)
+    assert status.is_nonempty
+    assert (status.requiredness is Requiredness.disallowed) == (group not in allowed)
+    if status.requiredness is Requiredness.disallowed:
+        assert status.message is not None
+        assert type(tag).__name__ in status.message
     assert name.type_tags == (tag,)

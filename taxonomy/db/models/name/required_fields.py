@@ -1,4 +1,5 @@
 import enum
+from collections.abc import Container, Iterable
 from dataclasses import dataclass
 from typing import assert_never
 
@@ -40,6 +41,8 @@ class Requiredness(enum.Enum):
     optional = enum.auto()
     # Recommended, but not enforced. Affects whether name shows up as green.
     desired = enum.auto()
+    # Desired now; intended to become required in high-coverage taxa.
+    pending_required_high_coverage = enum.auto()
     # Required by lint in high-coverage taxa
     required_high_coverage = enum.auto()
     # Required by lint in all taxa
@@ -49,6 +52,7 @@ class Requiredness(enum.Enum):
         match self:
             case (
                 Requiredness.desired
+                | Requiredness.pending_required_high_coverage
                 | Requiredness.required_high_coverage
                 | Requiredness.required
             ):
@@ -94,8 +98,7 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
         case "year":
             if nam.nomenclature_status is NomenclatureStatus.informal:
                 return Requiredness.disallowed, None
-            # TODO: Move towards required_high_coverage
-            return Requiredness.desired, None
+            return Requiredness.pending_required_high_coverage, None
         case "page_described":
             if nam.nomenclature_status is NomenclatureStatus.informal:
                 return Requiredness.disallowed, None
@@ -127,8 +130,7 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
                         "subsequent usage must have verbatim citation",
                     )
                 else:
-                    # TODO: Move towards required_high_coverage
-                    return Requiredness.desired, None
+                    return Requiredness.pending_required_high_coverage, None
             else:
                 return Requiredness.disallowed, None
         case "citation_group":
@@ -243,8 +245,7 @@ def get_requiredness(nam: Name, field: str) -> tuple[Requiredness, str | None]:
             elif not nam.nomenclature_status.requires_type():
                 return Requiredness.optional, None
             else:
-                # TODO: Eventually make required_high_coverage
-                return Requiredness.desired, None
+                return Requiredness.pending_required_high_coverage, None
         case "original_parent":
             if not (
                 nam.group is Group.species
@@ -357,12 +358,51 @@ def get_type_tag_status(
         )
         or tag._tag == alternative_id
     )
+    message = requirement.message
+    if not matching_tags and requirement.requiredness.is_desired():
+        expected = [getattr(tag_cls, "__name__", str(tag_cls))]
+        if requirement.alternative_with_citation is not None:
+            expected.append(requirement.alternative_with_citation.__name__)
+        description = " or ".join(expected)
+        if requirement.must_be_from_original_citation:
+            description += " from original_citation"
+        if requirement.alternative is not None:
+            description += f" or {requirement.alternative.__name__}"
+        explanation = f"expected {description}"
+        message = f"{message}; {explanation}" if message else explanation
     return FieldStatus(
         requiredness=requirement.requiredness,
-        message=requirement.message,
+        message=message,
         is_nonempty=bool(matching_tags),
         value=matching_tags,
     )
+
+
+def get_missing_requirements(
+    nam: Name,
+    *,
+    levels: Container[Requiredness] = (Requiredness.pending_required_high_coverage,),
+    include_fields: bool = True,
+    include_type_tags: bool = True,
+    cfg: LintConfig = LintConfig(autofix=False, interactive=False),
+) -> Iterable[tuple[str, FieldStatus]]:
+    """Yield missing field/tag obligations at the selected requiredness levels.
+
+    This reports policy, irrespective of coverage or IgnoreLint tags. Callers can
+    filter the Names by coverage to measure the effect of promoting a level.
+    Alternatives are counted as one obligation, not separate missing tags.
+    """
+    if include_fields:
+        for field in Name.clirm_fields.values():
+            status = get_status(nam, field)
+            if status.requiredness in levels and not status.is_nonempty:
+                yield f"field {field.attribute_name}", status
+    if include_type_tags:
+        for tag_cls in TypeTag._tag_to_member.values():
+            status = get_type_tag_status(nam, tag_cls, cfg=cfg)
+            if status.requiredness in levels and not status.is_nonempty:
+                label = getattr(tag_cls, "__name__", str(tag_cls))
+                yield f"type tag {label}", status
 
 
 TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
@@ -492,9 +532,8 @@ def get_type_tag_requiredness(
                     requiredness=_derived_tag_requiredness(
                         nam,
                         cfg,
-                        ExperimentalLintCondition(
-                            only_with_tags_from_original=SPECIMEN_TAGS
-                        ),
+                        ExperimentalLintCondition(),
+                        prerequisite_tags=SPECIMEN_TAGS,
                     ),
                     alternative_with_citation=alternatives[tag_cls],
                     alternative=(
@@ -529,9 +568,8 @@ def get_type_tag_requiredness(
                     requiredness=_derived_tag_requiredness(
                         nam,
                         cfg,
-                        ExperimentalLintCondition(
-                            only_with_tags_from_original=SPECIMEN_TAGS
-                        ),
+                        ExperimentalLintCondition(),
+                        prerequisite_tags=SPECIMEN_TAGS,
                     )
                 )
         case TypeTag.IncludedSpecies:
@@ -626,25 +664,36 @@ def get_type_tag_requiredness(
 
 def _detail_tag_requiredness(nam: Name, cfg: LintConfig) -> Requiredness:
     if (
-        has_accessible_original_citation(nam)
-        and nam.original_citation is not None
-        and not nam.original_citation.has_tag(
-            models.article.ArticleTag.NeedsTranslation
-        )
+        nam.original_citation is None
+        or not has_accessible_original_citation(nam)
+        or nam.original_citation.has_tag(models.article.ArticleTag.NeedsTranslation)
+    ):
+        return Requiredness.desired
+    if (
         # Deliberately start enforcing completeness only after some original
         # source data has been entered. Use the same evidence as the data level.
-        and any(get_tags_from_original_citation(nam))
+        any(get_tags_from_original_citation(nam))
         and ExperimentalLintCondition(above_article_id=69_000).should_apply(nam, cfg)
     ):
         return Requiredness.required_high_coverage
-    return Requiredness.desired
+    return Requiredness.pending_required_high_coverage
 
 
 def _derived_tag_requiredness(
-    nam: Name, cfg: LintConfig, condition: ExperimentalLintCondition
+    nam: Name,
+    cfg: LintConfig,
+    condition: ExperimentalLintCondition,
+    prerequisite_tags: tuple[type[TypeTag], ...] | None = None,
 ) -> Requiredness:
-    # Source evidence and experimental cutoffs affect enforcement, not whether
-    # a derived tag is useful for completing the name.
-    if has_accessible_original_citation(nam) and condition.should_apply(nam, cfg):
+    if nam.original_citation is None or not has_accessible_original_citation(nam):
+        return Requiredness.desired
+    if prerequisite_tags is not None:
+        if not any(
+            isinstance(tag, prerequisite_tags)
+            and getattr(tag, "source", None) == nam.original_citation
+            for tag in nam.type_tags
+        ):
+            return Requiredness.desired
+    if condition.should_apply(nam, cfg):
         return Requiredness.required_high_coverage
-    return Requiredness.desired
+    return Requiredness.pending_required_high_coverage

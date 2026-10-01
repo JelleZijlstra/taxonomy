@@ -23,6 +23,8 @@ from taxonomy.db.models.tags import TaxonTag
 from .name import TypeTag, TypeTagCons
 from .required_fields import (
     Requiredness,
+    get_missing_requirements,
+    get_requiredness,
     get_type_tag_requiredness,
     get_type_tag_status,
 )
@@ -65,11 +67,14 @@ def test_detail_enforcement_starts_with_original_data(tag_cls: TypeTagCons) -> N
     # Experimental mode must not bypass the deliberate no-data exemption.
     assert (
         get_type_tag_requiredness(nam, tag_cls, cfg=EXPERIMENTAL).requiredness
-        is Requiredness.desired
+        is Requiredness.pending_required_high_coverage
     )
     other = Article.virtual(name="later.pdf")
     nam.type_tags = (TypeTag.CitationDetail("Later evidence", other),)  # type: ignore[assignment]
-    assert get_type_tag_requiredness(nam, tag_cls).requiredness is Requiredness.desired
+    assert (
+        get_type_tag_requiredness(nam, tag_cls).requiredness
+        is Requiredness.pending_required_high_coverage
+    )
     nam.type_tags = (TypeTag.CitationDetail("Original evidence", original),)  # type: ignore[assignment]
     requirement = get_type_tag_requiredness(nam, tag_cls)
     assert requirement.requiredness is Requiredness.required_high_coverage
@@ -117,7 +122,10 @@ def test_unusable_original_does_not_enforce_details(source_state: str) -> None:
 
 @pytest.mark.parametrize(
     ("year", "expected"),
-    [("2019", Requiredness.desired), ("2020", Requiredness.required_high_coverage)],
+    [
+        ("2019", Requiredness.pending_required_high_coverage),
+        ("2020", Requiredness.required_high_coverage),
+    ],
 )
 def test_detail_experimental_cutoff(year: str, expected: Requiredness) -> None:
     nam = make_name(year=year)
@@ -142,7 +150,7 @@ def test_detail_id_cutoffs(
     monkeypatch.setattr(model, "id", property(lambda _: cutoff - 1))
     assert (
         get_type_tag_requiredness(nam, TypeTag.LocationDetail).requiredness
-        is Requiredness.desired
+        is Requiredness.pending_required_high_coverage
     )
     monkeypatch.setattr(model, "id", property(lambda _: cutoff))
     assert (
@@ -234,6 +242,141 @@ def test_derived_enforcement_requires_relevant_source_data() -> None:
             get_type_tag_requiredness(nam, tag_cls).requiredness
             is Requiredness.optional
         )
+
+
+@pytest.mark.parametrize(
+    "tag_cls",
+    [
+        TypeTag.Organ,
+        TypeTag.Date,
+        TypeTag.Age,
+        TypeTag.Gender,
+        TypeTag.CollectedBy,
+        TypeTag.ProbableRepository,
+    ],
+)
+@pytest.mark.parametrize("prerequisite", [TypeTag.SpecimenDetail, TypeTag.NoSpecimen])
+@pytest.mark.parametrize("source", ["absent", "later", "original"])
+@pytest.mark.parametrize("year", ["2000", "2021"])
+@pytest.mark.parametrize("cfg", [CFG, EXPERIMENTAL], ids=["normal", "experimental"])
+def test_specimen_prerequisites_and_rollout(
+    tag_cls: TypeTagCons,
+    prerequisite: TypeTagCons,
+    source: str,
+    year: str,
+    cfg: LintConfig,
+) -> None:
+    nam = make_name(year=year)
+    nam.type_specimen = "BMNH 1"
+    nam.species_type_kind = SpeciesGroupType.holotype
+    if source != "absent":
+        article = (
+            nam.original_citation
+            if source == "original"
+            else Article.virtual(name="later.pdf")
+        )
+        tag = (
+            prerequisite("Specimen evidence", article)
+            if prerequisite is TypeTag.SpecimenDetail
+            else prerequisite(article)
+        )
+        nam.type_tags = (tag,)  # type: ignore[assignment]
+    if source != "original":
+        expected = Requiredness.desired
+    elif year == "2021" or cfg.experimental:
+        expected = Requiredness.required_high_coverage
+    else:
+        expected = Requiredness.pending_required_high_coverage
+    assert get_type_tag_requiredness(nam, tag_cls, cfg=cfg).requiredness is expected
+
+
+@pytest.mark.parametrize(
+    "source_state", ["missing", "no_copy", "NonOriginal", "Incomplete"]
+)
+def test_specimen_prerequisite_requires_accessible_citation(source_state: str) -> None:
+    nam = make_name()
+    nam.type_specimen = "BMNH 1"
+    original = nam.original_citation
+    assert original is not None
+    nam.type_tags = (TypeTag.NoSpecimen(original),)  # type: ignore[assignment]
+    if source_state == "missing":
+        nam.original_citation = None
+    elif source_state == "no_copy":
+        original.kind = ArticleKind.no_copy
+    else:
+        original.tags = (getattr(ArticleTag, source_state)(),)
+    assert (
+        get_type_tag_requiredness(nam, TypeTag.Organ, cfg=EXPERIMENTAL).requiredness
+        is Requiredness.desired
+    )
+    assert "type tag Organ" not in dict(get_missing_requirements(nam))
+
+
+@pytest.mark.parametrize("evidence", ["absent", "later", "positive", "negative"])
+@pytest.mark.parametrize("year", ["2000", "2021"])
+@pytest.mark.parametrize("cfg", [CFG, EXPERIMENTAL], ids=["normal", "experimental"])
+def test_named_after_is_pending_without_etymology_prerequisite(
+    evidence: str, year: str, cfg: LintConfig
+) -> None:
+    nam = make_name(year=year)
+    nam.species_name_complex = SpeciesNameComplex.virtual(
+        kind=SpeciesNameKind.patronym_masculine
+    )
+    if evidence == "negative":
+        nam.type_tags = (TypeTag.NoEtymology(nam.original_citation),)  # type: ignore[assignment]
+    elif evidence != "absent":
+        source = (
+            Article.virtual(name="later.pdf")
+            if evidence == "later"
+            else nam.original_citation
+        )
+        nam.type_tags = (TypeTag.EtymologyDetail("Named for Example", source),)  # type: ignore[assignment]
+    expected = Requiredness.pending_required_high_coverage
+    if evidence in ("positive", "negative") and (year == "2021" or cfg.experimental):
+        expected = Requiredness.required_high_coverage
+    assert (
+        get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness
+        is expected
+    )
+    nam.original_citation = None
+    assert (
+        get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness
+        is Requiredness.desired
+    )
+
+
+@pytest.mark.parametrize("case", ["non_patronym", "variant", "genus"])
+def test_named_after_retains_applicability_conditions(case: str) -> None:
+    nam = make_name(group=Group.genus if case == "genus" else Group.species)
+    if case != "non_patronym":
+        nam.species_name_complex = SpeciesNameComplex.virtual(
+            kind=SpeciesNameKind.patronym_masculine
+        )
+    if case == "variant":
+        nam.nomenclature_status = NomenclatureStatus.variant
+    assert (
+        get_type_tag_requiredness(
+            nam, TypeTag.NamedAfter, cfg=EXPERIMENTAL
+        ).requiredness
+        is Requiredness.optional
+    )
+
+
+def test_no_specimen_enables_presence_lint() -> None:
+    from .lint.other import check_type_tags_presence
+
+    nam = make_name()
+    nam.type_specimen = "BMNH 1"
+    nam.type_tags = (TypeTag.NoSpecimen(nam.original_citation),)  # type: ignore[assignment]
+    assert any(
+        "missing required type tag Organ" in str(issue)
+        for issue in check_type_tags_presence(nam, CFG)
+    )
+    nam.type_tags = (*nam.type_tags, TypeTag.NoOrgan(nam.original_citation))  # type: ignore[assignment]
+    assert not any(
+        "missing required type tag Organ" in str(issue)
+        for issue in check_type_tags_presence(nam, CFG)
+    )
 
 
 def test_always_enforced_derived_tags_do_not_need_original_data(
@@ -381,8 +524,128 @@ def test_type_tag_status_passes_config_and_leaves_coverage_to_caller() -> None:
     nam.taxon.tags = (TaxonTag.Coverage(CoverageLevel.low),)
     nam.type_tags = (TypeTag.SpecimenDetail("Evidence", nam.original_citation),)  # type: ignore[assignment]
     status = get_type_tag_status(nam, TypeTag.LocationDetail)
-    assert status.requiredness is Requiredness.desired
+    assert status.requiredness is Requiredness.pending_required_high_coverage
     assert not status.is_nonempty
     status = get_type_tag_status(nam, TypeTag.LocationDetail, cfg=EXPERIMENTAL)
     assert status.requiredness is Requiredness.required_high_coverage
     assert not status.is_nonempty
+
+
+def test_pending_requirements_are_desired_but_not_linted() -> None:
+    from .lint.other import check_type_tags_presence, required_fields_linters
+
+    nam = make_name(year="2000")
+    nam.type_specimen = "BMNH 1"
+    assert Requiredness.pending_required_high_coverage.is_desired()
+    assert (
+        get_type_tag_requiredness(nam, TypeTag.Organ).requiredness
+        is Requiredness.desired
+    )
+    assert (
+        get_type_tag_requiredness(nam, TypeTag.LocationDetail).requiredness
+        is Requiredness.pending_required_high_coverage
+    )
+    # Without source data, detail tags stay pending and derived tags stay desired,
+    # even in experimental mode.
+    assert list(check_type_tags_presence(nam, EXPERIMENTAL)) == []
+    nam.year = None
+    assert (
+        get_requiredness(nam, "year")[0] is Requiredness.pending_required_high_coverage
+    )
+    assert "year" in nam.get_required_fields()
+    assert list(required_fields_linters["year"](nam, EXPERIMENTAL)) == []
+    nam.original_citation = None
+    assert (
+        get_requiredness(nam, "verbatim_citation")[0]
+        is Requiredness.pending_required_high_coverage
+    )
+
+
+def test_pending_report_counts_obligations_and_accepts_alternatives() -> None:
+    nam = make_name(year="2000")
+    nam.type_specimen = "BMNH 1"
+    nam.type_tags = (  # type: ignore[assignment]
+        TypeTag.NoSpecimen(nam.original_citation),
+        TypeTag.NoOrgan(nam.original_citation),
+    )
+    missing = dict(get_missing_requirements(nam))
+    assert "type tag Date" in missing
+    assert "type tag Organ" not in missing
+    assert "type tag NoOrgan" not in missing
+    assert "type tag NoDate" not in missing
+    assert "field type_specimen" not in missing
+    assert dict(get_missing_requirements(nam, include_type_tags=False)) == {}
+    assert all(
+        label.startswith("type tag ")
+        for label, _ in get_missing_requirements(nam, include_fields=False)
+    )
+    desired = dict(get_missing_requirements(nam, levels=(Requiredness.desired,)))
+    assert "field collection" in desired
+    assert "field year" not in desired
+    nam.year = None
+    assert set(dict(get_missing_requirements(nam, include_type_tags=False))) == {
+        "field year"
+    }
+
+
+def test_presence_lint_explains_source_and_alternative() -> None:
+    from .lint.other import check_type_tags_presence
+
+    nam = make_name()
+    other = Article.virtual(name="later.pdf")
+    nam.type_tags = (  # type: ignore[assignment]
+        TypeTag.SpecimenDetail("Evidence", nam.original_citation),
+        TypeTag.LocationDetail("Later locality", other),
+    )
+    issues = list(check_type_tags_presence(nam, CFG))
+    assert any(
+        "expected LocationDetail or NoLocation from original_citation" in str(issue)
+        for issue in issues
+    )
+    nam.type_tags = (*nam.type_tags, TypeTag.NoLocation(nam.original_citation))  # type: ignore[assignment]
+    assert not any(
+        "LocationDetail" in str(issue) for issue in check_type_tags_presence(nam, CFG)
+    )
+
+
+def test_data_level_checks_only_remaining_fields_without_enums(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from .lint.other import check_data_level
+
+    def unused_level(self: Name) -> None:
+        raise AssertionError("should not use data-level methods")
+
+    monkeypatch.setattr(Name, "name_data_level", unused_level)
+    monkeypatch.setattr(Name, "original_citation_data_level", unused_level)
+    nam = make_name()
+    messages = [str(issue) for issue in check_data_level(nam, CFG)]
+    assert len(messages) == 1
+    assert "type_specimen" in messages[0]
+    assert "collection" in messages[0]
+    assert "type_tags" not in messages[0]
+    # Missing enforced fields are left to their own linters.
+    assert "original_name" not in messages[0]
+    nam.type_tags = (TypeTag.CitationDetail("Evidence", nam.original_citation),)  # type: ignore[assignment]
+    assert list(check_data_level(nam, CFG)) == []
+
+
+@pytest.mark.parametrize(
+    "reason", ["low_coverage", "no_citation", "incomplete", "translation"]
+)
+def test_data_level_preserves_exemptions(reason: str) -> None:
+    from .lint.other import check_data_level
+
+    nam = make_name()
+    assert nam.original_citation is not None
+    if reason == "low_coverage":
+        nam.taxon.tags = (TaxonTag.Coverage(CoverageLevel.low),)
+    elif reason == "no_citation":
+        nam.original_citation = None
+    elif reason == "incomplete":
+        nam.original_citation.tags = (ArticleTag.Incomplete(),)
+    else:
+        nam.original_citation.tags = (
+            ArticleTag.NeedsTranslation(SourceLanguage.russian),
+        )
+    assert list(check_data_level(nam, CFG)) == []
