@@ -33,6 +33,9 @@ from .name import (
     get_tags_from_original_citation,
 )
 
+# Classification for completeness displays; applicability lives in the per-tag policy.
+DETAIL_TAGS = (TypeTag.EtymologyDetail, TypeTag.LocationDetail, TypeTag.SpecimenDetail)
+
 
 class Requiredness(enum.Enum):
     # Lint error if this exists
@@ -393,16 +396,37 @@ def get_missing_requirements(
     Alternatives are counted as one obligation, not separate missing tags.
     """
     if include_fields:
-        for field in Name.clirm_fields.values():
-            status = get_status(nam, field)
+        for field_name, status in iter_field_statuses(nam):
             if status.requiredness in levels and not status.is_nonempty:
-                yield f"field {field.attribute_name}", status
+                yield f"field {field_name}", status
     if include_type_tags:
-        for tag_cls in TypeTag._tag_to_member.values():
-            status = get_type_tag_status(nam, tag_cls, cfg=cfg)
+        for tag_cls, status in iter_type_tag_statuses(nam, cfg=cfg):
             if status.requiredness in levels and not status.is_nonempty:
                 label = getattr(tag_cls, "__name__", str(tag_cls))
                 yield f"type tag {label}", status
+
+
+def iter_field_statuses(nam: Name) -> Iterable[tuple[str, FieldStatus]]:
+    """Yield each field's identity and status, including optional/disallowed fields."""
+    for field in Name.clirm_fields.values():
+        yield field.attribute_name, get_status(nam, field)
+
+
+def iter_type_tag_statuses(
+    nam: Name,
+    *,
+    tag_classes: Iterable[TypeTagCons] | None = None,
+    cfg: LintConfig = LintConfig(autofix=False, interactive=False),
+) -> Iterable[tuple[TypeTagCons, FieldStatus]]:
+    """Yield tag constructors and statuses, preserving identities and alternatives.
+
+    Completeness callers should select all is_desired() statuses; lint callers
+    additionally apply the requiredness level and coverage rules.
+    """
+    if tag_classes is None:
+        tag_classes = TypeTag._tag_to_member.values()
+    for tag_cls in tag_classes:
+        yield tag_cls, get_type_tag_status(nam, tag_cls, cfg=cfg)
 
 
 TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {

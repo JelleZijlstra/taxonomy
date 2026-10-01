@@ -1934,12 +1934,20 @@ class Name(BaseModel):
         if self.original_citation is None:
             print("No original citation; cannot set nos")
             return
-        required_derived_tags = [group for group, _ in self.get_required_derived_tags()]
-        for group in self.get_missing_tags(required_derived_tags):
-            if len(group) >= 2:
-                tag_cls = group[1]
-                # static analysis: ignore
-                new_tag = tag_cls(source=self.original_citation)
+        required_fields = models.name.required_fields
+        for tag_cls, status in required_fields.iter_type_tag_statuses(self):
+            if (
+                tag_cls in required_fields.DETAIL_TAGS
+                or not status.requiredness.is_desired()
+                or status.is_nonempty
+            ):
+                continue
+            requirement = required_fields.get_type_tag_requiredness(self, tag_cls)
+            no_tag = requirement.alternative_with_citation
+            if no_tag is not None:
+                # Explicit editing action: only add source-bearing absence tags
+                # for derived data, never absence assertions for source details.
+                new_tag = no_tag(source=self.original_citation)
                 print(f"Adding tag: {new_tag!r}")
                 assert isinstance(new_tag, TypeTag)
                 self.add_type_tag(new_tag)
@@ -1954,19 +1962,27 @@ class Name(BaseModel):
             )
         if self.original_citation.lacks_full_text():
             return (OriginalCitationDataLevel.no_citation, "non-original citation")
-        source_tags = list(get_tags_from_original_citation(self))
-        if not source_tags:
+        if not any(get_tags_from_original_citation(self)):
             return (OriginalCitationDataLevel.no_data, "no tags from original citation")
-        missing = []
-        for group in self.get_required_details_tags():
-            if not any(tag in source_tags for tag in group):
-                missing.append(group)
+        required_fields = models.name.required_fields
+        missing = [
+            (tag_cls,)
+            for tag_cls, status in required_fields.iter_type_tag_statuses(
+                self, tag_classes=required_fields.DETAIL_TAGS
+            )
+            if status.requiredness.is_desired() and not status.is_nonempty
+        ]
         if missing:
             return (OriginalCitationDataLevel.some_data, tag_list(missing))
         return (OriginalCitationDataLevel.all_required_data, "")
 
     def name_data_level(self) -> tuple[NameDataLevel, str]:
-        missing_fields = set(self.get_empty_required_fields())
+        required_fields = models.name.required_fields
+        missing_fields = {
+            field_name
+            for field_name, status in required_fields.iter_field_statuses(self)
+            if status.requiredness.is_desired() and not status.is_nonempty
+        }
         crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
         if crucial_missing:
             return (
@@ -1978,25 +1994,47 @@ class Name(BaseModel):
                 NameDataLevel.missing_required_fields,
                 f"missing {', '.join(sorted(missing_fields))}",
             )
-
-        required_details_tags = list(self.get_required_details_tags())
-        missing_details_tags = list(self.get_missing_tags(required_details_tags))
-        if missing_details_tags:
-            return (NameDataLevel.missing_details_tags, tag_list(missing_details_tags))
-
-        required_derived_tags = [tags for tags, _ in self.get_required_derived_tags()]
-        missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
-        if missing_derived_tags:
-            return (NameDataLevel.missing_derived_tags, tag_list(missing_derived_tags))
-
+        missing_tags = [
+            tag_cls
+            for tag_cls, status in required_fields.iter_type_tag_statuses(self)
+            if status.requiredness.is_desired() and not status.is_nonempty
+        ]
+        missing_details = [
+            (tag_cls,)
+            for tag_cls in missing_tags
+            if tag_cls in required_fields.DETAIL_TAGS
+        ]
+        if missing_details:
+            return (NameDataLevel.missing_details_tags, tag_list(missing_details))
+        if missing_tags:
+            return (
+                NameDataLevel.missing_derived_tags,
+                tag_list((tag_cls,) for tag_cls in missing_tags),
+            )
         return (NameDataLevel.nothing_needed, "")
 
     def fill_data_level(self) -> tuple[FillDataLevel, str]:
-        missing_fields = set(self.get_empty_required_fields())
-        required_details_tags = list(self.get_required_details_tags())
-        missing_details_tags = list(self.get_missing_tags(required_details_tags))
-        required_derived_tags = [tags for tags, _ in self.get_required_derived_tags()]
-        missing_derived_tags = list(self.get_missing_tags(required_derived_tags))
+        required_fields = models.name.required_fields
+        missing_fields = {
+            field_name
+            for field_name, status in required_fields.iter_field_statuses(self)
+            if status.requiredness.is_desired() and not status.is_nonempty
+        }
+        desired_tags = {
+            tag_cls: status
+            for tag_cls, status in required_fields.iter_type_tag_statuses(self)
+            if status.requiredness.is_desired()
+        }
+        missing_details = [
+            (tag_cls,)
+            for tag_cls, status in desired_tags.items()
+            if tag_cls in required_fields.DETAIL_TAGS and not status.is_nonempty
+        ]
+        missing_derived = [
+            (tag_cls,)
+            for tag_cls, status in desired_tags.items()
+            if tag_cls not in required_fields.DETAIL_TAGS and not status.is_nonempty
+        ]
 
         if has_data_from_original(self):
             crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
@@ -2005,26 +2043,12 @@ class Name(BaseModel):
                     FillDataLevel.missing_required_fields,
                     f"missing {', '.join(sorted(crucial_missing))}",
                 )
-            orig = self.original_citation
-            if orig is None:
-                return (FillDataLevel.needs_basic_data, "missing original_citation")
-            missing_sourced_tags = [
-                (tag, no_tag)
-                for tag, no_tag in required_details_tags
-                if not (
-                    self.has_tag_from_source(tag, orig) or self.has_type_tag(no_tag)
-                )
-            ]
-            if missing_sourced_tags:
-                return (FillDataLevel.incomplete_detail, tag_list(missing_sourced_tags))
-            if missing_derived_tags:
-                if self.group is Group.genus and self.has_type_tag(
-                    TypeTag.TypeSpeciesDetail
-                ):
-                    return (FillDataLevel.nothing_needed, "")
+            if missing_details:
+                return (FillDataLevel.incomplete_detail, tag_list(missing_details))
+            if missing_derived:
                 return (
                     FillDataLevel.incomplete_derived_tags,
-                    tag_list(missing_derived_tags),
+                    tag_list(missing_derived),
                 )
             return (FillDataLevel.nothing_needed, "")
         elif missing_fields:
@@ -2032,11 +2056,11 @@ class Name(BaseModel):
                 FillDataLevel.needs_basic_data,
                 f"missing {', '.join(sorted(missing_fields))}",
             )
-        elif missing_details_tags:
-            return (FillDataLevel.missing_detail, tag_list(missing_details_tags))
-        elif missing_derived_tags:
-            return (FillDataLevel.missing_detail, tag_list(missing_derived_tags))
-        elif required_details_tags:
+        elif missing_details:
+            return (FillDataLevel.missing_detail, tag_list(missing_details))
+        elif missing_derived:
+            return (FillDataLevel.missing_detail, tag_list(missing_derived))
+        elif any(tag_cls in required_fields.DETAIL_TAGS for tag_cls in desired_tags):
             return (
                 FillDataLevel.no_data_from_original,
                 "has all required tags, but no data from original",

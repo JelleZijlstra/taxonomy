@@ -269,16 +269,14 @@ def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
     # Required fields have their own linters. This is the remaining special
     # case: desired fields must be filled before any original-source data exists.
     missing = [
-        label.removeprefix("field ")
-        for label, _ in required_fields.get_missing_requirements(
-            nam,
-            levels=(
-                required_fields.Requiredness.desired,
-                required_fields.Requiredness.pending_required_high_coverage,
-            ),
-            include_type_tags=False,
-            cfg=cfg,
+        field_name
+        for field_name, status in required_fields.iter_field_statuses(nam)
+        if status.requiredness
+        in (
+            required_fields.Requiredness.desired,
+            required_fields.Requiredness.pending_required_high_coverage,
         )
+        and not status.is_nonempty
     ]
     if missing:
         yield f"has no data from original, but missing important fields: {', '.join(sorted(missing))}"
@@ -817,8 +815,7 @@ required_fields_linters = {
 
 @LINT.add("type_tags_presence")
 def check_type_tags_presence(nam: Name, cfg: LintConfig) -> Iterable[str]:
-    for tag_cls in TypeTag._tag_to_member.values():
-        status = required_fields.get_type_tag_status(nam, tag_cls, cfg=cfg)
+    for tag_cls, status in required_fields.iter_type_tag_statuses(nam, cfg=cfg):
         yield from _lint_requiredness_status(
             nam,
             f"type tag {tag_cls.__name__ if hasattr(tag_cls, '__name__') else str(tag_cls)}",
