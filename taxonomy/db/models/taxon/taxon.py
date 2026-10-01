@@ -18,10 +18,8 @@ from taxonomy.db.constants import (
     AgeClass,
     CoverageLevel,
     Group,
-    NameDataLevel,
     NomenclatureStatus,
     OccurrenceStatus,
-    OriginalCitationDataLevel,
     Rank,
     RegionKind,
     Status,
@@ -1572,31 +1570,6 @@ class Taxon(BaseModel):
             print(f'Overall score: {output["score"][0]:.2f}')
         return output
 
-    def edit_names_at_level(
-        self,
-        ocdl: OriginalCitationDataLevel | None = None,
-        ndl: NameDataLevel | None = NameDataLevel.missing_derived_tags,
-        *,
-        age: AgeClass | None = None,
-        reverse: bool = True,
-    ) -> None:
-        nams = self.all_names(age=age)
-        total = len(nams)
-        for i, nam in enumerate(
-            sorted(nams, reverse=reverse, key=lambda nam: nam.sort_key())
-        ):
-            print(f"({i}/{total}) {nam}")
-            if ocdl is not None:
-                name_ocdl, _ = nam.original_citation_data_level()
-                if ocdl is not name_ocdl:
-                    continue
-            if ndl is not None:
-                name_ndl, _ = nam.name_data_level()
-                if ndl is not name_ndl:
-                    continue
-            nam.display()
-            nam.edit()
-
     def fill_data_for_names(
         self,
         *,
@@ -1607,22 +1580,9 @@ class Taxon(BaseModel):
         ask_before_opening: bool = True,
         skip_nofile: bool = True,
     ) -> None:
-        """Calls fill_required_fields() for all names in this taxon."""
-        ocdl = getinput.get_enum_member(
-            OriginalCitationDataLevel, "original citation data level to edit at> "
-        )
-        ndl = getinput.get_enum_member(NameDataLevel, "name data level to edit at> ")
-        all_names = self.all_names(age=age)
-        if ocdl is not None:
-            all_names = {
-                nam
-                for nam in all_names
-                if nam.original_citation_data_level()[0] is ocdl
-            }
-        if ndl is not None:
-            all_names = {nam for nam in all_names if nam.name_data_level()[0] is ndl}
+        """Fill desired fields and type tags, working through original citations."""
         fill_data_for_names(
-            all_names,
+            self.all_names(age=age),
             min_year=min_year,
             field=field,
             ask_before_opening=ask_before_opening,

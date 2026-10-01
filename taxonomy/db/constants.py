@@ -1068,35 +1068,6 @@ class PersonType(enum.IntEnum):
     alias = 6
 
 
-class FillDataLevel(enum.IntEnum):
-    needs_basic_data = 1  # missing data and no data from original
-    missing_required_fields = 2  # missing crucial required fields
-    missing_detail = 3
-    incomplete_detail = 4
-    incomplete_derived_tags = 5
-    no_data_from_original = 6
-    nothing_needed = 7
-
-    @classmethod
-    def max_level(cls) -> FillDataLevel:
-        return cls.no_data_from_original
-
-
-class NameDataLevel(enum.IntEnum):
-    missing_crucial_fields = 1
-    missing_required_fields = 2
-    missing_details_tags = 3
-    missing_derived_tags = 4
-    nothing_needed = 5
-
-
-class OriginalCitationDataLevel(enum.IntEnum):
-    no_citation = 1
-    no_data = 2
-    some_data = 3
-    all_required_data = 4
-
-
 class DateSource(enum.IntEnum):
     internal = 1  # specified inside the publication itself
     external = 2  # external source discussing date

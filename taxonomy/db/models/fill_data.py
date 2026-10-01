@@ -7,7 +7,6 @@ import clirm
 from taxonomy import getinput
 from taxonomy.command_set import CommandSet
 from taxonomy.db import models
-from taxonomy.db.constants import ArticleKind, NameDataLevel, OriginalCitationDataLevel
 
 from .article import Article, ArticleTag
 from .base import BaseModel
@@ -40,63 +39,66 @@ def fill_data_from_paper(
         print(f"{paper.name}: skipping because of NeedsTranslation tag")
         _finished_papers.add(paper.id)
         return True
-    if paper.has_tag(ArticleTag.NonOriginal):
-        print(f"{paper.name}: skipping because of NonOriginal tag")
-        _finished_papers.add(paper.id)
-        return True
-    if paper.kind is ArticleKind.no_copy:
-        print(f"{paper.name}: skipping because no copy available")
+    if paper.lacks_full_text():
+        print(f"{paper.name}: skipping because full original text is unavailable")
         _finished_papers.add(paper.id)
         return True
 
     opened = False
-
     nams = get_names(paper)
-    nams_below_level = [
+    incomplete = [
         nam
         for nam in nams
-        if nam.original_citation_data_level()[0]
-        is not OriginalCitationDataLevel.all_required_data
-        and nam.name_data_level()[0] is not NameDataLevel.nothing_needed
+        if any(models.name.required_fields.get_missing_requirements(nam, levels=None))
     ]
-    if nams_below_level:
-        print(f"{paper.name}: {len(nams_below_level)} names (fill_data_from_paper)")
-        if ask_before_opening:
-            edit_names_interactive(paper, should_open=should_open)
-            if paper.has_tag(ArticleTag.NeedsTranslation):
-                print(f"{paper.name}: skipping because of NeedsTranslation tag")
-                _finished_papers.add(paper.id)
-                return True
-            nams = get_names(paper)
-
-        for nam in nams:
-            nam.load()
-            while (
-                nam.original_citation_data_level()[0]
-                is not OriginalCitationDataLevel.all_required_data
-                and nam.name_data_level()[0] is not NameDataLevel.nothing_needed
-            ):
-                nam.display()
-                nam.format()
-                if not opened:
-                    if should_open:
-                        paper.openf()
-                    paper.add_to_history()
-                    print(f"filling data from {paper.name}")
-                    paper.specify_authors()
-                opened = True
-                current_level, reason = nam.original_citation_data_level()
-                print(f"Level: {current_level.name.upper()} ({reason})")
-                if list(nam.get_empty_required_fields()):
-                    print(nam, "described at", nam.page_described)
-                    nam.fill_required_fields()
-                else:
-                    nam.fill_field("type_tags")
-
-    if not opened:
+    if not incomplete:
         _finished_papers.add(paper.id)
         return True
-    return False
+    print(f"{paper.name}: {len(incomplete)} names (fill_data_from_paper)")
+    if ask_before_opening:
+        edit_names_interactive(paper, should_open=should_open)
+        if paper.has_tag(ArticleTag.NeedsTranslation) or paper.lacks_full_text():
+            _finished_papers.add(paper.id)
+            return True
+        nams = get_names(paper)
+
+    for nam in nams:
+        nam.load()
+        while any(
+            models.name.required_fields.get_missing_requirements(nam, levels=None)
+        ):
+            nam.format()
+            # Formatting can fill missing values or change which data is desired.
+            if not any(
+                models.name.required_fields.get_missing_requirements(nam, levels=None)
+            ):
+                break
+            nam.display()
+            if not opened:
+                if should_open:
+                    paper.openf()
+                paper.add_to_history()
+                print(f"filling data from {paper.name}")
+                paper.specify_authors()
+                opened = True
+            nam.print_missing_requirements()
+            if any(
+                status.requiredness.is_desired() and not status.is_nonempty
+                for _, status in models.name.required_fields.iter_field_statuses(nam)
+            ):
+                print(nam, "described at", nam.page_described)
+                for field, status in models.name.required_fields.iter_field_statuses(
+                    nam
+                ):
+                    if status.requiredness.is_desired() and not status.is_nonempty:
+                        nam.fill_field(field)
+            else:
+                nam.fill_field("type_tags")
+
+    # The caller makes another pass after editing to pick up changed dependencies.
+    if not opened:
+        _finished_papers.add(paper.id)
+    return not opened
 
 
 def fill_data_from_articles(
@@ -136,7 +138,7 @@ def fill_data_for_names(
     ask_before_opening: bool = True,
     skip_nofile: bool = True,
 ) -> None:
-    """Calls fill_required_fields() for all names in this taxon."""
+    """Fill desired fields and type tags, working through original citations."""
 
     def should_include(nam: models.Name) -> bool:
         if nam.original_citation is None:
@@ -187,8 +189,7 @@ def edit_names_interactive(
         if obj is None:
             break
         obj.display()
-        level, reason = obj.original_citation_data_level()
-        print(f"Level: {level.name.upper()} ({reason})")
+        obj.print_missing_requirements()
         obj.edit()
 
 
@@ -199,19 +200,19 @@ def display_names(
     new_names = get_names(art)
     if new_names:
         print(f"New names ({len(new_names)}):")
-        levels = []
+        incomplete = 0
         for nam in new_names:
-            level, reason = nam.original_citation_data_level()
-            levels.append(level)
-            if omit_if_done and level is OriginalCitationDataLevel.all_required_data:
+            missing = models.name.required_fields.describe_missing_requirements(nam)
+            incomplete += bool(missing)
+            if omit_if_done and not missing:
                 continue
             if full:
                 nam.display(full=True)
-                print(f"    Level: {level.name.upper()} ({reason})")
             else:
                 desc = nam.get_description(include_taxon=True, full=False).rstrip()
-                print(f"{desc} ({level.name.upper()}: {reason})")
-        print("Current level:", min(levels).name.upper())
+                status = f"Missing: {missing}" if missing else "No missing desired data"
+                print(f"{desc} ({status})")
+        print(f"{incomplete}/{len(new_names)} names have missing desired data")
 
 
 CS = CommandSet(

@@ -32,13 +32,10 @@ from taxonomy.db.constants import (
     URL,
     AgeClass,
     EmendationJustification,
-    FillDataLevel,
     Group,
     Managed,
     Markdown,
-    NameDataLevel,
     NomenclatureStatus,
-    OriginalCitationDataLevel,
     PhylogeneticDefinitionType,
     Rank,
     RegionKind,
@@ -64,7 +61,7 @@ from taxonomy.db.models.classification_entry.ce import (
     ClassificationEntry,
     ClassificationEntryTag,
 )
-from taxonomy.db.models.collection import MULTIPLE_COLLECTION, Collection
+from taxonomy.db.models.collection import Collection
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name_complex import NameComplex, SpeciesNameComplex
@@ -73,26 +70,7 @@ from taxonomy.db.models.taxon import Taxon, display_organized
 
 from .type_specimen import parse_type_specimen
 
-_CRUCIAL_MISSING_FIELDS_ALL_GROUPS = {
-    "original_name",
-    "corrected_original_name",
-    "author_tags",
-    "year",
-    "page_described",
-    "original_rank",
-    # Note fields not applicable to the name are filtered out
-    "original_parent",
-    "name_complex",
-    "species_name_complex",
-}
-_CRUCIAL_MISSING_FIELDS: dict[Group, set[str]] = {
-    Group.species: _CRUCIAL_MISSING_FIELDS_ALL_GROUPS,
-    Group.genus: _CRUCIAL_MISSING_FIELDS_ALL_GROUPS,
-    Group.family: {"type", *_CRUCIAL_MISSING_FIELDS_ALL_GROUPS},
-    Group.high: _CRUCIAL_MISSING_FIELDS_ALL_GROUPS,
-}
 _ETYMOLOGY_CUTOFF = 1990
-_DATA_CUTOFF = 1900
 
 
 class Name(BaseModel):
@@ -168,9 +146,6 @@ class Name(BaseModel):
     tags = ADTField["NameTag"](is_ordered=False)
 
     derived_fields: ClassVar[list[DerivedField[Any]]] = [
-        DerivedField(
-            "fill_data_level", FillDataLevel, lambda nam: nam.fill_data_level()[0]
-        ),
         get_tag_based_derived_field(
             "preoccupied_names", lambda: Name, "tags", lambda: NameTag.PreoccupiedBy, 1
         ),
@@ -674,7 +649,7 @@ class Name(BaseModel):
             "copy_year": self.copy_year,
             "copy_authors": self.copy_authors,
             "check_authors": self.check_authors,
-            "level": self.print_fill_data_level,
+            "missing": self.print_missing_requirements,
             "set_nos": self.set_nos,
             "validate": self.validate,
             "validate_as_child": self.validate_as_child_command,
@@ -861,16 +836,9 @@ class Name(BaseModel):
             return
         other.merge(self)
 
-    def print_fill_data_level(self) -> None:
-        for label, (level, reason) in (
-            ("name", self.name_data_level()),
-            ("original citation", self.original_citation_data_level()),
-            ("fill data", self.fill_data_level()),
-        ):
-            if reason:
-                print(f"{label}: {level.name}: {reason}")
-            else:
-                print(f"{label}: {level.name}")
+    def print_missing_requirements(self) -> None:
+        missing = models.name.required_fields.describe_missing_requirements(self)
+        print(f"Missing: {missing}" if missing else "No missing desired data")
 
     def edit(self) -> None:
         self.fill_field("type_tags")
@@ -1839,18 +1807,9 @@ class Name(BaseModel):
                 lints = "; ".join(map(str, self.lint()))
                 if lints:
                     data["lint"] = lints
-            level_strings = []
-            ocdl, ocdl_reason = self.original_citation_data_level()
-            if ocdl not in (
-                OriginalCitationDataLevel.all_required_data,
-                OriginalCitationDataLevel.no_citation,
-            ):
-                level_strings.append(f"citation: {ocdl.name.upper()} ({ocdl_reason})")
-            ndl, ndl_reason = self.name_data_level()
-            if ndl is not NameDataLevel.nothing_needed:
-                level_strings.append(f"name: {ndl.name.upper()} ({ndl_reason})")
-            if level_strings:
-                data["level"] = "; ".join(level_strings)
+            missing = models.name.required_fields.describe_missing_requirements(self)
+            if missing:
+                data["missing"] = missing
             if self.type_locality is not None:
                 data["locality"] = repr(self.type_locality)
             type_info = []
@@ -1952,129 +1911,6 @@ class Name(BaseModel):
                 assert isinstance(new_tag, TypeTag)
                 self.add_type_tag(new_tag)
 
-    def original_citation_data_level(self) -> tuple[OriginalCitationDataLevel, str]:
-        if self.original_citation is None:
-            return (OriginalCitationDataLevel.no_citation, "missing original_citation")
-        if self.original_citation.has_tag(models.article.ArticleTag.NeedsTranslation):
-            return (
-                OriginalCitationDataLevel.no_citation,
-                "original citation needs translation",
-            )
-        if self.original_citation.lacks_full_text():
-            return (OriginalCitationDataLevel.no_citation, "non-original citation")
-        if not any(get_tags_from_original_citation(self)):
-            return (OriginalCitationDataLevel.no_data, "no tags from original citation")
-        required_fields = models.name.required_fields
-        missing = [
-            (tag_cls,)
-            for tag_cls, status in required_fields.iter_type_tag_statuses(
-                self, tag_classes=required_fields.DETAIL_TAGS
-            )
-            if status.requiredness.is_desired() and not status.is_nonempty
-        ]
-        if missing:
-            return (OriginalCitationDataLevel.some_data, tag_list(missing))
-        return (OriginalCitationDataLevel.all_required_data, "")
-
-    def name_data_level(self) -> tuple[NameDataLevel, str]:
-        required_fields = models.name.required_fields
-        missing_fields = {
-            field_name
-            for field_name, status in required_fields.iter_field_statuses(self)
-            if status.requiredness.is_desired() and not status.is_nonempty
-        }
-        crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
-        if crucial_missing:
-            return (
-                NameDataLevel.missing_crucial_fields,
-                f"missing {', '.join(sorted(crucial_missing))}",
-            )
-        if missing_fields:
-            return (
-                NameDataLevel.missing_required_fields,
-                f"missing {', '.join(sorted(missing_fields))}",
-            )
-        missing_tags = [
-            tag_cls
-            for tag_cls, status in required_fields.iter_type_tag_statuses(self)
-            if status.requiredness.is_desired() and not status.is_nonempty
-        ]
-        missing_details = [
-            (tag_cls,)
-            for tag_cls in missing_tags
-            if tag_cls in required_fields.DETAIL_TAGS
-        ]
-        if missing_details:
-            return (NameDataLevel.missing_details_tags, tag_list(missing_details))
-        if missing_tags:
-            return (
-                NameDataLevel.missing_derived_tags,
-                tag_list((tag_cls,) for tag_cls in missing_tags),
-            )
-        return (NameDataLevel.nothing_needed, "")
-
-    def fill_data_level(self) -> tuple[FillDataLevel, str]:
-        required_fields = models.name.required_fields
-        missing_fields = {
-            field_name
-            for field_name, status in required_fields.iter_field_statuses(self)
-            if status.requiredness.is_desired() and not status.is_nonempty
-        }
-        desired_tags = {
-            tag_cls: status
-            for tag_cls, status in required_fields.iter_type_tag_statuses(self)
-            if status.requiredness.is_desired()
-        }
-        missing_details = [
-            (tag_cls,)
-            for tag_cls, status in desired_tags.items()
-            if tag_cls in required_fields.DETAIL_TAGS and not status.is_nonempty
-        ]
-        missing_derived = [
-            (tag_cls,)
-            for tag_cls, status in desired_tags.items()
-            if tag_cls not in required_fields.DETAIL_TAGS and not status.is_nonempty
-        ]
-
-        if has_data_from_original(self):
-            crucial_missing = _CRUCIAL_MISSING_FIELDS[self.group] & missing_fields
-            if crucial_missing:
-                return (
-                    FillDataLevel.missing_required_fields,
-                    f"missing {', '.join(sorted(crucial_missing))}",
-                )
-            if missing_details:
-                return (FillDataLevel.incomplete_detail, tag_list(missing_details))
-            if missing_derived:
-                return (
-                    FillDataLevel.incomplete_derived_tags,
-                    tag_list(missing_derived),
-                )
-            return (FillDataLevel.nothing_needed, "")
-        elif missing_fields:
-            return (
-                FillDataLevel.needs_basic_data,
-                f"missing {', '.join(sorted(missing_fields))}",
-            )
-        elif missing_details:
-            return (FillDataLevel.missing_detail, tag_list(missing_details))
-        elif missing_derived:
-            return (FillDataLevel.missing_detail, tag_list(missing_derived))
-        elif any(tag_cls in required_fields.DETAIL_TAGS for tag_cls in desired_tags):
-            return (
-                FillDataLevel.no_data_from_original,
-                "has all required tags, but no data from original",
-            )
-        else:
-            return (FillDataLevel.nothing_needed, "")
-
-    def has_tag_from_source(self, tag_cls: TypeTagCons, source: Article) -> bool:
-        tag_id = tag_cls._tag
-        return any(
-            tag[0] == tag_id and tag[2] == source.id
-            for tag in self.get_raw_tags_field("type_tags")
-        )
-
     def requires_etymology(self) -> bool:
         if self.group is Group.genus:
             return (
@@ -2089,75 +1925,6 @@ class Name(BaseModel):
             )
         else:
             return False
-
-    def get_required_details_tags(self) -> Iterable[tuple[TypeTagCons, TypeTagCons]]:
-        if self.requires_etymology():
-            yield ETYMOLOGY_TAGS
-        if (
-            self.group is Group.species
-            and self.numeric_year() >= _DATA_CUTOFF
-            and self.nomenclature_status.requires_type()
-        ):
-            yield LOCATION_TAGS
-            yield SPECIMEN_TAGS
-
-    def get_required_derived_tags(
-        self, *, ignore_coverage: bool = False
-    ) -> Iterable[tuple[tuple[TypeTagCons, ...], ExperimentalLintCondition]]:
-        if self.group is Group.species:
-            if self.collection and self.collection.id == MULTIPLE_COLLECTION:
-                yield (TypeTag.Repository,), ExperimentalLintCondition(always=True)
-            if (
-                self.type_specimen
-                and self.species_type_kind is not constants.SpeciesGroupType.syntypes
-            ):
-                if not self.is_ichno():
-                    yield (TypeTag.Organ, TypeTag.NoOrgan), ExperimentalLintCondition(
-                        only_with_tags_from_original=SPECIMEN_TAGS
-                    )
-                if not self.is_fossil():
-                    yield (TypeTag.Date, TypeTag.NoDate), ExperimentalLintCondition(
-                        only_with_tags_from_original=SPECIMEN_TAGS
-                    )
-                    yield (
-                        TypeTag.CollectedBy,
-                        TypeTag.NoCollector,
-                        TypeTag.Involved,
-                    ), ExperimentalLintCondition(
-                        only_with_tags_from_original=SPECIMEN_TAGS
-                    )
-                    yield (TypeTag.Age, TypeTag.NoAge), ExperimentalLintCondition(
-                        only_with_tags_from_original=SPECIMEN_TAGS
-                    )
-                    yield (TypeTag.Gender, TypeTag.NoGender), ExperimentalLintCondition(
-                        only_with_tags_from_original=SPECIMEN_TAGS
-                    )
-            if self.is_patronym() and not self.nomenclature_status.is_variant():
-                yield (TypeTag.NamedAfter,), ExperimentalLintCondition(
-                    only_with_tags_from_original=ETYMOLOGY_TAGS
-                )
-            if self.type_specimen and self.species_type_kind and not self.collection:
-                yield (TypeTag.ProbableRepository,), ExperimentalLintCondition(
-                    only_with_tags_from_original=SPECIMEN_TAGS
-                )
-        if self.group is Group.genus and (
-            ignore_coverage or self.taxon.is_high_coverage()
-        ):
-            if self.nomenclature_status.requires_type():
-                if self.genus_type_kind is None or self.genus_type_kind.requires_tag():
-                    yield (
-                        TypeTag.IncludedSpecies,
-                        TypeTag.GenusCoelebs,
-                    ), ExperimentalLintCondition(always=True)
-        if self.original_rank is not None and self.original_rank.needs_textual_rank:
-            yield (TypeTag.TextualOriginalRank,), ExperimentalLintCondition(always=True)
-
-    def get_missing_tags(
-        self, required_tags: Iterable[tuple[TypeTagCons, ...]]
-    ) -> Iterable[tuple[TypeTagCons, ...]]:
-        for group in required_tags:
-            if not any(self.has_type_tag(tag) for tag in group):
-                yield group
 
     def get_required_fields(self) -> Iterable[str]:
         for field in Name.clirm_fields:
@@ -2724,24 +2491,6 @@ def get_ordered_names(nams: Iterable[Name] | None) -> list[Name]:
     return sorted(nams, key=citation_sort_key)
 
 
-def has_data_from_original(nam: Name) -> bool:
-    if not nam.original_citation or not nam.get_raw_tags_field("type_tags"):
-        return False
-    if not nam.type_tags:
-        return False
-    for tag in nam.type_tags:
-        if isinstance(tag, SOURCE_TAGS) and tag.source == nam.original_citation:
-            return True
-        if isinstance(tag, SOURCE_DATA_TAGS):
-            return True
-        if (
-            isinstance(tag, NO_DATA_FROM_SOURCE_TAGS)
-            and tag.source == nam.original_citation
-        ):
-            return True
-    return False
-
-
 def get_tags_from_original_citation(nam: Name) -> Iterable[TypeTagCons]:
     if not nam.original_citation or not nam.get_raw_tags_field("type_tags"):
         return
@@ -2764,15 +2513,6 @@ def get_tags_from_original_citation(nam: Name) -> Iterable[TypeTagCons]:
             and tag.source == nam.original_citation
         ):
             yield type(tag)  # static analysis: ignore[incompatible_yield]
-
-
-def tag_list(tags: Iterable[tuple[TypeTagCons, ...]]) -> str:
-    # display only the first one in the group; no need to mention NoEtymology c.s.
-    firsts = [group[0] for group in tags]
-    return (
-        "missing"
-        f" {', '.join(first.__name__ if hasattr(first, '__name__') else repr(first) for first in firsts)}"
-    )
 
 
 def clean_original_name(original_name: str) -> str:
@@ -3341,11 +3081,6 @@ DETAIL_TAG_TO_CE_TAG: dict[type[TypeTag], type[ClassificationEntryTag]] = {
 }
 
 NO_DATA_FROM_SOURCE_TAGS = (TypeTag.NoEtymology, TypeTag.NoLocation, TypeTag.NoSpecimen)
-SOURCE_DATA_TAGS = (
-    TypeTag.IncludedSpecies,
-    TypeTag.GenusCoelebs,
-    TypeTag.TextualOriginalRank,
-)
 ETYMOLOGY_TAGS = (TypeTag.EtymologyDetail, TypeTag.NoEtymology)
 LOCATION_TAGS = (TypeTag.LocationDetail, TypeTag.NoLocation)
 SPECIMEN_TAGS = (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)

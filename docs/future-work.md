@@ -84,7 +84,7 @@ please [let me know](mailto:jelle.zijlstra@gmail.com).
     it. Or I don't have access to the source that did the designation.
   - Idea: Add a new tag to names that encompasses a verbatim_citation and
     citation_group, so we can track needed citations here.
-- Check that "fill_data_level" is perfect for all recent articles
+- Fill all desired fields and type tags for names from recent articles
   - Add a way to ignore incomplete articles (e.g. ones I have only the abstract for)
   - Make sure to ignore invalid names (e.g. redirects)
   - Threshold should be at least at {Protodoris nov.pdf}

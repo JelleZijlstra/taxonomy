@@ -58,10 +58,8 @@ from .db.constants import (
     ArticleKind,
     ArticleType,
     Group,
-    NameDataLevel,
     NamingConvention,
     NomenclatureStatus,
-    OriginalCitationDataLevel,
     PersonType,
     Rank,
 )
@@ -3039,92 +3037,6 @@ def report_missing_requiredness(
             for nam in names:
                 print(f"{nam.id}: {nam}")
     return dict(missing)
-
-
-@command
-def print_data_level_report() -> None:
-    """Output as of March 2024:
-
-    OCDL | NDL         missing_crucial_fields  missing_required_fields  missing_details_tags  missing_derived_tags  nothing_needed
-    no_citation        10281                   17504                    62                    67                    470
-    no_data            0                       0                        932                   785                   21602
-    some_data          1                       673                      3103                  343                   304
-    all_required_data  38                      9065                     0                     3504                  33073
-
-    """
-    counts: Counter[tuple[OriginalCitationDataLevel, NameDataLevel]] = Counter()
-    for nam in Name.select_valid():
-        ocdl, _ = nam.original_citation_data_level()
-        ndl, _ = nam.name_data_level()
-        counts[(ocdl, ndl)] += 1
-    rows = [
-        ["OCDL | NDL", *[level.name for level in NameDataLevel]],
-        *[
-            [ocdl.name, *[str(counts[(ocdl, ndl)]) for ndl in NameDataLevel]]
-            for ocdl in OriginalCitationDataLevel
-        ],
-    ]
-    getinput.print_table(rows)
-
-
-@command
-def edit_names_at_level(query: Iterable[Name] | None = None) -> None:
-    ocdl = getinput.get_enum_member(
-        OriginalCitationDataLevel, "original citation data level> "
-    )
-    if ocdl is None:
-        return
-    ndl = getinput.get_enum_member(NameDataLevel, "name data level> ")
-    if ndl is None:
-        return
-    if query is None:
-        query = Name.select_valid()
-    for nam in query:
-        name_ocdl, _ = nam.original_citation_data_level()
-        if name_ocdl is not ocdl:
-            continue
-        name_ndl, _ = nam.name_data_level()
-        if name_ndl is not ndl:
-            continue
-        getinput.print_header(nam)
-        nam.display()
-        nam.edit()
-
-
-@command
-def confirm_zmmu_types() -> None:
-    coll = Collection.getter("label")("ZMMU")
-    assert coll is not None
-    for nam in coll.type_specimens:
-        if (
-            nam.corrected_original_name is not None
-            and nam.corrected_original_name < "Sciurus"
-        ):
-            continue
-        if not nam.type_specimen:
-            continue
-        if nam.has_type_tag(models.name.TypeTag.TypeSpecimenLinkFor):
-            continue
-        nam.load()
-        for spec in models.name.type_specimen.parse_type_specimen(nam.type_specimen):
-            if not isinstance(spec, models.name.type_specimen.Specimen):
-                continue
-            if not isinstance(spec.base, models.name.type_specimen.SimpleSpecimen):
-                continue
-            m = re.fullmatch(r"ZMMU (S-\d+)", spec.base.text)
-            assert m, spec
-            number = m.group(1)
-            url = f"https://zmmu.msu.ru/dbs/list_record.php?id={number}"
-            getinput.print_header(nam)
-            nam.display()
-            print(url)
-            subprocess.check_call(["open", url])
-            if not getinput.yes_no("confirm? "):
-                continue
-            nam.add_type_tag(
-                models.name.TypeTag.TypeSpecimenLinkFor(url, spec.stringify())
-            )
-            models.article.check.check_new()
 
 
 @command

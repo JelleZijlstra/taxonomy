@@ -98,7 +98,8 @@ After the bootstrap manifest has been applied and `Materialize` cleanup has fini
 
 1. Re-read the persisted CEs, Taxa, and Names. Generate enrichment from current IDs and
    guarded old values rather than predicting deferred materialization IDs.
-2. Inspect both `name_data_level()` and `fill_data_level()` for every created Name.
+2. Inspect `required_fields.get_missing_requirements(name, levels=None)` for every
+   created Name; this includes all desired-or-stronger fields and type tags.
 3. Use original descriptions for `original_citation`, type locality, type specimen,
    collection, type kinds, etymology, and derived tags. If an original description is
    unavailable, leave `original_citation` blank and retain a source-backed

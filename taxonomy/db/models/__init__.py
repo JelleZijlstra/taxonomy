@@ -33,7 +33,6 @@ __all__ = [
     "Taxon",
     "TypeTag",
     "fill_data",
-    "has_data_from_original",
     "lint",
     "location",
     "tags",
@@ -56,7 +55,6 @@ from .name.name import (
     NameComment as NameComment,
     TypeTag as TypeTag,
     NameTag as NameTag,
-    has_data_from_original as has_data_from_original,
 )
 
 from .name_complex import (

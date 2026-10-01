@@ -33,7 +33,7 @@ from .name import (
     get_tags_from_original_citation,
 )
 
-# Classification for completeness displays; applicability lives in the per-tag policy.
+# Source details are excluded from automatic derived-data absence assertions.
 DETAIL_TAGS = (TypeTag.EtymologyDetail, TypeTag.LocationDetail, TypeTag.SpecimenDetail)
 
 
@@ -384,7 +384,9 @@ def get_type_tag_status(
 def get_missing_requirements(
     nam: Name,
     *,
-    levels: Container[Requiredness] = (Requiredness.pending_required_high_coverage,),
+    levels: Container[Requiredness] | None = (
+        Requiredness.pending_required_high_coverage,
+    ),
     include_fields: bool = True,
     include_type_tags: bool = True,
     cfg: LintConfig = LintConfig(autofix=False, interactive=False),
@@ -394,7 +396,10 @@ def get_missing_requirements(
     This reports policy, irrespective of coverage or IgnoreLint tags. Callers can
     filter the Names by coverage to measure the effect of promoting a level.
     Alternatives are counted as one obligation, not separate missing tags.
+    Pass levels=None for all desired-or-stronger requirements (completeness).
     """
+    if levels is None:
+        levels = tuple(level for level in Requiredness if level.is_desired())
     if include_fields:
         for field_name, status in iter_field_statuses(nam):
             if status.requiredness in levels and not status.is_nonempty:
@@ -404,6 +409,14 @@ def get_missing_requirements(
             if status.requiredness in levels and not status.is_nonempty:
                 label = getattr(tag_cls, "__name__", str(tag_cls))
                 yield f"type tag {label}", status
+
+
+def describe_missing_requirements(nam: Name) -> str:
+    """Describe all missing desired data, or return an empty string if complete."""
+    return "; ".join(
+        f"{label} ({status.message})" if status.message else label
+        for label, status in get_missing_requirements(nam, levels=None)
+    )
 
 
 def iter_field_statuses(nam: Name) -> Iterable[tuple[str, FieldStatus]]:

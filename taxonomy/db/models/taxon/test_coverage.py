@@ -16,7 +16,7 @@ from taxonomy.db.constants import (
 )
 from taxonomy.db.models import Article, Name, Taxon
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.name import TypeTag
+from taxonomy.db.models.name import TypeTag, required_fields
 from taxonomy.db.models.name import lint as name_lint
 from taxonomy.db.models.tags import TaxonTag
 from taxonomy.db.models.taxon import lint as taxon_lint
@@ -133,14 +133,21 @@ def test_included_species_requirement_and_cross_boundary_links() -> None:
     species = make_name(covered, Group.species)
     genus.type = species
     assert incidental.is_high_coverage() is False
-    assert list(genus.get_required_derived_tags()) == []
-    assert any(
-        TypeTag.IncludedSpecies in tags
-        for tags, _ in genus.get_required_derived_tags(ignore_coverage=True)
+    genus.original_citation = Article.virtual(kind=ArticleKind.electronic, tags=())
+    requirement = required_fields.get_type_tag_requiredness(
+        genus, TypeTag.IncludedSpecies
+    )
+    assert (
+        requirement.requiredness is required_fields.Requiredness.required_high_coverage
+    )
+    assert not any(
+        "IncludedSpecies" in str(issue)
+        for issue in name_lint.other.check_type_tags_presence(genus, CFG)
     )
     incidental.tags = (TaxonTag.Coverage(CoverageLevel.high),)  # type: ignore[assignment]
     assert any(
-        TypeTag.IncludedSpecies in tags for tags, _ in genus.get_required_derived_tags()
+        "IncludedSpecies" in str(issue)
+        for issue in name_lint.other.check_type_tags_presence(genus, CFG)
     )
 
 

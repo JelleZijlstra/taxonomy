@@ -170,7 +170,7 @@ def test_detail_id_cutoffs(
     ],
 )
 @pytest.mark.parametrize("patronym", [False, True])
-def test_detail_desirability_matches_existing_policy(
+def test_detail_desirability_by_group_year_and_status(
     group: Group, year: str, status: NomenclatureStatus, *, patronym: bool
 ) -> None:
     nam = make_name(group=group, year=year)
@@ -179,7 +179,17 @@ def test_detail_desirability_matches_existing_policy(
         nam.species_name_complex = SpeciesNameComplex.virtual(
             kind=SpeciesNameKind.patronym_masculine
         )
-    desired = {tags[0] for tags in nam.get_required_details_tags()}
+    desired = set()
+    if status is NomenclatureStatus.available:
+        if group in (Group.genus, Group.species) and (
+            int(year) >= 1990 or (group is Group.species and patronym)
+        ):
+            desired.add(TypeTag.EtymologyDetail)
+        if group is Group.species and int(year) >= 1900:
+            desired.update((TypeTag.LocationDetail, TypeTag.SpecimenDetail))
+    # Genus variants still need an etymology; species variants do not.
+    if status is NomenclatureStatus.variant and group is Group.genus and year == "1990":
+        desired.add(TypeTag.EtymologyDetail)
     for tag_cls in (
         TypeTag.EtymologyDetail,
         TypeTag.LocationDetail,
@@ -194,7 +204,7 @@ def test_detail_desirability_matches_existing_policy(
 @pytest.mark.parametrize(
     "type_kind", [None, SpeciesGroupType.holotype, SpeciesGroupType.syntypes]
 )
-def test_derived_desirability_matches_existing_policy(
+def test_derived_desirability_by_age_and_type_kind(
     age: AgeClass, type_kind: SpeciesGroupType | None
 ) -> None:
     nam = make_name()
@@ -204,7 +214,16 @@ def test_derived_desirability_matches_existing_policy(
     nam.species_name_complex = SpeciesNameComplex.virtual(
         kind=SpeciesNameKind.patronym_masculine
     )
-    desired = {tags[0] for tags, _ in nam.get_required_derived_tags()}
+    desired = {TypeTag.NamedAfter}
+    if type_kind is not SpeciesGroupType.syntypes:
+        if age is not AgeClass.ichno:
+            desired.add(TypeTag.Organ)
+        if age is AgeClass.extant:
+            desired.update(
+                (TypeTag.Date, TypeTag.Age, TypeTag.Gender, TypeTag.CollectedBy)
+            )
+    if type_kind is not None:
+        desired.add(TypeTag.ProbableRepository)
     for tag_cls in (
         TypeTag.Organ,
         TypeTag.Date,
@@ -608,16 +627,9 @@ def test_presence_lint_explains_source_and_alternative() -> None:
     )
 
 
-def test_data_level_checks_only_remaining_fields_without_enums(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_data_level_checks_only_remaining_fields() -> None:
     from .lint.other import check_data_level
 
-    def unused_level(self: Name) -> None:
-        raise AssertionError("should not use data-level methods")
-
-    monkeypatch.setattr(Name, "name_data_level", unused_level)
-    monkeypatch.setattr(Name, "original_citation_data_level", unused_level)
     nam = make_name()
     messages = [str(issue) for issue in check_data_level(nam, CFG)]
     assert len(messages) == 1
