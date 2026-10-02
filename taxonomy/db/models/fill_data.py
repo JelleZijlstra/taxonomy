@@ -122,12 +122,28 @@ def fill_data_from_articles(
             continue
         if specify_authors:
             art.specify_authors()
-        if fill_data_from_paper(art, ask_before_opening=ask_before_opening):
-            done += 1
-        else:
+        finished = fill_data_from_paper(art, ask_before_opening=ask_before_opening)
+        if not finished:
             # Redo this to make sure we finished the paper.
-            fill_data_from_paper(art, ask_before_opening=ask_before_opening)
+            finished = fill_data_from_paper(art, ask_before_opening=ask_before_opening)
+        if finished:
+            done += 1
     print(f"{done}/{total} ({(done / total) * 100:.03}%) done")
+
+
+def matches_fill_filters(
+    nam: models.Name, *, min_year: int | None = None, field: str | None = None
+) -> bool:
+    """Apply the editing filters independently of original-citation availability."""
+    if min_year is not None and nam.year is not None and nam.numeric_year() < min_year:
+        return False
+    if field is not None:
+        status = models.name.required_fields.get_status(
+            nam, getattr(models.Name, field)
+        )
+        if not status.requiredness.is_desired() or status.is_nonempty:
+            return False
+    return True
 
 
 def fill_data_for_names(
@@ -139,27 +155,13 @@ def fill_data_for_names(
     skip_nofile: bool = True,
 ) -> None:
     """Fill desired fields and type tags, working through original citations."""
-
-    def should_include(nam: models.Name) -> bool:
-        if nam.original_citation is None:
-            return False
-        if nam.original_citation.lacks_full_text():
-            return False
-        if field is not None:
-            field_obj = getattr(models.Name, field)
-            status = models.name.required_fields.get_status(nam, field_obj)
-            if not status.requiredness.is_desired() or status.is_nonempty:
-                return False
-        if min_year is not None and nam.year is not None:
-            return min_year <= nam.numeric_year()
-        else:
-            return True
-
     citations = sorted(
         {
             nam.original_citation
             for nam in nams
-            if should_include(nam) and nam.original_citation is not None
+            if nam.original_citation is not None
+            and not nam.original_citation.lacks_full_text()
+            and matches_fill_filters(nam, min_year=min_year, field=field)
         },
         key=lambda art: (art.path or "NOFILE", art.name),
     )

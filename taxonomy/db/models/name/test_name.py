@@ -154,3 +154,61 @@ def test_clear_zoobank_caches_clears_name_and_act_lsid_queries(
         ],
         any_order=True,
     )
+
+
+def test_knowledge_level_includes_desired_tags_and_source_matching(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from taxonomy.db.constants import (
+        AgeClass,
+        ArticleKind,
+        CoverageLevel,
+        Group,
+        Rank,
+        TypeSpeciesDesignation,
+    )
+    from taxonomy.db.models import Article, Person, Taxon
+    from taxonomy.db.models.name_complex import NameComplex
+    from taxonomy.db.models.person import AuthorTag
+    from taxonomy.db.models.tags import TaxonTag
+
+    original = Article.virtual(
+        name="original.pdf", kind=ArticleKind.electronic, tags=()
+    )
+    nam = Name.virtual(
+        group=Group.genus,
+        root_name="Example",
+        original_name="Example",
+        corrected_original_name="Example",
+        original_rank=Rank.genus,
+        author_tags=(AuthorTag.Author(Person.virtual(family_name="Example")),),
+        year="2000",
+        page_described="1",
+        original_citation=original,
+        nomenclature_status=NomenclatureStatus.available,
+        status=Status.valid,
+        taxon=Taxon.virtual(
+            age=AgeClass.extant, tags=(TaxonTag.Coverage(CoverageLevel.low),)
+        ),
+        name_complex=NameComplex.virtual(),
+        genus_type_kind=TypeSpeciesDesignation.undesignated,
+        type_tags=(TypeTag.NoEtymology(original), TypeTag.GenusCoelebs()),
+        tags=(),
+    )
+    assert nam.knowledge_level() == 2
+    # Pending details and high-coverage requirements affect completeness even
+    # when lint would not enforce them in this low-coverage taxon.
+    nam.type_tags = (TypeTag.GenusCoelebs(),)
+    assert nam.knowledge_level(verbose=True) == 1
+    assert "type tag EtymologyDetail" in capsys.readouterr().out
+    nam.type_tags = (TypeTag.NoEtymology(original),)
+    assert nam.knowledge_level() == 1
+    later = Article.virtual(name="later.pdf")
+    nam.type_tags = (TypeTag.NoEtymology(later), TypeTag.GenusCoelebs())
+    assert nam.knowledge_level() == 1
+    nam.type_tags = (TypeTag.NoEtymology(original), TypeTag.GenusCoelebs())
+    assert nam.knowledge_level() == 2
+    nam.year = None
+    assert nam.knowledge_level() == 1
+    nam.original_citation = None
+    assert nam.knowledge_level() == 0

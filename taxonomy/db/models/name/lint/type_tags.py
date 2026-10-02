@@ -620,6 +620,8 @@ def _check_all_type_tags(
                 or tag.altitude == "000"
             ):
                 yield f"bad altitude tag {tag}"
+            if TypeTag.LocationDetail not in by_type:
+                yield "has Altitude tag but no LocationDetail tag"
 
         case TypeTag.LocationDetail():
             if is_empty_location_detail(tag.text):
@@ -810,10 +812,6 @@ def _check_all_type_tags(
                 if witnesses:
                     yield f"has NoSpecimen tag but also has SpecimenDetail tag: {witnesses}"
                     return []
-
-        case TypeTag.Altitude():
-            if TypeTag.LocationDetail not in by_type:
-                yield "has Altitude tag but no LocationDetail tag"
 
         case TypeTag.TextualOriginalRank():
             if nam.original_rank is None or not nam.original_rank.needs_textual_rank:

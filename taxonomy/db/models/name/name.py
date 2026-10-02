@@ -1866,15 +1866,20 @@ class Name(BaseModel):
             if verbose:
                 print("0 because no original citation")
             return 0
-        required_fields = set(self.get_required_fields())
-        for field in required_fields:
-            value = getattr(self, field)
-            if value is None or value == ():
-                if verbose:
-                    print(f"1 because {field} is missing")
-                return 1
+        missing = next(
+            iter(
+                models.name.required_fields.get_missing_requirements(self, levels=None)
+            ),
+            None,
+        )
+        if missing is not None:
+            if verbose:
+                label, status = missing
+                explanation = f": {status.message}" if status.message else ""
+                print(f"1 because {label} is missing{explanation}")
+            return 1
         if verbose:
-            print("2 because all fields are set")
+            print("2 because all desired fields and tags are present")
         return 2
 
     def is_patronym(self) -> bool:

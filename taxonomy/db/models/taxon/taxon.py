@@ -27,7 +27,7 @@ from taxonomy.db.constants import (
 from taxonomy.db.derived_data import DerivedField, SetLater
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, TextOrNullField
-from taxonomy.db.models.fill_data import fill_data_for_names
+from taxonomy.db.models.fill_data import fill_data_for_names, matches_fill_filters
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.location import LocationStatus
 from taxonomy.svg_map import MapPoint
@@ -1592,7 +1592,9 @@ class Taxon(BaseModel):
         if not only_with_original:
             for nam in self.all_names(age=age):
                 nam.load()
-                if nam.original_citation is None:
+                if nam.original_citation is None and matches_fill_filters(
+                    nam, min_year=min_year, field=field
+                ):
                     print(nam)
                     nam.fill_required_fields()
 
