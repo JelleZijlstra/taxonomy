@@ -9,7 +9,7 @@ import subprocess
 import unicodedata
 import urllib.parse
 from collections import defaultdict
-from collections.abc import Generator, Hashable, Iterable, Sequence
+from collections.abc import Container, Generator, Hashable, Iterable, Sequence
 from typing import Any
 
 import Levenshtein
@@ -34,6 +34,7 @@ from taxonomy.db.constants import (
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig, LintResource
 from taxonomy.db.models.citation_group import lint as cg_lint
 from taxonomy.db.models.citation_group.cg import CitationGroup, CitationGroupTag
+from taxonomy.db.models.citation_group.date_sources import get_unreliable_date_sources
 from taxonomy.db.models.citation_group.lint import get_biblio_pages
 from taxonomy.db.models.issue_date import IssueDate, parse_page_number
 from taxonomy.db.models.lint import (
@@ -309,8 +310,18 @@ SOURCE_PRIORITY = {
 
 def infer_publication_date_from_tags(
     tags: Sequence[ArticleTag] | None,
+    *,
+    citation_group: CitationGroup | None = None,
+    series: str | None = None,
+    volume: str | None = None,
+    issue: str | None = None,
 ) -> tuple[str | None, list[str]]:
-    result, errors = _infer_publication_bounds_from_tags(tags)
+    excluded = get_unreliable_date_sources(
+        citation_group, series=series, volume=volume, issue=issue
+    )
+    result, errors = _infer_publication_bounds_from_tags(
+        tags, excluded_sources=excluded
+    )
     return result.adopted if result else None, errors
 
 
@@ -319,6 +330,7 @@ def _infer_publication_bounds_from_tags(
     *,
     path: tuple[Article, ...] = (),
     inherited: date_bounds.DateBounds | None = None,
+    excluded_sources: Container[DateSource] = (),
 ) -> tuple[date_bounds.DateBounds | None, list[str]]:
     if not tags:
         return inherited, []
@@ -327,6 +339,8 @@ def _infer_publication_bounds_from_tags(
     bounds: list[date_bounds.DateBounds] = []
     for tag in tags:
         if isinstance(tag, ArticleTag.PublicationDate):
+            if tag.source in excluded_sources:
+                continue
             by_source[tag.source].append(tag)
             if tag.date.startswith(("<", ">")):
                 try:
@@ -444,6 +458,30 @@ def _unique_dates(dates: Iterable[str]) -> set[str]:
     }
 
 
+def get_rejected_publication_dates(art: Article) -> dict[DateSource, str]:
+    excluded = get_unreliable_date_sources(
+        art.citation_group, series=art.series, volume=art.volume, issue=art.issue
+    )
+    return {
+        tag.source: excluded[tag.source]
+        for tag in art.get_tags(art.tags, ArticleTag.PublicationDate)
+        if tag.source in excluded
+    }
+
+
+@LINT.add("unreliable_publication_date")
+def check_unreliable_publication_date(art: Article, cfg: LintConfig) -> Iterable[str]:
+    rejected = get_rejected_publication_dates(art)
+    if not rejected:
+        return
+    date, _, errors = infer_publication_date(art)
+    if date is None and not errors:
+        reasons = "; ".join(
+            f"{source.name}: {reason}" for source, reason in rejected.items()
+        )
+        yield f"no supported automatic publication date after excluding {reasons}"
+
+
 def infer_publication_date(art: Article) -> tuple[str | None, str | None, list[str]]:
     result, issue, errors = _infer_publication_bounds(art)
     return result.adopted if result else None, issue, errors
@@ -469,7 +507,11 @@ def _infer_publication_bounds(
             inherited, _, errors = _infer_publication_bounds(parent, path=path)
             if errors:
                 return None, None, errors
-            if inherited is None and parent.year:
+            if (
+                inherited is None
+                and parent.year
+                and not get_rejected_publication_dates(parent)
+            ):
                 try:
                     inherited = date_bounds.parse_date(parent.year)
                 except ValueError as exc:
@@ -483,7 +525,10 @@ def _infer_publication_bounds(
     # Parent/issue dates retain their existing precedence, but their actual
     # bounds (not merely the adopted cutoff) must satisfy local constraints.
     result, errors = _infer_publication_bounds_from_tags(
-        art.tags, path=path, inherited=inherited
+        art.tags,
+        path=path,
+        inherited=inherited,
+        excluded_sources=get_rejected_publication_dates(art),
     )
     return result, issue, errors
 
@@ -697,6 +742,10 @@ def get_inferred_date_from_position(art: Article) -> tuple[Article, Article] | N
         if art.start_page is not None
         and art.start_page.isnumeric()
         and art.has_tag(ArticleTag.PublicationDate)
+        and (
+            not get_rejected_publication_dates(art)
+            or infer_publication_date(art)[0] == art.year
+        )
     ]
     if len(siblings) <= 1:
         return None

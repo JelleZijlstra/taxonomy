@@ -1560,8 +1560,17 @@ class Article(BaseModel):
         return data  # static analysis: ignore[possibly_undefined_name]
 
     def set_multi(self, data: dict[str, Any]) -> None:
+        defer_year = models.article.add_data.has_machine_publication_date(data)
         for key, value in clean_strings_recursively(data).items():
+            if key == "year" and defer_year:
+                continue
+            if key == "tags" and defer_year:
+                value = tuple(dict.fromkeys((*self.tags, *value)))
             self.set_from_raw(key, value)
+        if defer_year:
+            models.article.add_data.set_publication_date_from_metadata(
+                self, only_new=False
+            )
         # Somehow this doesn't always autosave
         self.save()
 

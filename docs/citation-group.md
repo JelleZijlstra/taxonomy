@@ -175,6 +175,16 @@ citation groups to help keep track of such cases:
   "series" field set.
 - _DatingTools_: Brief discussion of resources to help determine the publication date
   for members of this citation group.
+- _UnreliablePublicationDate(source, comment, series?, volume_regex?, issue_regex?)_:
+  excludes a machine date source from automatic publication-date selection while keeping
+  its raw Article tags. Repeat the tag for multiple sources or scopes. The source must
+  be `doi_published`, `doi_published_print`, `doi_published_online`,
+  `doi_published_other`, or `jstor`; the comment must explain the evidence. Omitted
+  selectors match everything. Series is a literal string (an empty string matches an
+  Article with no series); volume and issue regexes use full matching. Missing metadata
+  needed by a selector leaves the scope unresolved and excludes that source until the
+  metadata is supplied. A known nonmatching selector takes precedence and makes that
+  rule inapplicable. Scope never depends on the Article's inferred year.
 
 ### Issue dates
 

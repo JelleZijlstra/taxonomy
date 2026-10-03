@@ -26,6 +26,7 @@ from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.url_cache import CacheDomain, cached
 
 from .cg import CitationGroup, CitationGroupStatus, CitationGroupTag
+from .date_sources import MACHINE_DATE_SOURCES
 
 # Shared regex defaults and helper functions for validating volume/issue/series
 DEFAULT_VOLUME_REGEX = r"(Suppl\. )?\d{1,4}"
@@ -91,6 +92,16 @@ def check_status(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("check_tags")
 def check_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[str]:
     for tag in cg.tags:
+        if isinstance(tag, CitationGroupTag.UnreliablePublicationDate):
+            if tag.source not in MACHINE_DATE_SOURCES:
+                yield f"UnreliablePublicationDate requires a machine date source: {tag}"
+            if not tag.comment.strip():
+                yield f"UnreliablePublicationDate requires an evidence comment: {tag}"
+            for field in ("volume_regex", "issue_regex"):
+                pattern = getattr(tag, field)
+                if pattern is not None:
+                    if issue := helpers.is_valid_regex(pattern):
+                        yield f"invalid {field} in {tag}: {issue}"
         if tag is CitationGroupTag.MustHave or isinstance(
             tag, CitationGroupTag.MustHaveAfter
         ):
@@ -163,6 +174,7 @@ def format_tags(cg: CitationGroup, cfg: LintConfig) -> Iterable[LintResult]:
             CitationGroupTag.MayHaveIdentifier,
             CitationGroupTag.MustHaveIdentifier,
             CitationGroupTag.AlternativeName,
+            CitationGroupTag.UnreliablePublicationDate,
         ):
             yield f"multiple {tag_type} tags"
 

@@ -642,7 +642,21 @@ def expand_doi_json(doi: str) -> RawData:
             data["tags"].append(
                 ArticleTag.PublicationDate(source=date_source, date="-".join(pieces))
             )
-    year, _ = infer_publication_date_from_tags(data["tags"])
+    date_cg = None
+    if typ is ArticleType.JOURNAL:
+        if journal := data.get("journal"):
+            date_cg = CitationGroup.select_one(name=journal, type=ArticleType.JOURNAL)
+        # Recompute after interactive journal resolution in set_multi(). Raw date
+        # tags survive even when we cannot yet decide which source is eligible.
+        if date_cg is None:
+            return data
+    year, _ = infer_publication_date_from_tags(
+        data["tags"],
+        citation_group=date_cg,
+        volume=data.get("volume"),
+        issue=data.get("issue"),
+        series=data.get("series"),
+    )
     if year:
         data["year"] = year
     return data

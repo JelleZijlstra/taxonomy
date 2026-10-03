@@ -9,15 +9,16 @@ from typing import Any
 
 from taxonomy import command_set, getinput, parsing, uitools, urlparse
 from taxonomy.apis import bhl
-from taxonomy.db.constants import ArticleKind, ArticleType
-from taxonomy.db.helpers import clean_strings_recursively, trimdoi
+from taxonomy.db.constants import ArticleKind, ArticleType, DateSource
+from taxonomy.db.helpers import clean_strings_recursively, is_valid_date, trimdoi
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.citation_group import CitationGroup
+from taxonomy.db.models.citation_group.date_sources import MACHINE_DATE_SOURCES
 from taxonomy.db.models.person import AuthorTag, Person, VirtualPerson
 
 from .api_data import RawData, expand_doi_json
 from .article import Article, ArticleTag
-from .lint import is_valid_doi
+from .lint import infer_publication_date, is_valid_doi
 
 CS = command_set.CommandSet("add_data", "Commands for adding data to articles")
 
@@ -216,6 +217,8 @@ def get_jstor_data(art: Article) -> RawData:
             print("unable to process data")
             return {}
     data["year"] = re.sub(r"^.*,\s", "", year)
+    if is_valid_date(data["year"]):
+        data["tags"].append(ArticleTag.PublicationDate(DateSource.jstor, data["year"]))
     first_last = [page.rstrip(" .") for page in pages.split("-")]
     data["start_page"] = first_last[0]
     data["end_page"] = first_last[1] if len(first_last) > 1 else first_last[0]
@@ -308,11 +311,38 @@ def reuse_nofile(art: Article) -> bool:
     return True
 
 
+def has_machine_publication_date(data: RawData) -> bool:
+    return any(
+        isinstance(tag, ArticleTag.JSTOR)
+        or (
+            isinstance(tag, ArticleTag.PublicationDate)
+            and tag.source in MACHINE_DATE_SOURCES
+        )
+        for tag in data.get("tags", ())
+    )
+
+
+def set_publication_date_from_metadata(art: Article, *, only_new: bool) -> None:
+    """Adopt a date only after the journal, issue and raw tags are installed."""
+    if only_new and art.year:
+        return
+    # An unresolved journal cannot safely bypass its date-source restrictions.
+    if art.type is ArticleType.JOURNAL and art.citation_group is None:
+        return
+    year, _, errors = infer_publication_date(art)
+    if year is not None and not errors and year != art.year:
+        print(f"{art}: set year to {year}")
+        art.year = year
+
+
 def set_multi(
     art: Article, data: RawData, *, only_new: bool = True, verbose: bool = True
 ) -> None:
     has_start_page = bool(art.start_page)
+    defer_year = has_machine_publication_date(data)
     for attr, value in clean_strings_recursively(data).items():
+        if attr == "year" and defer_year:
+            continue
         if attr == "author_tags":
             set_author_tags_from_raw(art, value, only_new=only_new, verbose=verbose)
         elif attr == "journal":
@@ -358,6 +388,8 @@ def set_multi(
             setattr(art, attr, value)
         else:
             print(f"warning: ignoring field {attr}: {value}")
+    if defer_year:
+        set_publication_date_from_metadata(art, only_new=only_new)
     # Somehow this doesn't always autosave
     art.save()
 

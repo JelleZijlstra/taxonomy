@@ -13,7 +13,13 @@ from taxonomy.apis import bhl
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.apis.zoobank import article_lsid_has_valid_data
 from taxonomy.db import constants, helpers, models
-from taxonomy.db.constants import ArticleIdentifier, Managed, Markdown, Regex
+from taxonomy.db.constants import (
+    ArticleIdentifier,
+    DateSource,
+    Managed,
+    Markdown,
+    Regex,
+)
 from taxonomy.db.derived_data import DerivedField, LazyType
 from taxonomy.db.models.base import ADTField, BaseModel, LintConfig
 from taxonomy.db.models.lint_types import LintResult
@@ -687,3 +693,6 @@ class CitationGroupTag(adt.ADT):
 
     # Common abbreviated journal title (e.g., Medline TA)
     AbbreviatedTitle(text=Managed, tag=37)  # type: ignore[name-defined]
+
+    # Retain machine date evidence but exclude it from automatic date selection.
+    UnreliablePublicationDate(source=DateSource, comment=Markdown, series=NotRequired[Managed], volume_regex=NotRequired[Regex], issue_regex=NotRequired[Regex], tag=38)  # type: ignore[name-defined]

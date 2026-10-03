@@ -758,11 +758,6 @@ def _check_all_type_tags(
                 page = ""
             tag = TypeTag.AuthorityPageLink(url, tag.confirmed, page)
 
-        case TypeTag.CitationDetail():
-            if tag.source is not None and tag.source == nam.original_citation:
-                yield "replace CitationDetail with SourceDetail"
-                tag = TypeTag.SourceDetail(tag.text, tag.source)
-
         case TypeTag.NoDate():
             if TypeTag.Date in by_type:
                 yield "has NoDate tag but also has Date tag"

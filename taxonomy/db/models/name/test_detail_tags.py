@@ -173,6 +173,27 @@ def test_detail_sync_both_directions_and_idempotence(
     assert list(infer_data_from_mapped.linter(ce, _CFG)) == []
 
 
+def test_original_citation_detail_survives_lint_and_sync(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    name, ce = _models(monkeypatch)
+    ce_tag = ClassificationEntryTag.CitationDetail("quotation", **_METADATA)
+    ce.tags = (ce_tag,)  # type: ignore[assignment]
+    _apply(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG))
+    (detail,) = name.get_tags(name.type_tags, TypeTag.CitationDetail)
+    assert detail.source == name.original_citation
+    issues, checked = _finish(type_tags._check_all_type_tags(detail, name, _CFG, {}))
+    assert issues == []
+    assert checked == [detail]
+    assert detail.classification_entry == ce
+    assert all(getattr(detail, field) == value for field, value in _METADATA.items())
+    ce.tags = ()  # type: ignore[assignment]
+    _apply(infer_data_from_mapped.linter(ce, _CFG))
+    assert list(ce.tags) == [ce_tag]
+    assert list(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG)) == []
+    assert list(infer_data_from_mapped.linter(ce, _CFG)) == []
+
+
 @pytest.mark.parametrize("tag_type", SOURCE_TAGS)
 def test_detail_page_cleanup_inference_and_validation(
     monkeypatch: pytest.MonkeyPatch, tag_type: type[TypeTag]
