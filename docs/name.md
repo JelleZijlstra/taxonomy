@@ -551,9 +551,9 @@ names should have at least one. They fall into several groups:
     many original descriptions do not specify an etymology.
   - _NomenclatureDetail_: A previous author's discussion about the nomenclature of this
     name.
-  - _SourceDetail_: Information on the source material of a name. Used for early names,
-    such as those from Linnaeus, that were often based on a series of literature
-    sources.
+  - _SourceDetail_: Information on the literature sources of a name. Used for early
+    names, such as those from Linnaeus, that were often based on a series of citations
+    from earlier literature.
   - _TypeSpeciesDetail_: A previous author's discussion of the type species for a
     genus-group name. This is only used in cases where there is some difficulty or
     confusion about the type species; it should not ordinarily be used for the simple
