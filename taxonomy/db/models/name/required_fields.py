@@ -24,6 +24,7 @@ from taxonomy.db.models.collection import (
 )
 
 from .name import (
+    CONFLICTING_TYPE_DATA_FIELDS,
     ETYMOLOGY_TAGS,
     SPECIMEN_TAGS,
     ExperimentalLintCondition,
@@ -346,6 +347,11 @@ def get_type_tag_status(
     alternative_id = (
         requirement.alternative._tag if requirement.alternative is not None else None
     )
+    conflict_field = getattr(tag_cls, "__name__", None)
+    accepts_conflict = (
+        conflict_field in CONFLICTING_TYPE_DATA_FIELDS
+        and requirement.requiredness is not Requiredness.disallowed
+    )
     matching_tags = tuple(
         tag
         for tag in nam.type_tags
@@ -360,6 +366,11 @@ def get_type_tag_status(
             )
         )
         or tag._tag == alternative_id
+        or (
+            accepts_conflict
+            and isinstance(tag, TypeTag.ConflictingTypeData)
+            and tag.field == conflict_field
+        )
     )
     message = requirement.message
     if not matching_tags and requirement.requiredness.is_desired():
@@ -371,6 +382,8 @@ def get_type_tag_status(
             description += " from original_citation"
         if requirement.alternative is not None:
             description += f" or {requirement.alternative.__name__}"
+        if accepts_conflict:
+            description += f" or ConflictingTypeData({conflict_field!r})"
         explanation = f"expected {description}"
         message = f"{message}; {explanation}" if message else explanation
     return FieldStatus(
@@ -484,6 +497,7 @@ TYPE_TAGS_BY_GROUP: dict[type[TypeTag], tuple[Group, ...]] = {
             TypeTag.OriginalTypification,
             TypeTag.PartialTypeLocality,
             TypeTag.TypeLocalityValidity,
+            TypeTag.ConflictingTypeData,
         ),
         (Group.species,),
     ),
@@ -690,6 +704,7 @@ def get_type_tag_requiredness(
             | TypeTag.StructuredVerbatimCitation
             | TypeTag.PartialTypeLocality
             | TypeTag.TypeLocalityValidity
+            | TypeTag.ConflictingTypeData
         ):
             # Alternatives have no independent requirement; other tags retain
             # their specialized validation in the lint package.

@@ -40,7 +40,7 @@ from .lint.type_locality import (
     check_type_locality_validity,
     check_unique_type_locality,
 )
-from .lint.type_tags import check_collector_lifespan
+from .lint.type_tags import check_collector_lifespan, check_type_specimen_date
 from .lint.variants import (
     _create_name_variant_issue,
     _redirect_name_issue,
@@ -316,6 +316,66 @@ def test_merge_name_issue_does_not_autofix_valid_name() -> None:
     assert "cannot autofix a Name with status valid" in issue.message
 
 
+@pytest.mark.parametrize(
+    ("collection", "publication", "expected"),
+    [
+        ("1899", "1890", True),
+        ("1889", "1890", False),
+        ("2 March 1890", "1890-03-01", True),
+        ("1 March 1890", "1890-03-01", False),
+        ("March 1890", "1890-02", True),
+        ("March 1890", "1890-03-01", False),
+        ("1890", "1890-01-01", False),
+        ("31 December 1890", "1890", False),
+        ("1899", "1890-1900", False),
+        ("1901", "1890-1900", True),
+        ("<1899", "1890", False),
+        ("unknown date", "1890", False),
+        ("31 February 1899", "1890", False),
+        ("1899", None, False),
+        ("1899", "invalid", False),
+        ("1899", "1890-13", False),
+    ],
+)
+def test_type_specimen_date(
+    collection: str, publication: str | None, *, expected: bool
+) -> None:
+    nam = Name.virtual(
+        year=publication,
+        species_type_kind=SpeciesGroupType.holotype,
+        type_tags=(TypeTag.Date(collection),),
+    )
+    issues = list(check_type_specimen_date(nam, LintConfig()))
+    assert bool(issues) is expected
+    if expected:
+        assert len(issues) == 1
+        assert "postdates" in str(issues[0])
+        assert issues[0].fix is None
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [SpeciesGroupType.holotype, SpeciesGroupType.lectotype, SpeciesGroupType.syntypes],
+)
+def test_type_specimen_date_checks_original_types(kind: SpeciesGroupType) -> None:
+    nam = Name.virtual(
+        year="1890", species_type_kind=kind, type_tags=(TypeTag.Date("1899"),)
+    )
+    assert len(list(check_type_specimen_date(nam, LintConfig()))) == 1
+
+
+def test_type_specimen_date_allows_neotype_and_ignore() -> None:
+    nam = Name.virtual(
+        year="1890",
+        species_type_kind=SpeciesGroupType.neotype,
+        type_tags=(TypeTag.Date("1899"),),
+    )
+    assert list(check_type_specimen_date(nam, LintConfig())) == []
+    nam.species_type_kind = SpeciesGroupType.holotype
+    nam.type_tags = (*nam.type_tags, TypeTag.IgnoreLint("type_specimen_date"))
+    assert list(check_type_specimen_date(nam, LintConfig())) == []
+
+
 def _name_with_collector_dates(
     *, death: str | None, dates: tuple[str, ...], additional_collector: bool = False
 ) -> Name:
@@ -505,6 +565,7 @@ def _name_with_location_details(
             type_tags=tags,
             species_type_kind=None,
             has_lint_ignore=lambda label: False,
+            has_conflicting_type_data=lambda field: False,
             get_tags=lambda values, tag_type: (
                 tag for tag in values if isinstance(tag, tag_type)
             ),
@@ -550,6 +611,7 @@ def test_neotype_location_detail_coordinates_ignore_original_locality() -> None:
                 name="Neotype locality", latitude="11°N", longitude="21°E"
             ),
             type_tags=tags,
+            has_conflicting_type_data=lambda field: False,
             get_tags=lambda values, tag_type: (
                 tag for tag in values if isinstance(tag, tag_type)
             ),

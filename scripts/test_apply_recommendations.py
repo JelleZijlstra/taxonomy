@@ -5,7 +5,8 @@ import sys
 from collections import Counter
 from collections.abc import Callable, Iterator, Mapping
 from contextlib import contextmanager
-from functools import partial
+from datetime import date
+from functools import cache, partial
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, Literal, Self, cast
@@ -13,6 +14,7 @@ from typing import Any, Literal, Self, cast
 import pytest
 
 from scripts import apply_recommendations
+from taxonomy import events as model_events
 from taxonomy import getinput
 from taxonomy.applicator import article as article_recommendations
 from taxonomy.applicator import generic as generic_recommendations
@@ -27,10 +29,15 @@ from taxonomy.db.models import (
     ClassificationEntry,
     ItemFile,
     Location,
+    Name,
     Person,
     Region,
 )
+from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.citation_group.cg import CitationGroupStatus
+from taxonomy.db.models.classification_entry.lint import check_predates_mapped_name
+from taxonomy.db.models.lint_types import LintIssue, LintResult
+from taxonomy.db.models.name.lint.variants import take_over_name_issue
 
 
 def _location_row() -> dict[str, object]:
@@ -2067,6 +2074,10 @@ def test_cleanup_includes_objects_created_by_autofix(
     class CleanupObject:
         label_field = "label"
 
+        @classmethod
+        def clear_lint_caches(cls) -> None:
+            pass
+
         def __init__(
             self, object_id: int, label: str, discovered: CleanupObject | None = None
         ) -> None:
@@ -2083,6 +2094,7 @@ def test_cleanup_includes_objects_created_by_autofix(
             events.append(f"automatic:{self.label}")
             if self.discovered is not None and not discover_on_edit:
                 active_recorder[0]._objects.append(self.discovered)
+                active_recorder[0].event_count += 1
                 self.discovered = None
             return [f"issue:{self.label}"] if has_issues else []
 
@@ -2112,6 +2124,7 @@ def test_cleanup_includes_objects_created_by_autofix(
     class Recorder:
         def __init__(self) -> None:
             self._objects: list[Any] = []
+            self.event_count = 0
 
         def __enter__(self) -> Self:
             active_recorder[:] = [self]
@@ -2124,6 +2137,9 @@ def test_cleanup_includes_objects_created_by_autofix(
         def objects(self) -> tuple[Any, ...]:
             return tuple(self._objects)
 
+        def last_event(self, obj: Any) -> int:
+            return 0
+
     monkeypatch.setattr(apply_recommendations, "AppliedObjectRecorder", Recorder)
 
     assert apply_recommendations.edit_applied_objects(
@@ -2132,6 +2148,9 @@ def test_cleanup_includes_objects_created_by_autofix(
     expected = ["reload:parent", "automatic:parent"]
     if not discover_on_edit:
         expected.extend(["reload:child", "automatic:child"])
+        expected.extend(["reload:parent", "automatic:parent"])
+        if has_issues:
+            expected.extend(["reload:child", "automatic:child"])
     if has_issues or edit_each:
         for label in ("parent", "child"):
             if label == "child" and discover_on_edit:
@@ -2145,6 +2164,223 @@ def test_cleanup_includes_objects_created_by_autofix(
     assert events == expected
 
 
+@pytest.mark.parametrize("fix_kind", ["structured", "legacy"])
+@pytest.mark.parametrize("fix_count", [0, 2, 10, 12])
+@pytest.mark.parametrize("unresolved", [False, True])
+def test_cleanup_repeats_lint_until_stable_or_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    fix_kind: str,
+    fix_count: int,
+    *,
+    unresolved: bool,
+) -> None:
+    calls: list[str] = []
+
+    class CleanupObject:
+        label_field = "id"
+        id = 1
+        save_event: model_events.Event[Any] = model_events.Event()
+
+        @classmethod
+        def clear_lint_caches(cls) -> None:
+            pass
+
+        def __init__(self) -> None:
+            self.fixes_applied = 0
+
+        def reload(self) -> None:
+            pass
+
+        def general_lint(self, cfg: Any) -> list[str]:
+            assert not cfg.interactive
+            calls.append("automatic" if cfg.autofix else "check")
+            if cfg.autofix and self.fixes_applied < fix_count:
+                self.fixes_applied += 1
+                if fix_kind == "structured":
+                    cfg.fix_callback(LintIssue("applied fix"))
+                else:
+                    self.save_event.trigger(self)
+                # Simulate a message yielded before an autofix resolved it.
+                return ["stale issue"]
+            return (
+                ["unresolved"] if unresolved or self.fixes_applied < fix_count else []
+            )
+
+        def display(self) -> None:
+            pass
+
+        def edit_until_clean(self, *, cfg: Any) -> None:
+            assert cfg.interactive
+            calls.append("edit")
+
+        def is_lint_clean(self, *, cfg: Any) -> bool:
+            return True
+
+    obj = CleanupObject()
+    recorder = apply_recommendations.AppliedObjectRecorder([cast(Any, CleanupObject)])
+    monkeypatch.setattr(
+        apply_recommendations, "AppliedObjectRecorder", lambda: recorder
+    )
+    assert apply_recommendations.edit_applied_objects(
+        apply_recommendations.ExecutionResult((cast(Any, obj),))
+    )
+    expected = ["automatic"] * min(fix_count + 1, 10)
+    if fix_count >= 10:
+        expected.append("check")
+    if unresolved or fix_count > 10:
+        expected.append("edit")
+    assert calls == expected
+    assert obj.fixes_applied == min(fix_count, 10)
+    assert ("reached 10 automatic lint passes" in capsys.readouterr().out) == (
+        fix_count >= 10
+    )
+    assert not CleanupObject.save_event.handlers
+
+
+@pytest.mark.parametrize("include_name", [False, True])
+def test_cleanup_revisits_entry_after_mapped_name_autofix(
+    monkeypatch: pytest.MonkeyPatch, *, include_name: bool
+) -> None:
+    """The CE warning is resolved by a later Name fix, with fresh lint caches."""
+    earlier = Article.virtual(
+        name="Thomas 1901", year="1901-09-01", author_tags=(), type=ArticleType.JOURNAL
+    )
+    later = Article.virtual(name="Thomas 1902", year="1902-04-01")
+    name = Name.virtual(
+        corrected_original_name="Eligmodontia callosa",
+        original_name="Eligmodontia callosa",
+        original_citation=later,
+        year=later.year,
+        page_described="241",
+        author_tags=(),
+        type_tags=(),
+    )
+    entry = ClassificationEntry.virtual(
+        name="Eligmodontia callosa",
+        rank=Rank.species,
+        article=earlier,
+        mapped_name=name,
+        page="253",
+    )
+    calls: list[str] = []
+
+    @cache
+    def name_date(nam: Name) -> date:
+        assert nam.year is not None
+        return date.fromisoformat(nam.year)
+
+    def entry_lint(self: ClassificationEntry, cfg: Any) -> list[LintResult]:
+        calls.append("ce")
+        return list(check_predates_mapped_name.linter(self, cfg))
+
+    def name_lint(self: Name, cfg: Any) -> list[Any]:
+        calls.append("name")
+        if self.original_citation == earlier:
+            return []
+        return list(
+            self._process_lint_results(
+                [take_over_name_issue("use earlier citation", self, entry)], cfg
+            )
+        )
+
+    monkeypatch.setattr(Article, "is_unpublished", lambda _: False)
+    monkeypatch.setattr(
+        Article, "get_date_object", lambda self: date.fromisoformat(self.year)
+    )
+    monkeypatch.setattr(Name, "get_date_object", name_date)
+    monkeypatch.setattr(
+        Name, "__str__", lambda self: f"Eligmodontia callosa ({self.year})"
+    )
+    monkeypatch.setattr(Name, "general_lint", name_lint)
+    monkeypatch.setattr(ClassificationEntry, "general_lint", entry_lint)
+    for model in (Name, ClassificationEntry):
+        monkeypatch.setattr(model, "reload", lambda _: None)
+        monkeypatch.setattr(model, "clear_lint_caches", name_date.cache_clear)
+        monkeypatch.setattr(
+            model,
+            "edit_until_clean",
+            lambda *args, **kwargs: pytest.fail("stale issue"),
+        )
+    # Exercise the cleanup scheduler on isolated virtual objects, including the
+    # real CE check and Name fix, without opening or changing the live database.
+    monkeypatch.setattr(apply_recommendations, "_deduplicate_objects", tuple)
+    assert entry_lint(entry, LintConfig(autofix=False)) == [
+        "predates mapped name Eligmodontia callosa (1902-04-01)"
+    ]
+    calls.clear()
+    objects = (entry, name) if include_name else (entry,)
+    assert apply_recommendations.edit_applied_objects(
+        apply_recommendations.ExecutionResult(objects)
+    )
+    assert calls == ["ce", "name", "ce", "name"]
+    assert name.original_citation == earlier
+    assert name.year == "1901-09-01"
+    assert name.page_described == "253"
+
+
+@pytest.mark.parametrize("edit_each", [False, True])
+@pytest.mark.parametrize("change_clean", [False, True])
+def test_cleanup_skips_clean_objects_unless_saved_by_another_lint(
+    monkeypatch: pytest.MonkeyPatch, *, edit_each: bool, change_clean: bool
+) -> None:
+    calls: Counter[int] = Counter()
+    edits: list[int] = []
+
+    class CleanupObject:
+        label_field = "id"
+        save_event: model_events.Event[Any] = model_events.Event()
+
+        def __init__(self, object_id: int) -> None:
+            self.id = object_id
+            self.dirty = False
+
+        @classmethod
+        def clear_lint_caches(cls) -> None:
+            pass
+
+        def reload(self) -> None:
+            pass
+
+        def general_lint(self, cfg: Any) -> list[str]:
+            assert cfg.autofix and not cfg.interactive
+            calls[self.id] += 1
+            if self.dirty:
+                self.dirty = False
+                cfg.fix_callback(LintIssue("fixed after related save"))
+            if self.id == 2 and calls[self.id] <= 2:
+                cfg.fix_callback(LintIssue("applied fix without remaining issues"))
+                if change_clean:
+                    clean.dirty = True
+                    self.save_event.trigger(clean)
+            return ["unresolved"] if self.id == 3 else []
+
+        def display(self) -> None:
+            pass
+
+        def edit_until_clean(self, *, cfg: Any) -> None:
+            assert self.id == 3
+
+        def edit(self) -> None:
+            edits.append(self.id)
+
+        def is_lint_clean(self, *, cfg: Any) -> bool:
+            return True
+
+    clean, fixer, unresolved = (CleanupObject(i) for i in (1, 2, 3))
+    recorder = apply_recommendations.AppliedObjectRecorder([cast(Any, CleanupObject)])
+    monkeypatch.setattr(
+        apply_recommendations, "AppliedObjectRecorder", lambda: recorder
+    )
+    assert apply_recommendations.edit_applied_objects(
+        apply_recommendations.ExecutionResult(cast(Any, (clean, fixer, unresolved))),
+        edit_each=edit_each,
+    )
+    assert calls == {1: 4 if change_clean else 1, 2: 3, 3: 4 if change_clean else 3}
+    assert edits == ([1, 2, 3] if edit_each else [])
+    assert not clean.dirty
+
+
 def test_cleanup_continues_after_lint_failure_and_reports_residual_issues(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
@@ -2152,6 +2388,10 @@ def test_cleanup_continues_after_lint_failure_and_reports_residual_issues(
 
     class CleanupObject:
         label_field = "id"
+
+        @classmethod
+        def clear_lint_caches(cls) -> None:
+            pass
 
         def __init__(self, object_id: int) -> None:
             self.id = object_id

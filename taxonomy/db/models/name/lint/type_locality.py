@@ -306,6 +306,8 @@ def check_type_locality_strict(nam: Name, cfg: LintConfig) -> Iterable[str]:
 def check_location_detail_coordinates(
     nam: Name, cfg: LintConfig
 ) -> Iterable[LintResult]:
+    if nam.has_conflicting_type_data("Coordinates"):
+        return
     extracted: list[  # type: ignore[name-defined]
         tuple[TypeTag.LocationDetail, str, str, coordinate_lint.CoordinateExtent]
     ] = []

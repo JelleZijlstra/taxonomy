@@ -1,5 +1,6 @@
 # registration
 from . import ce_mapping as ce_mapping
+from . import derived_tags as derived_tags
 from . import homonymy as homonymy
 from . import name_complex as name_complex
 from . import original_name as original_name

@@ -108,13 +108,13 @@ class Name(BaseModel):
 
     # Citation and authority
     author_tags = ADTField["AuthorTag"]()
+    year = Field[str | None]()  # redundant with data for the publication itself
+    page_described = Field[str | None]()
     original_citation = Field[Article | None](
         "original_citation_id", related_name="new_names"
     )
-    page_described = Field[str | None]()
     verbatim_citation = Field[str | None]()
     citation_group = Field[CitationGroup | None]("citation_group", related_name="names")
-    year = Field[str | None]()  # redundant with data for the publication itself
 
     # Gender and stem
     name_complex = Field[NameComplex | None]("name_complex_id", related_name="names")
@@ -1031,6 +1031,12 @@ class Name(BaseModel):
     def has_type_tag(self, tag_cls: TypeTagCons) -> bool:
         tag_id = tag_cls._tag
         return any(tag[0] == tag_id for tag in self.get_raw_tags_field("type_tags"))
+
+    def has_conflicting_type_data(self, field: str) -> bool:
+        return any(
+            tag.field == field
+            for tag in self.get_tags(self.type_tags, TypeTag.ConflictingTypeData)
+        )
 
     def num_type_tags(self, tag_cls: TypeTagCons) -> int:
         tag_id = tag_cls._tag
@@ -3059,6 +3065,14 @@ class TypeTag(adt.ADT):
     TypeLocalityValidity(  # type: ignore[name-defined]
         validity=constants.OccurrenceValidity, comment=NotRequired[Markdown], tag=77
     )
+
+    # Reviewed disagreement between sources; leave the corresponding derived tag unset.
+    ConflictingTypeData(field=Managed, comment=Markdown, tag=78)  # type: ignore[name-defined]
+
+
+CONFLICTING_TYPE_DATA_FIELDS = frozenset(
+    {"Age", "Altitude", "CollectedBy", "Coordinates", "Date", "Gender", "Organ"}
+)
 
 
 SOURCE_TAGS = (

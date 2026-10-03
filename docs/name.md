@@ -582,6 +582,17 @@ names should have at least one. They fall into several groups:
     "<7 December 1893"). If the specimen was kept in captivity, the date should be the
     date it was captured.
   - _Gender_: The biological gender of the type specimen.
+  - _ConflictingTypeData_: Records a reviewed disagreement between sources about derived
+    type data. `field` must be the exact tag name: `Age`, `Altitude`, `CollectedBy`,
+    `Coordinates`, `Date`, `Gender`, or `Organ`. The required `comment` explains the
+    disagreement and identifies the sources; retain their quotations in the detail tags.
+    For example,
+    `ConflictingTypeData("Gender", "Original description says male; later type catalogue says female")`
+    satisfies the Gender completeness requirement and prevents automatic extraction of
+    Gender. It cannot coexist with a Gender tag. Each field may have one conflict
+    marker, and only that field's requirement and source-extraction checks are affected.
+    This records conflicting evidence, whereas a `NoGender` tag records absence of
+    gender information in a source.
   - _Age_: The approximate age of the type specimen, such as "adult", "subadult", or
     "juvenile".
   - _Organ_: A preserved part of the specimen, such as "skin", "skull", or "tooth".

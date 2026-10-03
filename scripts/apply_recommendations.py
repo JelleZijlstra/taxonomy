@@ -10,7 +10,9 @@ note. ``--review-classification`` validates the manifest against the database an
 prints the affected ClassificationEntry hierarchy, including existing ancestor entries
 and proposed creations and updates, grouped by Article. ``--apply`` performs both
 post-apply cleanup and manual-review editing by default. Cleanup first runs
-noninteractive lint with autofixes on all affected objects, then interactively
+noninteractive lint with autofixes across affected objects and mapped Names until
+no fixes are applied (up to 10 passes), retrying only objects with issues, applied
+fixes, or new save events. It then interactively
 resolves the objects with remaining issues;
 use ``--no-edit-applied`` or ``--no-edit-manual`` to skip either phase. Use
 ``--edit-each`` to call ``edit()`` on every affected object during post-apply
@@ -63,7 +65,9 @@ from taxonomy.db.models import (
     Name,
 )
 from taxonomy.db.models.base import BaseModel, LintConfig
-from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.models.lint_types import LintIssue, LintResult
+
+MAX_POST_APPLY_LINT_PASSES = 10
 
 
 class RecommendationError(Exception):
@@ -137,6 +141,8 @@ class AppliedObjectRecorder:
         self._objects: list[BaseModel] = []
         self._seen: set[tuple[type[BaseModel], object]] = set()
         self._callback = self._record
+        self.event_count = 0
+        self._last_events: dict[tuple[type[BaseModel], object], int] = {}
 
     @staticmethod
     def _all_model_classes() -> tuple[type[BaseModel], ...]:
@@ -149,9 +155,13 @@ class AppliedObjectRecorder:
         return tuple(classes)
 
     def _record(self, obj: BaseModel) -> None:
+        # Count repeated saves too, so cleanup can detect further automatic work
+        # even after the object has been included in the deduplicated list.
+        self.event_count += 1
         object_id = getattr(obj, "id", None)
         identity: object = object_id if object_id is not None else id(obj)
         key = (type(obj), identity)
+        self._last_events[key] = self.event_count
         if key in self._seen:
             return
         self._seen.add(key)
@@ -178,6 +188,9 @@ class AppliedObjectRecorder:
     @property
     def objects(self) -> tuple[BaseModel, ...]:
         return tuple(self._objects)
+
+    def last_event(self, obj: BaseModel) -> int:
+        return self._last_events.get(_persistent_identity(obj), 0)
 
 
 @dataclass(frozen=True, slots=True)
@@ -312,38 +325,102 @@ def edit_applied_objects(result: ExecutionResult, *, edit_each: bool = False) ->
     # Structured lint may create related models (notably CE materialization). Keep
     # recording during cleanup and append those models in deterministic event order.
     with AppliedObjectRecorder() as recorder:
+        cleared_models: set[type[BaseModel]] = set()
 
-        def collect_discovered() -> None:
-            for discovered in _deduplicate_objects(recorder.objects):
+        def collect_discovered(extra: Iterable[BaseModel] = ()) -> None:
+            for discovered in _deduplicate_objects((*recorder.objects, *extra)):
                 key = _persistent_identity(discovered)
                 if key not in seen:
                     seen.add(key)
                     objects.append(discovered)
+                    model = type(discovered)
+                    if model not in cleared_models:
+                        model.clear_lint_caches()
+                        cleared_models.add(model)
+
+        def clear_caches() -> None:
+            cleared_models.clear()
+            for model in dict.fromkeys(type(obj) for obj in objects):
+                model.clear_lint_caches()
+                cleared_models.add(model)
 
         index = 0
         while index < len(objects):
-            pending: list[tuple[BaseModel, list[LintResult]]] = []
-            # Drain automatic work, including related objects created by lint,
-            # before starting any interactive cleanup.
-            while index < len(objects):
-                obj = objects[index]
-                label = getattr(obj, type(obj).label_field, None)
-                print(
-                    f"POST_APPLY_CLEANUP {index + 1}/{len(objects)} object={type(obj).__name__}:{obj.id} label={label!r}"
-                )
-                try:
-                    obj.reload()
-                    messages = list(
-                        obj.general_lint(LintConfig(interactive=False, autofix=True))
+            batch_start = index
+            failed: set[int] = set()
+            retry = set(range(batch_start, len(objects)))
+            latest_messages: dict[int, list[LintResult]] = {}
+            # A later object's fixes can resolve an earlier object's findings.
+            # Retry objects with issues or fixes, and objects saved by another
+            # object's lint. Leave clean, unchanged objects out of later passes.
+            for pass_index in range(MAX_POST_APPLY_LINT_PASSES + 1):
+                clear_caches()
+                final_check = pass_index == MAX_POST_APPLY_LINT_PASSES
+                if final_check:
+                    print(
+                        f"POST_APPLY_CLEANUP reached {MAX_POST_APPLY_LINT_PASSES} automatic lint passes; checking remaining issues"
                     )
-                    if messages or edit_each:
-                        pending.append((obj, messages))
-                except Exception as exc:
-                    traceback.print_exc()
-                    failures.append(f"{type(obj).__name__}:{obj.id}: {exc}")
-                collect_discovered()
-                index += 1
+                event_count = recorder.event_count
+                fixes: list[LintIssue] = []
+                new_start = len(objects)
+                next_retry: set[int] = set()
+                index = batch_start
+                while index < len(objects):
+                    obj = objects[index]
+                    current_index = index
+                    index += 1
+                    if current_index in failed or (
+                        current_index not in retry and current_index < new_start
+                    ):
+                        continue
+                    label = getattr(obj, type(obj).label_field, None)
+                    print(
+                        f"POST_APPLY_CLEANUP {index}/{len(objects)} pass={pass_index + 1} object={type(obj).__name__}:{obj.id} label={label!r}"
+                    )
+                    try:
+                        obj.reload()
+                        object_event_count = recorder.event_count
+                        object_fix_count = len(fixes)
+                        # Some CE findings (such as predates_mapped_name) are
+                        # fixed by linting the Name, even if it wasn't saved by
+                        # the recommendation or by the CE's own lint.
+                        if isinstance(obj, ClassificationEntry) and obj.mapped_name:
+                            collect_discovered((obj.mapped_name,))
+                        messages = list(
+                            obj.general_lint(
+                                LintConfig(
+                                    interactive=False,
+                                    autofix=not final_check,
+                                    fix_callback=fixes.append,
+                                )
+                            )
+                        )
+                        latest_messages[current_index] = messages
+                        if (
+                            messages
+                            or len(fixes) != object_fix_count
+                            or recorder.event_count != object_event_count
+                        ):
+                            next_retry.add(current_index)
+                    except Exception as exc:
+                        traceback.print_exc()
+                        failures.append(f"{type(obj).__name__}:{obj.id}: {exc}")
+                        failed.add(current_index)
+                    collect_discovered()
+                # Events include legacy fixes that don't use fix_callback.
+                if final_check or (not fixes and recorder.event_count == event_count):
+                    break
+                retry = next_retry | {
+                    i
+                    for i in range(batch_start, len(objects))
+                    if recorder.last_event(objects[i]) > event_count
+                }
 
+            pending = [
+                (objects[i], messages)
+                for i, messages in sorted(latest_messages.items())
+                if i not in failed and (messages or edit_each)
+            ]
             print(
                 f"POST_APPLY_CLEANUP objects_with_issues={sum(bool(messages) for _, messages in pending)}"
             )
@@ -2283,7 +2360,7 @@ def main() -> None:
         action=argparse.BooleanOptionalAction,
         default=None,
         help=(
-            "after successful --apply or accepted --review-each selections, run noninteractive lint with autofixes on all created or modified objects, then interactively resolve objects with remaining issues, including related objects created by structured lint autofixes; enabled by default with --apply"
+            "after successful --apply or accepted --review-each selections, run noninteractive lint with autofixes across created or modified objects and mapped Names, retrying only objects with issues or changes until no fixes are applied (up to 10 passes), then interactively resolve objects with remaining issues, including related objects created by structured lint autofixes; enabled by default with --apply"
         ),
     )
     parser.add_argument(

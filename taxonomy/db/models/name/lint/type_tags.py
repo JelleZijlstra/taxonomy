@@ -1,3 +1,4 @@
+import datetime
 import re
 from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -26,6 +27,7 @@ from taxonomy.db.models.collection import MULTIPLE_COLLECTION
 from taxonomy.db.models.lint import field_issue
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.name.name import (
+    CONFLICTING_TYPE_DATA_FIELDS,
     DETAIL_TAG_TO_CE_TAG,
     SOURCE_TAGS,
     LectotypeDesignationTerm,
@@ -612,9 +614,6 @@ def _check_all_type_tags(
                 yield "unparseable date"
             if date is None:
                 return []
-            # TODO: add more tags here. Also consider requiring that the specimen details directly
-            # support the derived tags; e.g., the SpecimenDetail tag should contain the year of the Date
-            # tag.
             if TypeTag.SpecimenDetail not in by_type:
                 yield "has Date tag but no SpecimenDetail tag"
 
@@ -1360,6 +1359,60 @@ def check_type_tags_for_name(nam: Name, cfg: LintConfig) -> Iterable[LintResult]
             print(f"changing tags for {nam}")
             getinput.print_diff(sorted(original_tags), tags)
         yield field_issue("changing type tags", nam, "type_tags", tuple(tags))
+
+
+@LINT.add("conflicting_type_data")
+def check_conflicting_type_data(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    seen = set()
+    existing_fields = {type(tag).__name__ for tag in nam.type_tags}
+    for tag in nam.get_tags(nam.type_tags, TypeTag.ConflictingTypeData):
+        if tag.field not in CONFLICTING_TYPE_DATA_FIELDS:
+            yield (
+                f"invalid ConflictingTypeData field {tag.field!r}; expected one of "
+                f"{', '.join(sorted(CONFLICTING_TYPE_DATA_FIELDS))}"
+            )
+        elif tag.field in existing_fields:
+            yield f"has both {tag.field} and ConflictingTypeData({tag.field!r})"
+        if tag.field in seen:
+            yield f"multiple ConflictingTypeData tags for {tag.field!r}"
+        seen.add(tag.field)
+        if not tag.comment.strip():
+            yield f"ConflictingTypeData({tag.field!r}) needs a comment explaining the conflicting evidence"
+
+
+@LINT.add("type_specimen_date")
+def check_type_specimen_date(nam: Name, cfg: LintConfig) -> Iterable[str]:
+    """An original name-bearing type must have been collected by publication."""
+    if nam.species_type_kind is SpeciesGroupType.neotype:
+        return
+    try:
+        publication_date = nam.get_date_object()
+    except ValueError:
+        return  # Invalid publication dates are handled by the date syntax lint.
+    if publication_date.year == 1:
+        return
+    for tag in nam.get_tags(nam.type_tags, TypeTag.Date):
+        try:
+            date = helpers.standardize_date(tag.date)
+        except ValueError:
+            continue
+        if date is None or date.startswith("<"):
+            continue
+        # Compare the earliest possible collection date with the latest possible
+        # publication date. Partial dates must not manufacture contradictions.
+        for fmt in ("%Y", "%B %Y", "%d %B %Y"):
+            try:
+                collection_date = datetime.date.strptime(date, fmt)
+            except ValueError:
+                continue
+            break
+        else:
+            continue
+        if collection_date > publication_date:
+            yield (
+                f"type specimen collection date {tag.date} postdates the name's "
+                f"publication in {nam.year}"
+            )
 
 
 def _get_collection_year(date_text: str) -> int | None:
