@@ -309,3 +309,91 @@ def test_redundant_detail_cleanup_preserves_metadata(
     else:
         assert issues == []
         assert tags == [unlinked]
+
+
+@pytest.mark.parametrize("reverse_order", [False, True])
+@pytest.mark.parametrize("prefix", ["", "From ", "fRoM ", "in ", "IN "])
+@pytest.mark.parametrize("suffix", ["", "."])
+def test_location_detail_substring_cleanup_autofix(
+    monkeypatch: pytest.MonkeyPatch, prefix: str, suffix: str, *, reverse_order: bool
+) -> None:
+    name, ce = _models(monkeypatch)
+    text = "Pecos River at Carlsbad (Eddy), New Mexico"
+    ce.type_locality = f"the {text}"
+    unlinked = TypeTag.LocationDetail(f"{prefix}{text}{suffix}", ce.article)
+    linked = TypeTag.LocationDetail(
+        ce.type_locality, ce.article, classification_entry=ce, **_METADATA
+    )
+    original_tags = (linked, unlinked) if reverse_order else (unlinked, linked)
+    name.type_tags = original_tags  # type: ignore[assignment]
+
+    issues = list(type_tags.check_type_tags_for_name.linter(name, _CFG))
+
+    assert name.type_tags == original_tags
+    assert any("remove redundant tag" in str(issue) for issue in issues)
+    _apply(issue for issue in issues if not isinstance(issue, str))
+    assert name.type_tags == (linked,)  # type: ignore[comparison-overlap]
+    assert list(type_tags.check_type_tags_for_name.linter(name, _CFG)) == []
+
+
+@pytest.mark.parametrize(
+    "difference",
+    [
+        "source",
+        "no_ce",
+        "both_ce",
+        "reverse_substring",
+        "text",
+        *DETAIL_METADATA_FIELDS,
+    ],
+)
+def test_location_detail_substring_cleanup_preserves_distinct_details(
+    monkeypatch: pytest.MonkeyPatch, difference: str
+) -> None:
+    name, ce = _models(monkeypatch)
+    ce.type_locality = "the Pecos River"
+    unlinked = TypeTag.LocationDetail("From Pecos River.", ce.article)
+    linked = TypeTag.LocationDetail(
+        ce.type_locality, ce.article, classification_entry=ce
+    )
+    if difference == "source":
+        unlinked = unlinked.replace(
+            source=Article.virtual(
+                name="other.pdf", kind=ArticleKind.electronic, url=None
+            )
+        )
+    elif difference == "no_ce":
+        linked = linked.replace(classification_entry=None)
+    elif difference == "both_ce":
+        unlinked = unlinked.replace(classification_entry=ce)
+    elif difference == "reverse_substring":
+        unlinked = unlinked.replace(text="the Pecos River at Carlsbad")
+    elif difference == "text":
+        unlinked = unlinked.replace(text="another river")
+    else:
+        unlinked = unlinked.replace(**{difference: _METADATA[difference]})
+    original_tags = (unlinked, linked)
+    name.type_tags = original_tags  # type: ignore[assignment]
+
+    issues = list(type_tags.check_type_tags_for_name.linter(name, _CFG))
+
+    assert all(isinstance(issue, str) for issue in issues)
+    assert name.type_tags == original_tags
+
+
+@pytest.mark.parametrize("text", ["FromPecos River", "inPecos River", "From .", "."])
+def test_location_detail_cleanup_requires_nonempty_text_and_whole_prefix_word(
+    monkeypatch: pytest.MonkeyPatch, text: str
+) -> None:
+    name, ce = _models(monkeypatch)
+    unlinked = TypeTag.LocationDetail(text, ce.article)
+    linked = TypeTag.LocationDetail("Pecos River", ce.article, classification_entry=ce)
+
+    issues, tags = _finish(
+        type_tags._check_detail_type_tag(
+            unlinked, name, _CFG, {TypeTag.LocationDetail: [unlinked, linked]}
+        )
+    )
+
+    assert issues == []
+    assert tags == [unlinked]

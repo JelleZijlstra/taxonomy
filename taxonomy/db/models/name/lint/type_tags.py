@@ -444,12 +444,24 @@ def _check_detail_type_tag(
         return [tag]
     if not tag.text and tag.source is None:
         return []
-    if tag.classification_entry is None and not isinstance(tag, TypeTag.LocationDetail):
+    if tag.classification_entry is None:
+        text_to_match = tag.text
+        if isinstance(tag, TypeTag.LocationDetail):
+            text_to_match = re.sub(
+                r"^(?:from|in)\s+", "", text_to_match, flags=re.IGNORECASE
+            ).removesuffix(".")
         for other in tags_by_type.get(type(tag), ()):
             if (
                 other is not tag
                 and other.source == tag.source
-                and other.text == tag.text
+                and (
+                    other.text == tag.text
+                    or (
+                        isinstance(tag, TypeTag.LocationDetail)
+                        and text_to_match
+                        and text_to_match in other.text
+                    )
+                )
                 and other.classification_entry is not None
                 and all(
                     getattr(tag, field) in (None, getattr(other, field))
