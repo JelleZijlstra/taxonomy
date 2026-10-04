@@ -1,7 +1,34 @@
 import pytest
 
 from taxonomy.db.constants import Calendar
-from taxonomy.db.dates import gregorian_bounds, last_day, to_gregorian
+from taxonomy.db.dates import (
+    gregorian_bounds,
+    last_day,
+    parse_collection_date,
+    to_gregorian,
+)
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        ("1900", "1900-02-01", True),
+        ("1900-02", "1900-03", False),
+        ("1900/1902", "1901", False),
+        ("1900/1902", "1902-03", True),
+        ("1900–1902", "1901", True),
+        ("1900–1902", "1903", False),
+        ("1900-02-01–1900-02-03", "1900-02-03", True),
+        ("<1900", "1900-12-31", True),
+        ("<1900", "1901", False),
+        ("~1900", "1901", True),
+        ("?1900", "1901", True),
+    ],
+)
+def test_collection_date_overlap(left: str, right: str, *, expected: bool) -> None:
+    a, b = parse_collection_date(left), parse_collection_date(right)
+    assert a.overlaps(b) is expected
+    assert b.overlaps(a) is expected
 
 
 @pytest.mark.parametrize(

@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from decimal import Decimal
 
-from taxonomy.db import helpers
+from taxonomy.db import dates, helpers
 from taxonomy.db.constants import (
     AltitudeUnit,
     SpecimenAge,
@@ -190,7 +190,7 @@ def _format_date(year: int, month: int, day: int) -> str | None:
         date = datetime.date(year, month, day)
     except ValueError:
         return None
-    return date.strftime("%-d %B %Y")
+    return date.isoformat()
 
 
 def _catalog_date_is_certain(date: str, fields: dict[str, str]) -> bool:
@@ -240,7 +240,7 @@ def extract_date(text: str) -> list[Evidence[TypeTag]]:
             date = _format_date(int(year), int(month), int(day or 1))
             if date is not None:
                 if day is None:
-                    date = date.split(" ", 1)[1]
+                    date = date[:7]
                 return [
                     Evidence(
                         TypeTag.Date(date),
@@ -441,10 +441,16 @@ def tags_compatible(left: TypeTag, right: TypeTag) -> bool:
         tolerance = max(Decimal(1), max(abs(n) for n in (*a, *b)) * Decimal("0.005"))
         return a[0] <= b[1] + tolerance and b[0] <= a[1] + tolerance
     if isinstance(left, TypeTag.Date) and isinstance(right, TypeTag.Date):
-        # The shorter date can be a source's less precise statement of the same
-        # event. Do not overwrite it merely to increase precision.
-        a, b = left.date.split(), right.date.split()
-        return a[-min(len(a), len(b)) :] == b[-min(len(a), len(b)) :]
+        try:
+            left_date = helpers.standardize_date(left.date)
+            right_date = helpers.standardize_date(right.date)
+            if left_date is None or right_date is None:
+                return True
+            return dates.parse_collection_date(left_date).overlaps(
+                dates.parse_collection_date(right_date)
+            )
+        except ValueError:
+            return True  # Malformed tags are handled by the syntax lint.
     return left == right
 
 

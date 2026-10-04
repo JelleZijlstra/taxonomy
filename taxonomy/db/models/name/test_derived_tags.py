@@ -85,7 +85,7 @@ def test_age_validation_only() -> None:
 )
 def test_date(text: str) -> None:
     assert extract.extract_date(text) == [
-        extract.Evidence(TypeTag.Date("11 March 1906"), certain=True)
+        extract.Evidence(TypeTag.Date("1906-03-11"), certain=True)
     ]
 
 
@@ -107,13 +107,30 @@ def test_not_a_collection_date(text: str) -> None:
 def test_partial_date_and_precision() -> None:
     assert extract.extract_date("[eventdate] 1906-03 [at https://example.org]")[
         0
-    ].value == TypeTag.Date("March 1906")
-    assert extract.tags_compatible(TypeTag.Date("1906"), TypeTag.Date("11 March 1906"))
+    ].value == TypeTag.Date("1906-03")
+    assert extract.tags_compatible(TypeTag.Date("1906"), TypeTag.Date("1906-03-11"))
     assert not extract.tags_compatible(
-        TypeTag.Date("11 March 1906"), TypeTag.Date("12 March 1906")
+        TypeTag.Date("1906-03-11"), TypeTag.Date("12 March 1906")
     )
-    assert not extract.tags_compatible(TypeTag.Date("<1906"), TypeTag.Date("1906"))
+    assert extract.tags_compatible(TypeTag.Date("<1906"), TypeTag.Date("1906"))
     assert not extract.extract_date("Type, 11 March 1906.")[0].certain
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "expected"),
+    [
+        ("11 March 1906", "1906-03-11", True),
+        ("March 1906", "1906-03-11", True),
+        ("1900/1902", "1901", False),
+        ("1900–1902", "1901", True),
+        ("?1900", "1901", True),
+        ("~1900", "1901", True),
+    ],
+)
+def test_collection_date_compatibility(
+    left: str, right: str, *, expected: bool
+) -> None:
+    assert extract.tags_compatible(TypeTag.Date(left), TypeTag.Date(right)) is expected
 
 
 @pytest.mark.parametrize(
@@ -187,7 +204,7 @@ def test_catalog_fields_do_not_leak() -> None:
         SpecimenGender.female
     )
     assert extract.extract_age(text)[0].value == TypeTag.Age(SpecimenAge.adult)
-    assert extract.extract_date(text)[0].value == TypeTag.Date("2 January 1900")
+    assert extract.extract_date(text)[0].value == TypeTag.Date("1900-01-02")
     assert len(extract.extract_organ(text)) == 2
     assert (
         extract.extract_gender(
@@ -393,6 +410,21 @@ def test_date_after_publication_not_added() -> None:
     assert isinstance(issues[0], LintIssue)
     assert issues[0].fix is None
     assert "postdates" in str(issues[0])
+
+
+@pytest.mark.parametrize("publication", ["2000-01-01", "2000-01-02", "2000-01", "2000"])
+def test_iso_date_inference_and_publication_precision(publication: str) -> None:
+    nam = make_name("Collected 2 January 2000.")
+    nam.year = publication
+    (issue,) = lint.check_specimen_detail_date(nam, CFG)
+    if publication == "2000-01-01":
+        assert issue.fix is None
+        assert "postdates" in issue.message
+    else:
+        assert issue.fix is not None
+        assert issue.fix.apply()
+        assert TypeTag.Date("2000-01-02") in nam.type_tags
+        assert list(lint.check_specimen_detail_date(nam, CFG)) == []
 
 
 def test_museum_transfer_and_date_range_not_collection() -> None:
@@ -661,7 +693,7 @@ def test_gender_of_other_cotype() -> None:
 def test_collection_date_excludes_museum_events(text: str) -> None:
     assert not extract.extract_date(text)
     assert extract.extract_date(f"Collected 23 January 1935. {text}") == [
-        extract.Evidence(TypeTag.Date("23 January 1935"), certain=True)
+        extract.Evidence(TypeTag.Date("1935-01-23"), certain=True)
     ]
 
 

@@ -40,7 +40,11 @@ from .lint.type_locality import (
     check_type_locality_validity,
     check_unique_type_locality,
 )
-from .lint.type_tags import check_collector_lifespan, check_type_specimen_date
+from .lint.type_tags import (
+    check_collector_lifespan,
+    check_type_specimen_date,
+    check_type_tags_for_name,
+)
 from .lint.variants import (
     _create_name_variant_issue,
     _redirect_name_issue,
@@ -335,6 +339,15 @@ def test_merge_name_issue_does_not_autofix_valid_name() -> None:
         ("1899", None, False),
         ("1899", "invalid", False),
         ("1899", "1890-13", False),
+        ("1890-03-02", "1890-03-01", True),
+        ("1890-03", "1890-03-01", False),
+        ("1890/1900", "1895", False),
+        ("1900/1901", "1895", True),
+        ("1890–1900", "1895", False),
+        ("1900–1901", "1895", True),
+        ("~1900", "1895", False),
+        ("?1900-01-01", "1895", False),
+        ("<1900-01-01", "1895", False),
     ],
 )
 def test_type_specimen_date(
@@ -414,6 +427,67 @@ def test_collector_lifespan_allows_possible_lifetime_dates(date: str) -> None:
     name = _name_with_collector_dates(death="1900", dates=(date,))
 
     assert list(check_collector_lifespan(name, LintConfig())) == []
+
+
+@pytest.mark.parametrize(
+    ("date", "expected"),
+    [
+        ("1901-01-02", True),
+        ("1900-12-31", False),
+        ("1899/1901", False),
+        ("1901/1902", True),
+        ("1899–1901", False),
+        ("1901–1902", True),
+        ("~1901", False),
+        ("?1901", False),
+        ("<1901-01-02", False),
+    ],
+)
+def test_collector_lifespan_iso_and_qualified_dates(
+    date: str, *, expected: bool
+) -> None:
+    name = _name_with_collector_dates(death="1900", dates=(date,))
+    assert bool(list(check_collector_lifespan(name, LintConfig()))) is expected
+
+
+@pytest.mark.parametrize(
+    ("old", "new"),
+    [
+        ("20 July 1944", "1944-07-20"),
+        ("July 1944", "1944-07"),
+        ("<20 July 1944", "<1944-07-20"),
+    ],
+)
+def test_collection_date_autofix(
+    old: str, new: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(Name, "__str__", lambda _: "test name")
+    source = models.Article.virtual(
+        name="source.pdf", kind=ArticleKind.electronic, tags=()
+    )
+    detail = TypeTag.SpecimenDetail("Collected 20 July 1944.", source)
+    nam = Name.virtual(type_tags=(TypeTag.Date(old), detail))
+    cfg = LintConfig(autofix=False, interactive=False, available_resources=frozenset())
+    issues = list(check_type_tags_for_name(nam, cfg))
+    fixes = [issue.fix for issue in issues if issue.fix is not None]
+    assert len(fixes) == 1
+    assert TypeTag.Date(old) in nam.type_tags
+    assert fixes[0].apply()
+    assert TypeTag.Date(new) in nam.type_tags
+    assert detail in nam.type_tags
+    assert list(check_type_tags_for_name(nam, cfg)) == []
+
+
+@pytest.mark.parametrize(
+    "date", ["1944-07-20", "~1870", "?1889", "1903/1904", "1850–1855"]
+)
+def test_collection_date_lint_accepts_canonical_syntax(date: str) -> None:
+    source = models.Article.virtual(
+        name="source.pdf", kind=ArticleKind.electronic, tags=()
+    )
+    detail = TypeTag.SpecimenDetail("Type specimen.", source)
+    nam = Name.virtual(type_tags=(TypeTag.Date(date), detail))
+    assert list(check_type_tags_for_name(nam, LintConfig())) == []
 
 
 def test_collector_lifespan_requires_known_death() -> None:

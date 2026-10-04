@@ -4,6 +4,7 @@ import re
 from collections.abc import Callable, Iterable
 from functools import cache
 
+from taxonomy.db import helpers
 from taxonomy.db.constants import (
     AgeClass,
     Group,
@@ -148,7 +149,9 @@ def _check(
             isinstance(item.value, TypeTag.Date)
             and nam.species_type_kind is not SpeciesGroupType.neotype
             and nam.year
-            and int(item.value.date.split()[-1]) > nam.numeric_year()
+            and (earliest := helpers.get_earliest_collection_date(item.value.date))
+            is not None
+            and earliest > nam.get_date_object()
         ):
             yield f"{item.value} extracted from {detail} postdates the name's publication in {nam.year}"
             continue

@@ -1,4 +1,3 @@
-import datetime
 import re
 from collections.abc import Callable, Generator, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -614,6 +613,7 @@ def _check_all_type_tags(
                 yield "unparseable date"
             if date is None:
                 return []
+            tag = tag.replace(date=date)
             if TypeTag.SpecimenDetail not in by_type:
                 yield "has Date tag but no SpecimenDetail tag"
 
@@ -1387,21 +1387,10 @@ def check_type_specimen_date(nam: Name, cfg: LintConfig) -> Iterable[str]:
     if publication_date.year == 1:
         return
     for tag in nam.get_tags(nam.type_tags, TypeTag.Date):
-        try:
-            date = helpers.standardize_date(tag.date)
-        except ValueError:
-            continue
-        if date is None or date.startswith("<"):
-            continue
         # Compare the earliest possible collection date with the latest possible
         # publication date. Partial dates must not manufacture contradictions.
-        for fmt in ("%Y", "%B %Y", "%d %B %Y"):
-            try:
-                collection_date = datetime.date.strptime(date, fmt)
-            except ValueError:
-                continue
-            break
-        else:
+        collection_date = helpers.get_earliest_collection_date(tag.date)
+        if collection_date is None:
             continue
         if collection_date > publication_date:
             yield (
@@ -1411,16 +1400,8 @@ def check_type_specimen_date(nam: Name, cfg: LintConfig) -> Iterable[str]:
 
 
 def _get_collection_year(date_text: str) -> int | None:
-    try:
-        standardized = helpers.standardize_date(date_text)
-    except ValueError:
-        return None
-    if standardized is None or standardized.startswith("<"):
-        return None
-    match = re.search(r"\b(\d{4})$", standardized)
-    if match is None:
-        return None
-    return int(match.group(1))
+    earliest = helpers.get_earliest_collection_date(date_text)
+    return earliest.year if earliest is not None else None
 
 
 @LINT.add("collector_lifespan")

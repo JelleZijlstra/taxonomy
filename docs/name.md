@@ -575,12 +575,18 @@ names should have at least one. They fall into several groups:
     the collector, or the owner of the specimen.
   - _Collector_: Similar to _CollectedBy_, but as a string. This tag is being phased
     out.
-  - _Date_: Date when the type specimen was collected. Ideally this should be the day,
-    but it can be a month or year if no more precise data is available. If no collection
-    date is known, but a subsequent date is (e.g., the date the specimen was registered
-    in a collection), that date should be used with "<" prefixed to it (e.g., "<1893" or
-    "<7 December 1893"). If the specimen was kept in captivity, the date should be the
-    date it was captured.
+  - _Date_: Date when the type specimen was collected. If the specimen was kept in
+    captivity, the date should be the date it was captured. Ideally this should be the
+    day, in ISO format (`1944-07-20`), but it can be a month (`1944-07`) or year
+    (`1944`) if no more precise data is available. The following extensions are
+    supported:
+    - `~1870`: approximately 1870, without an assumed numerical tolerance.
+    - `?1889`: maybe or probably 1889.
+    - `1903/1904`: 1903 or 1904 (alternatives, not a continuous interval).
+    - `1850–1855`: a range, using an en dash. Endpoints may also include months or days,
+      for example `1944-07-20–1944-08-03`.
+    - `<1893`: a subsequent date (e.g., the date the specimen was registered in a
+      collection)
   - _Gender_: The biological gender of the type specimen.
   - _ConflictingTypeData_: Records a reviewed disagreement between sources about derived
     type data. `field` must be the exact tag name: `Age`, `Altitude`, `CollectedBy`,

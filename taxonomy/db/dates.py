@@ -1,12 +1,14 @@
-"""Validate source-calendar dates and derive Gregorian publication dates.
+"""Validate source-calendar dates, publication dates, and collection dates.
 
-Partial source dates are resolved to their last possible day before conversion.
+Partial publication dates are resolved to their last possible day before conversion.
+Collection dates retain intervals and uncertainty for chronological comparisons.
 Only the supported calendars are accepted; adding an enum member alone must not
 silently cause dates in another calendar to be interpreted as Gregorian.
 """
 
 import datetime
 import re
+from dataclasses import dataclass
 
 from taxonomy.db.constants import Calendar
 
@@ -136,3 +138,58 @@ def gregorian_bounds(
         _to_gregorian(year, first_month, first_day, calendar),
         _to_gregorian(year, month, day, calendar),
     )
+
+
+@dataclass(frozen=True)
+class CollectionDate:
+    # Alternatives remain separate intervals: 1900/1902 does not include 1901.
+    intervals: tuple[tuple[str | None, str], ...]
+    uncertain: bool = False
+
+    @property
+    def earliest(self) -> datetime.date | None:
+        if self.uncertain or any(start is None for start, _ in self.intervals):
+            return None
+        return datetime.date.fromisoformat(
+            min(start for start, _ in self.intervals if start is not None)
+        )
+
+    def overlaps(self, other: "CollectionDate") -> bool:
+        # Approximation has no specified tolerance; a tentative date is not a
+        # firm constraint. Neither can establish a definite contradiction.
+        if self.uncertain or other.uncertain:
+            return True
+        return any(
+            (left_start is None or left_start <= right_end)
+            and (right_start is None or right_start <= left_end)
+            for left_start, left_end in self.intervals
+            for right_start, right_end in other.intervals
+        )
+
+
+def parse_collection_date(text: str) -> CollectionDate:
+    """Validate ISO collection dates, qualifiers, alternatives, and ranges.
+
+    A single optional prefix (<, ~, ?) applies to the whole expression.
+    Slash-separated alternatives and en-dash ranges retain endpoint precision.
+    As with publication-date bounds, a < cutoff includes its last possible day:
+    a receipt date does not establish an earlier day of collection.
+    """
+    prefix = text[:1] if text.startswith(("<", "~", "?")) else ""
+    raw = text[1:] if prefix else text
+    intervals = []
+    for alternative in raw.split("/"):
+        endpoints = alternative.split("–")
+        if len(endpoints) == 1:
+            intervals.append(gregorian_bounds(alternative))
+        elif len(endpoints) == 2:
+            start, _ = gregorian_bounds(endpoints[0])
+            _, end = gregorian_bounds(endpoints[1])
+            if start > end:
+                raise ValueError(f"Reversed collection date range: {alternative!r}")
+            intervals.append((start, end))
+        else:
+            raise ValueError(f"Invalid collection date: {text!r}")
+    if prefix == "<":
+        return CollectionDate(((None, max(end for _, end in intervals)),))
+    return CollectionDate(tuple(intervals), uncertain=prefix in ("~", "?"))

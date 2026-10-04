@@ -15,7 +15,7 @@ import unidecode
 
 from taxonomy import getinput
 
-from . import constants
+from . import constants, dates
 from .constants import Group, Rank, StringCleanupOption, StringKind
 
 SPECIES_RANKS = [
@@ -276,13 +276,31 @@ def _canonicalize_gender(name: str) -> str:
 
 
 def standardize_date(date: str) -> str | None:
-    """Fixes the format of date fields."""
+    """Normalize collection dates to ISO, retaining precision and qualifiers.
+
+    Legacy English dates remain accepted for migration and source extraction.
+    Publication dates use their own syntax and ICZN adoption rules.
+    """
+    date = date.strip()
     if date in ("unknown date", "on unknown date", "on an unknown date"):
         return None
-    # A leading < is allowed to indicate "before"
-    if date.startswith("<"):
-        return "<" + _standardize_inner(date[1:])
-    return _standardize_inner(date)
+    prefix = date[:1] if date.startswith(("<", "~", "?")) else ""
+    raw = date[1:] if prefix else date
+    result = prefix + "/".join(
+        "–".join(_standardize_inner(part.strip()) for part in alternative.split("–"))
+        for alternative in raw.split("/")
+    )
+    dates.parse_collection_date(result)
+    return result
+
+
+def get_earliest_collection_date(text: str) -> datetime.date | None:
+    """Return a firm lower bound, or None for unknown/uncertain/invalid dates."""
+    try:
+        normalized = standardize_date(text)
+        return dates.parse_collection_date(normalized).earliest if normalized else None
+    except ValueError:
+        return None
 
 
 def _standardize_inner(date: str) -> str:
@@ -296,12 +314,11 @@ def _standardize_inner(date: str) -> str:
         "",
         date,
     )
-    if re.match(r"^\d{4}$", date):
-        # year
-        return date
+    if re.fullmatch(r"[0-9]{4}(?:-[0-9]{2}(?:-[0-9]{2})?)?", date):
+        return dates.to_gregorian(date)
     match = re.match(r"^in (\d{4})$", date)
     if match:
-        return match.group(1)
+        return dates.to_gregorian(match.group(1))
     date_month_formats = [
         "%b %Y",  # Feb 1992
         "%b. %Y",  # Feb. 1992
@@ -313,11 +330,11 @@ def _standardize_inner(date: str) -> str:
     ]
     for fmt in date_month_formats:
         try:
-            dt = datetime.datetime.strptime(date, fmt).astimezone(datetime.UTC)
+            dt = datetime.date.strptime(date, fmt)
         except ValueError:
             pass
         else:
-            return dt.strftime("%B %Y")
+            return dt.isoformat()[:7]
     dmy_formats = [
         "%d %B %Y",  # 24 February 1992
         "%d %b %Y",  # 24 Feb 1992
@@ -332,12 +349,12 @@ def _standardize_inner(date: str) -> str:
     ]
     for fmt in dmy_formats:
         try:
-            dt = datetime.datetime.strptime(date, fmt).astimezone(datetime.UTC)
+            dt = datetime.date.strptime(date, fmt)
         except ValueError:
             pass
         else:
-            return dt.strftime("%-d %B %Y")
-    raise ValueError(date)
+            return dt.isoformat()
+    raise ValueError(f"Invalid collection date: {date!r}")
 
 
 COORDINATE_RGX = re.compile(

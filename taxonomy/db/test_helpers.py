@@ -22,6 +22,93 @@ from .helpers import (
 )
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("20 July 1944", "1944-07-20"),
+        ("Jul. 1944", "1944-07"),
+        ("in 1944", "1944"),
+        ("24 Sept. 1992", "1992-09-24"),
+        ("February 24, 1992", "1992-02-24"),
+        ("24.02.1992", "1992-02-24"),
+        ("02.1992", "1992-02"),
+        ("[FC: 20 July 1944]", "1944-07-20"),
+        ("20 July 1944, not 1943 as in original description", "1944-07-20"),
+        ("<20 July 1944", "<1944-07-20"),
+        ("~July 1944", "~1944-07"),
+        ("?20 July 1944", "?1944-07-20"),
+        (" 1903 / 1904 ", "1903/1904"),
+        ("20 July 1944–3 August 1944", "1944-07-20–1944-08-03"),
+        ("1944-07-20", "1944-07-20"),
+        ("1944-07", "1944-07"),
+        ("~1870", "~1870"),
+        ("?1889", "?1889"),
+        ("1850–1855", "1850–1855"),
+        ("1900/1902/1905", "1900/1902/1905"),
+        ("unknown date", None),
+        ("on an unknown date", None),
+    ],
+)
+def test_standardize_collection_date(text: str, expected: str | None) -> None:
+    assert helpers.standardize_date(text) == expected
+    if expected is not None:
+        assert helpers.standardize_date(expected) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "0000",
+        "1900-02-29",
+        "1900-13",
+        "1900-00",
+        "1900-01-00",
+        "1900-1-01",
+        "31 February 1900",
+        "~1900-02-29",
+        "?0000",
+        "1855–1850",
+        "1900-12–1900-01",
+        "1850-1855",
+        "1850—1855",
+        "1900/",
+        "/1900",
+        "1900//1901",
+        "1900–",
+        "1900–1901–1902",
+        "?~1900",
+        "~",
+        "?",
+        "",
+        "1900/unknown date",
+    ],
+)
+def test_invalid_collection_date(text: str) -> None:
+    with pytest.raises(ValueError, match=r"Invalid|Reversed"):
+        helpers.standardize_date(text)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("1900-02", date(1900, 2, 1)),
+        ("20 July 1944", date(1944, 7, 20)),
+        ("1903/1904", date(1903, 1, 1)),
+        ("1904/1903", date(1903, 1, 1)),
+        ("1850–1855", date(1850, 1, 1)),
+        ("1900-02-20–1900-03", date(1900, 2, 20)),
+        ("~1870", None),
+        ("?1889", None),
+        ("<1900-02", None),
+        ("?1900/1901", None),
+        ("invalid", None),
+        ("unknown date", None),
+    ],
+)
+def test_earliest_collection_date(text: str, expected: date | None) -> None:
+    assert helpers.get_earliest_collection_date(text) == expected
+
+
 def assert_romanizes(cyrillic: str, latin: str) -> None:
     assert romanize_russian(cyrillic) == latin
 
