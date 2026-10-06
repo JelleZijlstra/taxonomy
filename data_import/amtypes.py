@@ -56,8 +56,12 @@ def extract_names(pages: PagesT) -> DataT:
                     if (
                         "type" in label
                         or "name" in label
-                        or label
-                        in ("Comments", "Type locality", "Condition", "Material")
+                        or label in (
+                            "Comments",
+                            "Type locality",
+                            "Condition",
+                            "Material",
+                        )
                     ):
                         start_label(match.group(1), line)
                     else:

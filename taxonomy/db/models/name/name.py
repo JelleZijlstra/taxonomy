@@ -1885,8 +1885,7 @@ class Name(BaseModel):
                     f"{spacing}{comment.get_description()}\n"
                     for comment in self.comments
                     if include_data
-                    or comment.kind
-                    not in (
+                    or comment.kind not in (
                         constants.CommentKind.structured_quote,
                         constants.CommentKind.automatic_change,
                     )

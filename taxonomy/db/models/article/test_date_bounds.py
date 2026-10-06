@@ -165,8 +165,9 @@ def test_cycle_through_parent_inheritance() -> None:
     child.type, child.parent = ArticleType.CHAPTER, parent
     parent.tags = (ArticleTag.PublishedBefore(child, "Circular"),)  # type: ignore[assignment]
     assert (
-        "circular publication-date reference"
-        in lint.infer_publication_date(parent)[2][0]
+        "circular publication-date reference" in lint.infer_publication_date(parent)[2][
+            0
+        ]
     )
 
 

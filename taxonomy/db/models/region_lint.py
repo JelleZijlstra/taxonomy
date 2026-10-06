@@ -293,8 +293,11 @@ def _get_structured_nominatim_query(region: Region) -> dict[str, str] | None:
     if (
         region.kind is RegionKind.county
         and region.parent is not None
-        and region.parent.kind
-        in {RegionKind.state, RegionKind.province, RegionKind.subnational}
+        and region.parent.kind in {
+            RegionKind.state,
+            RegionKind.province,
+            RegionKind.subnational,
+        }
     ):
         query["state"] = _unqualified_name(region.parent)
     return query

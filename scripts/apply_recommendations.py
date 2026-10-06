@@ -517,8 +517,7 @@ def _validate_location_rows(
             continue
         mutated_spec = (
             row.location
-            if row.action
-            in {
+            if row.action in {
                 location_recommendations.RENAME_LOCATION,
                 location_recommendations.EDIT_LOCATION,
             }
@@ -543,8 +542,7 @@ def _validate_location_rows(
             or (location_id in merge_source_ids and not composable_source_edit)
             or (
                 location_id in merge_target_ids
-                and row.action
-                not in {
+                and row.action not in {
                     location_recommendations.RENAME_LOCATION,
                     location_recommendations.EDIT_LOCATION,
                 }

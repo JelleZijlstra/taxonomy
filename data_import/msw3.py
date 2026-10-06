@@ -529,8 +529,7 @@ def parse_synonyms(text: str, parent: dict[str, Any]) -> Iterable[dict[str, Any]
 
 def is_valid_parent(text: str) -> bool:
     return (
-        text
-        not in (
+        text not in (
             "",
             "unnamed subgenus, see comments",
             "??See comments",

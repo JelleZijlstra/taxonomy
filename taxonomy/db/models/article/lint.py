@@ -359,8 +359,10 @@ def _infer_publication_bounds_from_tags(
         elif (
             isinstance(tag, ArticleTag.LSID)
             # "inferred" strictly doesn't count but we'll allow it
-            and tag.present_in_article
-            in (PresenceStatus.present, PresenceStatus.inferred)
+            and tag.present_in_article in (
+                PresenceStatus.present,
+                PresenceStatus.inferred,
+            )
         ):
             has_lsid = True
     if inherited is not None:
@@ -1688,11 +1690,11 @@ def md_lint(text: str) -> Iterable[str]:
                     is_closing = CONTEXTS.get(context)
             if is_closing is False:
                 if italics_start is not None:
-                    yield (f"incorrectly paired underscores at position {i}: {text}")
+                    yield f"incorrectly paired underscores at position {i}: {text}"
                 italics_start = i + 1
             elif is_closing is True:
                 if italics_start is None:
-                    yield (f"incorrectly paired underscores at position {i}: {text}")
+                    yield f"incorrectly paired underscores at position {i}: {text}"
                 italics_start = None
             else:
                 yield f"underscore in unexpected position at {i}: {text}"
@@ -1803,9 +1805,7 @@ def verify_jstor(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
             and journal_name
             and not cg_matches(journal_name, cg)
         ):
-            yield (
-                f"JSTOR journal name {journal_name!r} does not match citation group {cg.name!r}"
-            )
+            yield f"JSTOR journal name {journal_name!r} does not match citation group {cg.name!r}"
         # ISSNs
         issn_print = _format_issn(row.get("identifiers_print_issn"))
         issn_online = _format_issn(row.get("identifiers_online_issn"))
@@ -2053,9 +2053,7 @@ def check_start_end_page(art: Article, cfg: LintConfig) -> Iterable[str]:
         return
 
     if not re.fullmatch(tag.pages_regex, start_page):
-        yield (
-            f"start page {start_page} does not match regex {tag.pages_regex} for {cg}"
-        )
+        yield f"start page {start_page} does not match regex {tag.pages_regex} for {cg}"
     if not re.fullmatch(tag.pages_regex, end_page):
         yield f"end page {end_page} does not match regex {tag.pages_regex} for {cg}"
 
@@ -3140,8 +3138,7 @@ def infer_author_orcids_from_orcid(
         identifier_matches = [
             person
             for person in local_authors
-            if result.orcid
-            in {
+            if result.orcid in {
                 normalize_orcid(tag.text)
                 for tag in person.get_tags(person.tags, models.tags.PersonTag.ORCID)
             }
@@ -3584,7 +3581,9 @@ def data_from_pubmed(art: Article, cfg: LintConfig) -> Iterable[LintResult]:
         sp = data["start_page"]
         if sp.isnumeric() and sp.lstrip("0") != art.start_page:
             if not (data.get("end_page") == sp and art.start_page != art.end_page):
-                yield f"start page mismatch: {sp} (PubMed) vs. {art.start_page} (article)"
+                yield (
+                    f"start page mismatch: {sp} (PubMed) vs. {art.start_page} (article)"
+                )
 
     if data.get("end_page") and art.end_page is not None:
         ep = data["end_page"]
