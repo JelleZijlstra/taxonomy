@@ -1051,7 +1051,9 @@ def _check_all_type_tags(
 
         case TypeTag.StructuredVerbatimCitation():
             if nam.original_citation is not None:
-                yield "has StructuredVerbatimCitation tag but also has original_citation"
+                yield (
+                    "has StructuredVerbatimCitation tag but also has original_citation"
+                )
                 return []
 
     return [*tags, tag]
@@ -2480,9 +2482,7 @@ def _check_preoccupation_tag(
             my_genus = _get_parent(nam)
             senior_genus = _get_parent(senior_name)
             if my_genus != senior_genus:
-                yield (
-                    f"{nam} is marked as a secondary homonym of {senior_name}, but is not currently placed in the same genus"
-                )
+                yield f"{nam} is marked as a secondary homonym of {senior_name}, but is not currently placed in the same genus"
         elif isinstance(tag, NameTag.PreoccupiedBy):
             if my_original is not None and my_original == senior_original:
                 new_tag = NameTag.PrimaryHomonymOf(tag.name, comment=tag.comment)
@@ -3218,8 +3218,7 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         nam.numeric_year() < 2012
         or nam.corrected_original_name is None
         or nam.original_citation is None
-        or nam.nomenclature_status
-        in (
+        or nam.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.name_combination,
         )
@@ -3871,9 +3870,7 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     original = as_emended_target.get_tag_target(NameTag.JustifiedEmendationOf)
     if original is None:
-        yield (
-            f"as_emended target {as_emended_target} lacks a justified emendation tag"
-        )
+        yield f"as_emended target {as_emended_target} lacks a justified emendation tag"
         return
     if original != nam:
         yield f"incorrect original spelling traces back to {original}, not this name"
@@ -5051,8 +5048,7 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     else:
         if any(
             isinstance(tag, NameTag.Condition)
-            and tag.status
-            in (
+            and tag.status in (
                 NomenclatureStatus.infrasubspecific,
                 NomenclatureStatus.not_published_with_a_generic_name,
             )
@@ -5148,7 +5144,7 @@ def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
         seen.update(matches)
         for itf in matches:
             message = f"authority page link points to existing ItemFile {itf}"
-            yield (message)
+            yield message
             if cfg.interactive:
                 print(f"{nam}: {message}")
                 itf.burst()
@@ -5234,7 +5230,9 @@ def _check_bhl_item_matches(
     if not citation_item_ids:
         return
     if item_id not in citation_item_ids:
-        yield f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
+        yield (
+            f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
+        )
         replacement = [
             page
             for page in get_candidate_bhl_pages(nam, verbose=False)
@@ -5636,9 +5634,7 @@ def check_structured_verbatim_citation_fields(
         series_regex = cg_lint.get_series_regex(cg)
         if series_regex is not None:
             if tag.series is not None and not re.fullmatch(series_regex, tag.series):
-                yield (
-                    f"series {tag.series!r} does not match regex {series_regex!r} for {cg}"
-                )
+                yield f"series {tag.series!r} does not match regex {series_regex!r} for {cg}"
         elif tag.series is not None and cg.type is ArticleType.JOURNAL:
             # Only enforced for journals as per Article logic
             yield f"is in {cg}, which does not support series"
@@ -5662,9 +5658,7 @@ def check_structured_verbatim_citation_fields(
                 tag = new_tag
             rgx = cg_lint.get_volume_regex(cg)
             if not re.fullmatch(rgx, tag.volume):
-                yield (
-                    f"volume {tag.volume!r} does not match {cg_lint.describe_volume_regex(cg)} (CG {cg})"
-                )
+                yield f"volume {tag.volume!r} does not match {cg_lint.describe_volume_regex(cg)} (CG {cg})"
 
         # issue
         if tag.issue is not None:
@@ -5684,9 +5678,7 @@ def check_structured_verbatim_citation_fields(
                 tag = new_tag
             rgx = cg_lint.get_issue_regex(cg)
             if not re.fullmatch(rgx, tag.issue):
-                yield (
-                    f"issue {tag.issue!r} does not match {cg_lint.describe_issue_regex(cg)} (CG {cg})"
-                )
+                yield f"issue {tag.issue!r} does not match {cg_lint.describe_issue_regex(cg)} (CG {cg})"
 
         # pages: ensure end >= start if both numeric
         if (
@@ -5719,9 +5711,7 @@ def check_structured_verbatim_citation_fields(
                 except ValueError:
                     pass
             if int(end_page) < int(start_page):
-                yield (
-                    f"end_page {end_page!r} is less than start_page {start_page!r} in StructuredVerbatimCitation"
-                )
+                yield f"end_page {end_page!r} is less than start_page {start_page!r} in StructuredVerbatimCitation"
 
 
 @LINT.add("infer_bhl_page_from_other_names", requires_network=True)
@@ -6387,8 +6377,7 @@ def maybe_take_over_name(
 ) -> Iterable[LintResult]:
     if (
         nam.get_mapped_classification_entry() is not None
-        and nam.nomenclature_status
-        in (
+        and nam.nomenclature_status in (
             NomenclatureStatus.name_combination,
             NomenclatureStatus.incorrect_subsequent_spelling,
         )

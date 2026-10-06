@@ -320,9 +320,7 @@ def check_needs_auxiliary_name(
         )
     ]
     if conflicting_children:
-        yield (
-            f"mapped name is a misspelling of sibling CE {correct_ce}, but children have conflicting VerbatimParent tags: {conflicting_children}"
-        )
+        yield f"mapped name is a misspelling of sibling CE {correct_ce}, but children have conflicting VerbatimParent tags: {conflicting_children}"
         return
 
     message = f"convert to AuxiliaryName under sibling CE {correct_ce}"
@@ -770,9 +768,7 @@ def materialize_classification_entry(
             return
         base_candidates = list(_materialized_base_name_candidates(base_name_tag))
         if base_candidates:
-            yield (
-                f"MaterializeBaseName is blocked until original-name candidates are resolved: {base_candidates}"
-            )
+            yield f"MaterializeBaseName is blocked until original-name candidates are resolved: {base_candidates}"
             return
         try:
             _materialized_base_name_citation_values(ce, base_name_tag)
@@ -819,9 +815,7 @@ def materialize_classification_entry(
             reconciliation_parent.ce.mapped_name is None
             and _get_materialize_tag(reconciliation_parent.ce) is None
         ):
-            yield (
-                "MaterializeParent entry must be mapped or carry its own Materialize tag"
-            )
+            yield "MaterializeParent entry must be mapped or carry its own Materialize tag"
             return
     if ce.rank.is_synonym:
         if tag.parent_taxon_id is not None:
@@ -1185,8 +1179,7 @@ class CandidateName:
                         score += 5
         if (
             self.name.group is not Group.family
-            and self.name.nomenclature_status
-            not in (
+            and self.name.nomenclature_status not in (
                 NomenclatureStatus.name_combination,
                 NomenclatureStatus.incorrect_subsequent_spelling,
             )
@@ -1609,7 +1602,9 @@ def _check_bhl_item_matches(
     if not citation_item_ids:
         return
     if item_id not in citation_item_ids:
-        yield f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
+        yield (
+            f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
+        )
 
 
 def _check_bhl_bibliography_matches(

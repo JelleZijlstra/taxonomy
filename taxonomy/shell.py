@@ -2867,8 +2867,7 @@ def find_valid_names_with_invalid_bases() -> None:
         Taxon.rank == Rank.species,
     ):
         if (
-            txn.base_name.nomenclature_status
-            not in (
+            txn.base_name.nomenclature_status not in (
                 NomenclatureStatus.available,
                 NomenclatureStatus.nomen_novum,
                 NomenclatureStatus.as_emended,

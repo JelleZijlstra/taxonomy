@@ -590,6 +590,4 @@ def check_identifier_tag_consistency(
                 ) < upper_value(must_max):
                     may_str = f"{may_min or '-inf'}–{may_max or '+inf'}"
                     must_str = f"{must_min or '-inf'}–{must_max or '+inf'}"
-                    yield (
-                        f"identifier range mismatch for {ident.name}: MayHave {may_str} does not contain MustHave {must_str}"
-                    )
+                    yield f"identifier range mismatch for {ident.name}: MayHave {may_str} does not contain MustHave {must_str}"

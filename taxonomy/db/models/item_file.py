@@ -710,9 +710,7 @@ def lint_citation_group_fields(itf: ItemFile, cfg: LintConfig) -> Iterable[LintR
         series_regex = cg_lint.get_series_regex(cg)
         if series_regex is not None:
             if itf.series is not None and not re.fullmatch(series_regex, itf.series):
-                yield (
-                    f"series {itf.series!r} does not match regex {series_regex!r} for {cg}"
-                )
+                yield f"series {itf.series!r} does not match regex {series_regex!r} for {cg}"
         elif itf.series is not None:
             yield f"is in {cg}, which does not support series"
 

@@ -941,8 +941,11 @@ def build_plan(
                 else planned_cg.spec.article_type
             )
             if (
-                article_type
-                in {ArticleType.JOURNAL, ArticleType.BOOK, ArticleType.THESIS}
+                article_type in {
+                    ArticleType.JOURNAL,
+                    ArticleType.BOOK,
+                    ArticleType.THESIS,
+                }
                 and cg_type is not article_type
             ):
                 raise RecommendationError(

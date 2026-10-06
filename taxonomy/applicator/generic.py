@@ -1153,8 +1153,7 @@ def _combine_person_naming_conventions(
     specific = {
         convention
         for convention in conventions
-        if convention
-        not in {
+        if convention not in {
             constants.NamingConvention.unspecified,
             constants.NamingConvention.general,
         }
@@ -2070,8 +2069,10 @@ def build_plan(
 
                 final_type = (
                     constants.PersonType.checked
-                    if constants.PersonType.checked
-                    in {expected_source["type"], expected_target["type"]}
+                    if constants.PersonType.checked in {
+                        expected_source["type"],
+                        expected_target["type"],
+                    }
                     else constants.PersonType.unchecked
                 )
                 if target.type not in {expected_target["type"], final_type}:

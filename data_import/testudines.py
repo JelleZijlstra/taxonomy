@@ -611,16 +611,16 @@ def handle_taxon(taxon: Taxon) -> None:
                 possible_names = models.Name.select_valid().filter(
                     (models.Name.original_name == name.details.original_name)
                     | (
-                        models.Name.original_name
-                        == name.details.original_name.replace("ae", "æ")
+                        models.Name.original_name == name.details.original_name.replace(
+                            "ae", "æ"
+                        )
                     ),
                     models.Name.year == name.details.year,
                 )
                 possible_names = [
                     nam
                     for nam in possible_names
-                    if short_key
-                    in (
+                    if short_key in (
                         key_for_name(nam)[1:],
                         key_for_name(nam, include_tussenvoegsel=True)[1:],
                     )

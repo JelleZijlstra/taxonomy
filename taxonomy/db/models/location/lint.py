@@ -738,7 +738,9 @@ def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
                 yield _replace_plss_tag_issue(message, location, tag, new_tag)
                 tag = new_tag
             else:
-                yield f"PLSS text {tag.text!r} does not contain one complete description"
+                yield (
+                    f"PLSS text {tag.text!r} does not contain one complete description"
+                )
                 continue
         if description.meridian is None:
             yield f"PLSS text {tag.text!r} must include the resolved principal meridian"
@@ -749,9 +751,7 @@ def check_plss_tag(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
 @LINT.add("general_plss")
 def check_general_plss(location: Location, cfg: LintConfig) -> Iterable[str]:
     if location.is_general() and location.has_tag(LocationTag.PLSS):
-        yield (
-            "general location should not have a precise PLSS tag; move the tag to an exact Location or remove the General status"
-        )
+        yield "general location should not have a precise PLSS tag; move the tag to an exact Location or remove the General status"
 
 
 def _format_plss_bounds(geometries: Iterable[dict[str, Any]]) -> str | None:
@@ -878,7 +878,9 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
                 yield f"could not check PLSS tag against external data: {exc}"
                 return
             if not resolution.is_resolved:
-                yield f"PLSS tag {tag.text!r} could not be resolved: {resolution.problem}"
+                yield (
+                    f"PLSS tag {tag.text!r} could not be resolved: {resolution.problem}"
+                )
             else:
                 assert resolution.township is not None
                 tag_township = resolution.township
@@ -911,17 +913,13 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
                 else:
                     if not resolved_geometry.geometries:
                         if cfg.verbose:
-                            yield (
-                                f"BLM has no {resolved_geometry.level} polygon for {tag.text!r}"
-                            )
+                            yield f"BLM has no {resolved_geometry.level} polygon for {tag.text!r}"
                     elif extent is not None:
                         distance = plss.geometry_extent_distance_km(
                             extent, resolved_geometry.geometries
                         )
                         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
-                            yield (
-                                f"coordinates are {distance:.1f} km from the {resolved_geometry.level} polygon for {tag.text!r}"
-                            )
+                            yield f"coordinates are {distance:.1f} km from the {resolved_geometry.level} polygon for {tag.text!r}"
                     elif (
                         bounds_text := _format_plss_bounds(resolved_geometry.geometries)
                     ) is not None:
@@ -995,17 +993,13 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
                 continue
             if not resolved_geometry.geometries:
                 if cfg.verbose:
-                    yield (
-                        f"BLM has no {resolved_geometry.level} polygon for PLSS data from {item.source}"
-                    )
+                    yield f"BLM has no {resolved_geometry.level} polygon for PLSS data from {item.source}"
                 continue
             distance = plss.geometry_extent_distance_km(
                 extent, resolved_geometry.geometries
             )
             if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
-                yield (
-                    f"coordinates are {distance:.1f} km from the {resolved_geometry.level} polygon for PLSS data from {item.source}"
-                )
+                yield f"coordinates are {distance:.1f} km from the {resolved_geometry.level} polygon for PLSS data from {item.source}"
                 continue
         resolved_evidence.append((item, resolution.township, description))
 
@@ -1023,9 +1017,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
     )
     if township_conflict is not None:
         item, township, description = township_conflict
-        yield (
-            f"Location evidence resolves to distinct township/range data: {first_description.canonical_text!r} ({first_township.plss_id}, from {first_item.source}) and {description.canonical_text!r} ({township.plss_id}, from {item.source})"
-        )
+        yield f"Location evidence resolves to distinct township/range data: {first_description.canonical_text!r} ({first_township.plss_id}, from {first_item.source}) and {description.canonical_text!r} ({township.plss_id}, from {item.source})"
         return
 
     common_description = _common_plss_description(
@@ -1038,9 +1030,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
         most_specific.canonical_text, most_specific_township.plss_id
     )
     if location.is_general():
-        yield (
-            f"general location has precise PLSS evidence {expected!r}, inferred from {first_item.source}; make a separate exact Location if the evidence is accepted"
-        )
+        yield f"general location has precise PLSS evidence {expected!r}, inferred from {first_item.source}; make a separate exact Location if the evidence is accepted"
         return
     message = f"add {expected!r}, inferred from {first_item.source}"
     fixes = [add_tag_fix(location, expected)]
@@ -1070,9 +1060,7 @@ def check_plss(location: Location, cfg: LintConfig) -> Iterable[LintResult]:
                     )
                 )
             elif cfg.verbose:
-                yield (
-                    f"BLM has no {resolved_geometry.level} polygon for {expected.text!r}"
-                )
+                yield f"BLM has no {resolved_geometry.level} polygon for {expected.text!r}"
     yield fixes_issue(message, *fixes)
 
 
@@ -1083,9 +1071,7 @@ def check_fully_divided_region(location: Location, cfg: LintConfig) -> Iterable[
     region = location.region
     if not region.has_children() or region.has_tag(RegionTag.IncompletelyDivided):
         return
-    yield (
-        f"is directly assigned to fully divided Region {region.name!r}; move it to a child Region or add the General or Unplaced tag"
-    )
+    yield f"is directly assigned to fully divided Region {region.name!r}; move it to a child Region or add the General or Unplaced tag"
 
 
 @LINT.add("coordinate_child_region", required_resources={LintResource.SLOW})
@@ -1324,9 +1310,7 @@ def check_likely_synonymous(location: Location, cfg: LintConfig) -> Iterable[str
     if len(group_refreshed) < 2:
         return
     group_text = ", ".join(f"{item.id}: {item.name!r}" for item in group_refreshed)
-    yield (
-        f"likely synonymous with lower-ID Location {keeper.id}: {keeper.name!r} in Region {location.region.name!r}; group: {group_text}"
-    )
+    yield f"likely synonymous with lower-ID Location {keeper.id}: {keeper.name!r} in Region {location.region.name!r}; group: {group_text}"
 
 
 def _iter_location_equivalences(text: str) -> Iterable[tuple[str, bool, int]]:
@@ -1470,9 +1454,7 @@ def check_explicit_location_equivalence(
                     if key in reported:
                         continue
                     reported.add(key)
-                    yield (
-                        f"LocationDetail on Name {name.id} contains bracketed equivalent {equivalent!r}, matching valid Location {candidate.id}: {candidate.name!r} in Region {location.region.name!r}: {tag.text!r}"
-                    )
+                    yield f"LocationDetail on Name {name.id} contains bracketed equivalent {equivalent!r}, matching valid Location {candidate.id}: {candidate.name!r} in Region {location.region.name!r}: {tag.text!r}"
 
 
 def _coordinate_collision_key(
@@ -1590,9 +1572,7 @@ def check_coordinate_collision(location: Location, cfg: LintConfig) -> Iterable[
         qualification = " in different Regions"
     else:
         qualification = ""
-    yield (
-        f"exact coordinates {coordinates} are shared with Location(s){qualification}: {other_text}"
-    )
+    yield f"exact coordinates {coordinates} are shared with Location(s){qualification}: {other_text}"
 
 
 def _is_location_name_taken(name: str) -> bool:
@@ -1714,25 +1694,19 @@ def check_coordinate_modifier(
         yield f"coordinate modifier {latitude} {longitude}: {issue}"
 
     if location.latitude is None or location.longitude is None:
-        yield (
-            f"coordinate modifier is {latitude} {longitude}, but Location coordinates are missing or incomplete"
-        )
+        yield f"coordinate modifier is {latitude} {longitude}, but Location coordinates are missing or incomplete"
         return
     location_coordinates = coordinate_lint.standardize_coordinate_pair(
         location.latitude, location.longitude
     )
     if location_coordinates is None:
-        yield (
-            f"coordinate modifier is {latitude} {longitude}, but Location coordinates {location.latitude}, {location.longitude} are invalid"
-        )
+        yield f"coordinate modifier is {latitude} {longitude}, but Location coordinates {location.latitude}, {location.longitude} are invalid"
         return
     location_latitude, location_longitude, location_extent = location_coordinates
     if _coordinate_extents_are_equal(extent, location_extent):
         return
     distance = coordinate_lint.extent_distance_km(extent, location_extent)
-    yield (
-        f"coordinate modifier {latitude} {longitude} does not match Location coordinates {location_latitude}, {location_longitude} ({distance:.1f} km apart)"
-    )
+    yield f"coordinate modifier {latitude} {longitude} does not match Location coordinates {location_latitude}, {location_longitude} ({distance:.1f} km apart)"
 
 
 @cache
@@ -1860,9 +1834,7 @@ def check_disambiguator(location: Location, cfg: LintConfig) -> Iterable[str]:
         # The coordinate_modifier lint owns this legacy parenthetical form.
         return
 
-    yield (
-        f"disambiguator {disambiguator!r} is not an enclosing Region, an assigned Period, or an assigned StratigraphicUnit"
-    )
+    yield f"disambiguator {disambiguator!r} is not an enclosing Region, an assigned Period, or an assigned StratigraphicUnit"
 
 
 @LINT.add("period")
@@ -2070,9 +2042,7 @@ def check_linked_coordinates(
         other_extent, other_source = item.extent, item.source
         distance = coordinate_lint.extent_distance_km(extent, other_extent)
         if distance > coordinate_lint.COORDINATE_TOLERANCE_KM:
-            yield (
-                f"cannot infer coordinates because {extent} (from {source}) and {other_extent} (from {other_source}) differ by {distance:.1f} km"
-            )
+            yield f"cannot infer coordinates because {extent} (from {source}) and {other_extent} (from {other_source}) differ by {distance:.1f} km"
             return
         combined_extent = combined_extent.union(other_extent)
 
@@ -2389,9 +2359,7 @@ def check_geonames_alternate_name(location: Location, cfg: LintConfig) -> Iterab
         proposed_name = ParsedLocationName(
             record.name, parsed_name.disambiguator, parsed_name.modifier
         ).render()
-        yield (
-            f"base name {parsed_name.base_name!r} is a GeoNames {match_kind} name rather than the primary name {record.name!r} (ID {record.geoname_id}); review possible modern name {proposed_name!r}"
-        )
+        yield f"base name {parsed_name.base_name!r} is a GeoNames {match_kind} name rather than the primary name {record.name!r} (ID {record.geoname_id}); review possible modern name {proposed_name!r}"
 
 
 @LINT.add(
@@ -2423,9 +2391,7 @@ def check_geonames_coordinates(
             f"- {_describe_geonames_match(candidate.match)}, {candidate.latitude}, {candidate.longitude}\n"
             for candidate in geonames_candidates
         )
-        yield (
-            f"GeoNames returned {len(geonames_candidates)} conflicting usable exact matches in the assigned Region:\n{matches}"
-        )
+        yield f"GeoNames returned {len(geonames_candidates)} conflicting usable exact matches in the assigned Region:\n{matches}"
         return
 
     nominatim_candidates = _get_nominatim_coordinate_candidates(location)
@@ -2437,9 +2403,7 @@ def check_geonames_coordinates(
                 f"- {candidate.display_name!r} ({candidate.category}/{candidate.feature_type}, {latitude}, {longitude})\n"
                 for candidate, (latitude, longitude, _) in nominatim_candidates
             )
-            yield (
-                f"GeoNames resolves to one coordinate cluster, but Nominatim returned {len(nominatim_candidates)} conflicting exact matches; coordinates cannot be inferred:\n{matches}"
-            )
+            yield f"GeoNames resolves to one coordinate cluster, but Nominatim returned {len(nominatim_candidates)} conflicting exact matches; coordinates cannot be inferred:\n{matches}"
             return
         combined_extents = [
             *(candidate.extent for candidate in geonames_candidates),
@@ -2467,9 +2431,7 @@ def check_geonames_coordinates(
             )
         )
         if region_issues:
-            yield (
-                f"Nominatim result {result.display_name!r} failed the region check: {'; '.join(region_issues)}"
-            )
+            yield f"Nominatim result {result.display_name!r} failed the region check: {'; '.join(region_issues)}"
             return
         message = f"coordinates should be {latitude}, {longitude}, inferred from OpenStreetMap Nominatim {result.category}/{result.feature_type} result {result.display_name!r}, confirmed by {len(geonames_candidates)} compatible GeoNames exact match{'es' if len(geonames_candidates) != 1 else ''}"
         nominatim_tag = _nominatim_provenance_tag(result, use_bounding_box=False)
@@ -2535,9 +2497,7 @@ def check_geonames_coordinate_consistency(
             f"- {_describe_geonames_match(candidate.match)}, {candidate.latitude}, {candidate.longitude}\n"
             for candidate in masked_candidates
         )
-        yield (
-            f"coordinate range {location.latitude}, {location.longitude} encompasses {len(masked_candidates)} conflicting point-like GeoNames exact matches in the assigned Region and may mask conflated homonyms:\n{matches}"
-        )
+        yield f"coordinate range {location.latitude}, {location.longitude} encompasses {len(masked_candidates)} conflicting point-like GeoNames exact matches in the assigned Region and may mask conflated homonyms:\n{matches}"
         return
     if any(
         distance <= coordinate_lint.COORDINATE_TOLERANCE_KM
@@ -2549,9 +2509,7 @@ def check_geonames_coordinate_consistency(
         f"- {_describe_geonames_match(candidate.match)}, {candidate.latitude}, {candidate.longitude}; {distance:.1f} km away\n"
         for candidate, distance in candidates_with_distances
     )
-    yield (
-        f"coordinates {location.latitude}, {location.longitude} are more than {coordinate_lint.COORDINATE_TOLERANCE_KM} km from all {len(candidates)} exact GeoNames matches in the assigned Region:\n{matches}"
-    )
+    yield f"coordinates {location.latitude}, {location.longitude} are more than {coordinate_lint.COORDINATE_TOLERANCE_KM} km from all {len(candidates)} exact GeoNames matches in the assigned Region:\n{matches}"
 
 
 @LINT.add("nominatim_coordinates", requires_network=True)
@@ -2584,9 +2542,7 @@ def check_nominatim_coordinates(
             f"- {candidate.display_name!r} ({candidate.category}/{candidate.feature_type}, {candidate_latitude}, {candidate_longitude})\n"
             for candidate, (candidate_latitude, candidate_longitude, _) in candidates
         )
-        yield (
-            f"Nominatim returned {len(candidates)} conflicting exact matches:\n{matches}"
-        )
+        yield f"Nominatim returned {len(candidates)} conflicting exact matches:\n{matches}"
         return
 
     region_issues = list(
@@ -2595,9 +2551,7 @@ def check_nominatim_coordinates(
         )
     )
     if region_issues:
-        yield (
-            f"Nominatim result {result.display_name!r} failed the region check: {'; '.join(region_issues)}"
-        )
+        yield f"Nominatim result {result.display_name!r} failed the region check: {'; '.join(region_issues)}"
         return
 
     search_plan = get_nominatim_search_plan(location)
@@ -2607,9 +2561,7 @@ def check_nominatim_coordinates(
         message = f"coordinates should be {latitude}, {longitude}, inferred by applying {search_plan.offset_description} to OpenStreetMap Nominatim {result.category}/{result.feature_type} result {result.display_name!r}"
     provenance = _nominatim_provenance_tag(result, use_bounding_box=False)
     if provenance is None:
-        yield (
-            f"{message}; cannot infer automatically because the Nominatim result has no stable OpenStreetMap identifier"
-        )
+        yield f"{message}; cannot infer automatically because the Nominatim result has no stable OpenStreetMap identifier"
         return
     yield fields_issue(
         message,
@@ -2686,9 +2638,7 @@ def check_nominatim_general_coordinates(
                         _,
                     ) in all_candidates
                 )
-                yield (
-                    f"Nominatim returned {len(all_candidates)} conflicting exact-match bounding boxes:\n{matches}"
-                )
+                yield f"Nominatim returned {len(all_candidates)} conflicting exact-match bounding boxes:\n{matches}"
                 return
         else:
             result, (latitude, longitude, extent) = preferred
@@ -2700,9 +2650,7 @@ def check_nominatim_general_coordinates(
         )
     )
     if region_issues:
-        yield (
-            f"Nominatim bounding box for {result.display_name!r} failed the region check: {'; '.join(region_issues)}"
-        )
+        yield f"Nominatim bounding box for {result.display_name!r} failed the region check: {'; '.join(region_issues)}"
         return
 
     message = f"coordinate range should be {latitude}, {longitude}, inferred from OpenStreetMap Nominatim bounding box for {result.osm_type} {result.category}/{result.feature_type} result {result.display_name!r}"
@@ -2712,14 +2660,10 @@ def check_nominatim_general_coordinates(
         message += " (preferred because it contains all other exact-match bounds)"
     provenance = _nominatim_provenance_tag(result, use_bounding_box=True)
     if provenance is None:
-        yield (
-            f"{message}; cannot infer automatically because the Nominatim result has no stable OpenStreetMap identifier"
-        )
+        yield f"{message}; cannot infer automatically because the Nominatim result has no stable OpenStreetMap identifier"
         return
     if has_existing_point:
-        yield (
-            f"{message}; replace point coordinates {location.latitude}, {location.longitude} manually"
-        )
+        yield f"{message}; replace point coordinates {location.latitude}, {location.longitude} manually"
         return
     yield fields_issue(
         message,
@@ -2952,9 +2896,7 @@ def check_nominatim_coordinate_consistency(
             f"- {result.display_name!r} ({result.category}/{result.feature_type}, {latitude}, {longitude})\n"
             for result, (latitude, longitude, _) in masked_candidates
         )
-        yield (
-            f"coordinate range {location.latitude}, {location.longitude} encompasses {len(masked_candidates)} conflicting non-linear Nominatim exact matches and may mask conflated homonyms:\n{matches}"
-        )
+        yield f"coordinate range {location.latitude}, {location.longitude} encompasses {len(masked_candidates)} conflicting non-linear Nominatim exact matches and may mask conflated homonyms:\n{matches}"
         return
     if any(
         distance <= coordinate_lint.COORDINATE_TOLERANCE_KM
@@ -2966,9 +2908,7 @@ def check_nominatim_coordinate_consistency(
         f"- {result.display_name!r} ({result.category}/{result.feature_type}, {latitude}, {longitude}; {distance:.1f} km away)\n"
         for result, (latitude, longitude, _), distance in candidates_with_distances
     )
-    yield (
-        f"coordinates {location.latitude}, {location.longitude} are more than {coordinate_lint.COORDINATE_TOLERANCE_KM} km from all {len(candidates)} exact Nominatim matches:\n{matches}"
-    )
+    yield f"coordinates {location.latitude}, {location.longitude} are more than {coordinate_lint.COORDINATE_TOLERANCE_KM} km from all {len(candidates)} exact Nominatim matches:\n{matches}"
 
 
 def _get_reverse_region(location: Location) -> tuple[Region, int] | None:
@@ -3186,9 +3126,7 @@ def check_nominatim_region_consistency(
         ):
             return
 
-    yield (
-        f"coordinates {location.latitude}, {location.longitude} consistently reverse-geocode to {center_value!r}, not assigned Region {expected_region.name!r} (nearest address {center_result.display_name!r})"
-    )
+    yield f"coordinates {location.latitude}, {location.longitude} consistently reverse-geocode to {center_value!r}, not assigned Region {expected_region.name!r} (nearest address {center_result.display_name!r})"
 
 
 def _get_nominatim_coordinate_candidates(
@@ -4097,9 +4035,7 @@ def check_coordinate_provenance(
                 _coordinate_provenance_tags(location, inferred),
             )
         elif allow_network:
-            yield (
-                "coordinates are not supported by a coordinate provenance tag; add reviewed CoordinatesManual provenance or correct the coordinates"
-            )
+            yield "coordinates are not supported by a coordinate provenance tag; add reviewed CoordinatesManual provenance or correct the coordinates"
         return
 
     evidence_extent_groups: list[list[coordinate_lint.CoordinateExtent]] = []
@@ -4167,9 +4103,7 @@ def check_coordinate_provenance(
             extent for group in evidence_extent_groups for extent in group
         )
         assert combined_extent is not None
-        yield (
-            f"coordinates {location.latitude}, {location.longitude} do not exactly match the numeric extent derived from coordinate provenance tags (expected {combined_extent.latitude.standardized_text}, {combined_extent.longitude.standardized_text})"
-        )
+        yield f"coordinates {location.latitude}, {location.longitude} do not exactly match the numeric extent derived from coordinate provenance tags (expected {combined_extent.latitude.standardized_text}, {combined_extent.longitude.standardized_text})"
 
 
 @cache
