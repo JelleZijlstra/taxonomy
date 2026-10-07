@@ -825,9 +825,15 @@ def build_plan(
         raw: Mapping[str, Any] = {}
         if recommendation.doi is not None:
             raw = expand_doi(recommendation.doi)
-            if not raw:
+            if not raw and not (
+                recommendation.article_type is not None
+                and recommendation.authors
+                and recommendation.fields.get("title")
+                and recommendation.fields.get("year")
+            ):
                 raise RecommendationError(
-                    f"line {line}: CrossRef returned no metadata for DOI {recommendation.doi}"
+                    f"line {line}: CrossRef returned no metadata for DOI {recommendation.doi}; "
+                    "provide explicit article.type, authors, title, and year"
                 )
         raw_type = raw.get("type")
         article_type = recommendation.article_type or (

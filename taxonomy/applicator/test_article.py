@@ -983,3 +983,50 @@ def test_article_and_author_refs_share_one_namespace(
             get_citation_group=lambda _id: _book_citation_group(),
             expand_doi=lambda _doi: {},
         )
+
+
+@pytest.mark.parametrize("missing", [None, "type", "authors", "title", "year"])
+def test_explicit_metadata_when_doi_has_no_crossref_record(
+    tmp_path: Path, missing: str | None
+) -> None:
+    pdf = _pdf_bytes()
+    intake = tmp_path / "new"
+    intake.mkdir()
+    (intake / "download.pdf").write_bytes(pdf)
+    library = tmp_path / "library"
+    (library / "Mollusca").mkdir(parents=True)
+    data = _row(pdf)
+    data["article"].update(
+        type="JOURNAL", authors=[{"family_name": "Solem", "given_names": "Alan"}]
+    )
+    data["article"]["fields"].update(title="Verified publisher title", year="1976")
+    if missing in {"type", "authors"}:
+        del data["article"][missing]
+    elif missing:
+        del data["article"]["fields"][missing]
+    row = recommendations.parse_recommendation(data, 1)
+    kwargs: dict[str, Any] = {
+        "options": Options(new_path=intake, library_path=library),
+        "get_article": lambda _name: None,
+        "articles_with_doi": lambda _doi: (),
+        "is_catalog_folder": lambda _path: True,
+        "get_citation_group": lambda _id: _citation_group(),
+        "expand_doi": lambda _doi: {},
+    }
+    if missing:
+        with pytest.raises(
+            recommendations.RecommendationError, match="CrossRef returned"
+        ):
+            recommendations.build_plan((row,), **kwargs)
+        return
+    plan = recommendations.build_plan((row,), **kwargs)
+    assert plan.actions[0].recommendation.doi == "10.1234/example"
+    assert plan.actions[0].fields["title"] == "Verified publisher title"
+    collision = Article.virtual(name="Other.pdf", doi="10.1234/example")
+    with pytest.raises(recommendations.RecommendationError, match="already used"):
+        recommendations.build_plan(
+            (row,), **{**kwargs, "articles_with_doi": lambda _doi: (collision,)}
+        )
+    (intake / "download.pdf").write_bytes(pdf + b"changed")
+    with pytest.raises(recommendations.RecommendationError):
+        recommendations.build_plan((row,), **kwargs)

@@ -2983,6 +2983,57 @@ def fill_bhl_names(nams: Iterable[Name] | None = None) -> None:
 
 
 @command
+def fill_namedafter(label: str = "patronym_masculine") -> None:
+    sc = (
+        models.SpeciesNameComplex.select_valid()
+        .filter(models.SpeciesNameComplex.label == label)
+        .get()
+    )
+    nams = list(
+        Name.select_valid().filter(
+            Name.type_tags.contains(f"[{TypeTag.EtymologyDetail._tag},"),
+            ~Name.type_tags.contains(f"[{TypeTag.NamedAfter._tag},"),
+            Name.species_name_complex == sc,
+        )
+    )
+    by_root_name = defaultdict(list)
+    for nam in nams:
+        by_root_name[nam.root_name].append(nam)
+    print(f"Found {len(by_root_name)} unique root names. Total names: {len(nams)}")
+
+    for root_name, names in sorted(
+        by_root_name.items(), key=lambda x: (-len(x[1]), x[0])
+    ):
+        getinput.print_header(f"Root name: {root_name} ({len(names)})")
+        # Print existing names with a NamedAfter and the same root_name
+        existing = Name.add_type_tag_filter(
+            Name.select_valid(), TypeTag.NamedAfter
+        ).filter(Name.root_name == root_name)
+        existing_persons = {
+            tag.person
+            for nam in existing
+            for tag in nam.get_tags(nam.type_tags, TypeTag.NamedAfter)
+        }
+        if len(existing_persons) > 0:
+            print(
+                f"  Existing persons: {', '.join(str(person) for person in existing_persons)}"
+            )
+        for nam in names:
+            nam.display(only_tags=(TypeTag.EtymologyDetail,))
+            has_named_after = False
+            if len(existing_persons) <= 3:
+                for person in existing_persons:
+                    if getinput.yes_no(
+                        f"Is {person} the person this name is named after? "
+                    ):
+                        nam.add_type_tag(TypeTag.NamedAfter(person=person))
+                        has_named_after = True
+                        break
+            if not has_named_after:
+                nam.edit()
+
+
+@command
 def report_missing_requiredness(
     nams: Iterable[Name] | None = None,
     *,

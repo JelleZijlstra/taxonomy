@@ -13,3 +13,4 @@ source data:
 - [How many species of _Oryctolagus_ are there, and what are their names?](/docs/research-notes/oryctolagus-species-names)
 - [Was the type series of _Heosemys leytensis_ really from Leyte?](/docs/research-notes/heosemys-leytensis-type-locality)
 - [Where was the type locality of _Dipodomys spectabilis baileyi_?](/docs/research-notes/dipodomys-spectabilis-baileyi-type-locality)
+- [The Costa Rican degu](/docs/research-notes/the-costa-rican-degu)

@@ -342,7 +342,7 @@ class Name(BaseModel):
 
     @classmethod
     def with_tag_of_type(cls, tag_cls: builtins.type[adt.ADT]) -> list[Name]:
-        names = cls.select_valid().filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
+        names = cls.add_type_tag_filter(cls.select_valid(), tag_cls)
         return [
             name
             for name in names
@@ -350,6 +350,10 @@ class Name(BaseModel):
                 tag[0] == tag_cls._tag for tag in name.get_raw_tags_field("type_tags")
             )
         ]
+
+    @classmethod
+    def add_type_tag_filter(cls, query: Any, tag_cls: builtins.type[adt.ADT]) -> Any:
+        return query.filter(Name.type_tags.contains(f"[{tag_cls._tag},"))
 
     @classmethod
     def add_validity_check(cls, query: Any) -> Any:
@@ -1755,6 +1759,7 @@ class Name(BaseModel):
         include_data: bool = False,
         include_taxon: bool = False,
         skip_lint: bool = False,
+        only_tags: tuple[builtins.type[TypeTag], ...] | None = None,
     ) -> str:
         if self.original_name is None:
             out = self.root_name
@@ -1834,12 +1839,20 @@ class Name(BaseModel):
                 data["data"] = self.data
 
             spacing = " " * ((depth + 2) * 4)
-            result = "".join(
-                [result]
-                + [f"{spacing}{key}: {value}\n" for key, value in data.items() if value]
-                + list(getinput.display_tags(spacing, self.tags))
-                + list(getinput.display_tags(spacing, self.type_tags))
-                + [
+            lines = [result] + [
+                f"{spacing}{key}: {value}\n" for key, value in data.items() if value
+            ]
+            if only_tags is not None:
+                lines.extend(
+                    getinput.display_tags(
+                        spacing,
+                        [tag for tag in self.type_tags if isinstance(tag, only_tags)],
+                    )
+                )
+            else:
+                lines.extend(getinput.display_tags(spacing, self.tags))
+                lines.extend(getinput.display_tags(spacing, self.type_tags))
+                lines.extend(
                     f"{spacing}{comment.get_description()}\n"
                     for comment in self.comments
                     if include_data
@@ -1848,14 +1861,23 @@ class Name(BaseModel):
                         constants.CommentKind.structured_quote,
                         constants.CommentKind.automatic_change,
                     )
-                ]
-            )
+                )
+            result = "".join(lines)
         return result
 
-    def display(self, *, full: bool = True, include_data: bool = False) -> None:
+    def display(
+        self,
+        *,
+        full: bool = True,
+        include_data: bool = False,
+        only_tags: tuple[builtins.type[TypeTag], ...] | None = None,
+    ) -> None:
         print(
             self.get_description(
-                full=full, include_data=include_data, include_taxon=True
+                full=full,
+                include_data=include_data,
+                include_taxon=True,
+                only_tags=only_tags,
             ),
             end="",
         )
