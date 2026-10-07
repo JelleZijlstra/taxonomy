@@ -55,6 +55,8 @@ class CacheDomain(enum.Enum):
     openstreetmap = 23  # OpenStreetMap API element metadata
     orcid_doi_search = 24  # ORCID expanded search by exact DOI
     orcid_record = 25  # ORCID public record by ORCID iD
+    wikidata_item = 26  # Full Wikidata entity response, including provenance
+    wikipedia_item = 27  # Wikipedia page properties and redirect resolution
 
 
 KeyT = TypeVar("KeyT")

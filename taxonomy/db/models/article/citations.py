@@ -110,7 +110,7 @@ def format_authors(
             if author.suffix and author.naming_convention in (
                 NamingConvention.english,
                 NamingConvention.english_peer,
-                NamingConvention.ancient,
+                NamingConvention.mononym,
             ):
                 author_str += f", {author.suffix}"
         else:

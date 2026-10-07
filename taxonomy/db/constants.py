@@ -1039,7 +1039,7 @@ class NamingConvention(enum.IntEnum):
     dutch = 4  # treatment of tussenvoegsels
     burmese = 5  # no family names
     spanish = 6  # double surnames
-    ancient = 7  # mononyms
+    mononym = 7  # formerly ancient; includes historical and modern mononyms
     organization = 8
     hungarian = 9  # family name usually comes first
     vietnamese = 10

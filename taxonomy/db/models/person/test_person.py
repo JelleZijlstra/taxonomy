@@ -177,3 +177,32 @@ def test_ukrainian_uses_ukrainian_romanization() -> None:
     assert person.get_transliterated_family_name() == "Zahorodniuk"
     assert person.get_transliterated_initials() == "I.V."
     assert format_authors(article, romanize=True) == "Zahorodniuk, I.V."
+
+
+def test_mononym_retains_stored_value_and_name_formatting() -> None:
+    assert NamingConvention(7) is NamingConvention.mononym
+    assert NamingConvention(7).name == "mononym"
+    mononym = Person.virtual(
+        family_name="Philip",
+        given_names=None,
+        initials=None,
+        tussenvoegsel=None,
+        suffix="II",
+        naming_convention=NamingConvention.mononym,
+        type=PersonType.checked,
+        tags=(),
+    )
+    assert mononym.get_full_name() == "Philip II"
+    modern = Person.virtual(
+        family_name="Cher",
+        given_names=None,
+        initials=None,
+        suffix=None,
+        tussenvoegsel=None,
+        naming_convention=NamingConvention.mononym,
+        type=PersonType.checked,
+        tags=(),
+    )
+    article = Mock()
+    article.get_authors.return_value = [modern]
+    assert format_authors(article) == "Cher"

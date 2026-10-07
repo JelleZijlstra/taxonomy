@@ -35,7 +35,7 @@ Persons have the following fields:
   treating personal names, and this field lets us indicate what convention to use. For
   example, this may be set to _chinese_ or _dutch_. Special cases include _organization_
   (which occasionally are listed as the authors of articles or have species named after
-  them), and _ancient_ for ancient people, who usually only have a single name, like
+  them), and _mononym_ for people known by a single name, historical or modern, like
   [Philip II of Macedon](/h/1).
 - _family name_: The person's family name. This field is always set and used to find
   persons, so it's also set for organizations and for people who technically do not have
@@ -88,9 +88,10 @@ displaying names on this website.
   have certain peculiarities, but usually these peculiarities are only relevant in rare
   cases. Names from these languages that lack these peculiarities may be placed in the
   _general_ convention.
-- _ancient_: This naming convention is used for ancient people without family names, and
-  in practice also for some not-so-ancient people without a family name like
-  [Queen Victoria](/h/49746).
+- _mononym_: For people known by a single name rather than separate given and family
+  names, whether historical or modern; for example, [Queen Victoria](/h/49746). This was
+  formerly called _ancient_ and retains the same stored enum value. It describes name
+  structure, not whether the named person is historical, religious, or fictional.
 - _organization_: For organizations, which occasionally are listed as the authors of
   articles or have things named after them. We also have a person named
   "[Anonymous](/h/35349)" for anonymously authored works.

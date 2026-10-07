@@ -10,6 +10,7 @@ from typing import IO, Any, ClassVar, Self
 from clirm import Field
 
 from taxonomy import adt, events, getinput, parsing
+from taxonomy.apis import wikidata
 from taxonomy.apis.cloud_search import SearchField, SearchFieldType
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import NamingConvention, PersonType
@@ -50,7 +51,7 @@ ALLOWED_TUSSENVOEGSELS[NamingConvention.unspecified] = {
     tv for group in ALLOWED_TUSSENVOEGSELS.values() for tv in group
 } | {"v.d."}
 ALLOWS_SUFFIXES = {
-    NamingConvention.ancient,
+    NamingConvention.mononym,
     NamingConvention.spanish,
     NamingConvention.unspecified,
     NamingConvention.english,
@@ -345,7 +346,7 @@ class Person(BaseModel):
             parts.append(self.family_name)
         if self.suffix:
             if self.naming_convention in (
-                NamingConvention.ancient,
+                NamingConvention.mononym,
                 NamingConvention.english,
                 NamingConvention.spanish,
                 NamingConvention.german,
@@ -603,6 +604,31 @@ class Person(BaseModel):
             elif isinstance(tag, models.tags.PersonTag.ORCID):
                 if not is_valid_orcid(tag.text):
                     yield f"{self}: invalid ORCID: {tag}"
+            elif isinstance(tag, models.tags.PersonTag.Wikidata):
+                if not wikidata.is_valid_qid(tag.text):
+                    yield f"{self}: invalid Wikidata ID: {tag}"
+            elif isinstance(tag, models.tags.PersonTag.OpenLibrary):
+                if not re.fullmatch(r"OL[1-9][0-9]*A", tag.text):
+                    yield f"{self}: invalid Open Library author ID: {tag}"
+            elif isinstance(tag, models.tags.PersonTag.WikidataReview):
+                if (
+                    tag.field not in {"birth", "death", "orcid"}
+                    or (
+                        tag.field in {"birth", "death"}
+                        and not re.fullmatch(r"-?[1-9][0-9]*", tag.local_value)
+                    )
+                    or (
+                        tag.field == "orcid"
+                        and not all(
+                            is_valid_orcid(value)
+                            for value in tag.local_value.split(",")
+                        )
+                    )
+                    or not wikidata.is_valid_qid(tag.wikidata_id)
+                    or not re.fullmatch(r"[0-9a-f]{64}", tag.statement_hash)
+                    or not tag.comment.strip()
+                ):
+                    yield f"{self}: invalid Wikidata review: {tag}"
             elif isinstance(tag, models.tags.PersonTag.OnlineBio):
                 if not tag.text.startswith(("http://", "https://")):
                     yield f"{self}: invalid online link: {tag}"
@@ -622,6 +648,8 @@ class Person(BaseModel):
                     tag,
                     (
                         models.tags.PersonTag.ORCID,
+                        models.tags.PersonTag.Wikidata,
+                        models.tags.PersonTag.OpenLibrary,
                         models.tags.PersonTag.IgnoreLint,
                         models.tags.PersonTag.IgnoreORCIDWork,
                     ),
@@ -702,7 +730,7 @@ class Person(BaseModel):
                 self.family_name.lower(), parsing.pinyin_family_name_lowercased_pattern
             ):
                 yield f"{self}: invalid pinyin in family name: {self.family_name!r}"
-        elif self.naming_convention is NamingConvention.ancient:
+        elif self.naming_convention is NamingConvention.mononym:
             if self.given_names:
                 yield f"{self}: should be a mononym but has given names"
             if self.initials:
@@ -1154,9 +1182,28 @@ class Person(BaseModel):
         person.edit_until_clean()
         return person
 
+    def get_ol_ids(self) -> set[str]:
+        """Return the primary and additional Open Library author identifiers."""
+        return ({self.ol_id} if self.ol_id else set()) | {
+            tag.text
+            for tag in self.get_tags(self.tags, models.tags.PersonTag.OpenLibrary)
+        }
+
     @classmethod
     def get_or_create_from_ol_id(cls, ol_id: str) -> Person:
         person = cls.select_one(ol_id=ol_id)
+        if person is None:
+            matches = [
+                candidate
+                for candidate in cls.select_valid().filter(cls.tags.contains(ol_id))
+                if ol_id in candidate.get_ol_ids()
+            ]
+            if len(matches) > 1:
+                raise ValueError(
+                    f"Multiple Persons have Open Library ID {ol_id}: {matches}"
+                )
+            if matches:
+                return matches[0]
         if person is None:
             data = get_author(ol_id)
             name = data["name"]
@@ -1171,13 +1218,7 @@ class Person(BaseModel):
             if person.ol_id is None:
                 person.ol_id = ol_id
             else:
-                cls.create(
-                    family_name=family_name,
-                    given_names=given_names,
-                    ol_id=ol_id,
-                    type=PersonType.hard_redirect,
-                    target=person,
-                )
+                person.add_tag(models.tags.PersonTag.OpenLibrary(ol_id))
         return person
 
     @classmethod

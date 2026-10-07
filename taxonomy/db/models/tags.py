@@ -31,6 +31,16 @@ class PersonTag(adt.ADT):
     IgnoreORCIDWork(  # type: ignore[name-defined]
         orcid=Managed, doi=Managed, comment=NotRequired[Markdown], tag=9
     )
+    Wikidata(text=Managed, tag=10)  # type: ignore[name-defined]
+    OpenLibrary(text=Managed, tag=11)  # type: ignore[name-defined]
+    WikidataReview(  # type: ignore[name-defined]
+        field=Managed,
+        local_value=Managed,
+        wikidata_id=Managed,
+        statement_hash=Managed,
+        comment=Markdown,
+        tag=12,
+    )
 
 
 class LocationTag(adt.ADT):

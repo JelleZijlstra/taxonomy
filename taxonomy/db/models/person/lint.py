@@ -5,13 +5,20 @@ import re
 from collections.abc import Iterable
 from typing import Any
 
-from taxonomy.apis import orcid
+from taxonomy.apis import orcid, wikidata
 from taxonomy.db import helpers, models
 from taxonomy.db.constants import NamingConvention, PersonType
 from taxonomy.db.models.base import LintConfig, LintResource
-from taxonomy.db.models.lint import IgnoreLint, Lint, field_issue
+from taxonomy.db.models.lint import (
+    IgnoreLint,
+    Lint,
+    add_tag_issue,
+    field_issue,
+    remove_tag_issue,
+)
 from taxonomy.db.models.lint_types import LintResult
 
+from . import wikidata as wikidata_evidence
 from .name_matching import (
     external_identity_matches_person,
     format_external_identity,
@@ -103,6 +110,234 @@ def duplicate_orcid(person: Person) -> Iterable[str]:
     # Use every ORCID so a reviewed, legitimate multi-profile Person still
     # participates in duplicate detection for each identifier.
     return {normalize_orcid(tag.text) for tag in get_orcid_tags(person)}
+
+
+@LINT.add_multi_duplicate_finder("duplicate_openlibrary")
+def duplicate_openlibrary(person: Person) -> Iterable[str]:
+    if person.is_invalid() or person.type is PersonType.alias:
+        return ()
+    return {
+        f"https://openlibrary.org/authors/{ol_id}"
+        for ol_id in person.get_ol_ids()
+        if re.fullmatch(r"OL[1-9][0-9]*A", ol_id)
+    }
+
+
+@LINT.add("wikidata_tags")
+def wikidata_tags(person: Person, cfg: LintConfig) -> Iterable[str]:
+    qids = wikidata_evidence.stored_qids(person)
+    if len(qids) > 1:
+        yield f"has multiple Wikidata IDs: {sorted(qids)}"
+    if qids and person.type in wikidata_evidence.IDENTITY_TYPES:
+        yield "Wikidata identifiers belong on the canonical Person; review target and tags"
+
+
+@LINT.add_multi_duplicate_finder("duplicate_wikidata")
+def duplicate_wikidata(person: Person) -> Iterable[str]:
+    if person.is_invalid() or person.type is PersonType.alias:
+        return ()
+    return {
+        qid
+        for qid in wikidata_evidence.stored_qids(person)
+        if wikidata.is_valid_qid(qid)
+    }
+
+
+@LINT.add(
+    "wikidata_entity_type", required_resources={LintResource.NETWORK, LintResource.SLOW}
+)
+def wikidata_entity_type(person: Person, cfg: LintConfig) -> Iterable[str]:
+    """Check the entity type independently of linking and profile comparisons."""
+    if (
+        person.is_invalid()
+        or person.type is PersonType.alias
+        or not wikidata_evidence.requires_human_item(person)
+    ):
+        return
+    qids = wikidata_evidence.stored_qids(person)
+    if not qids:
+        for url in sorted(
+            {
+                tag.text
+                for tag in person.get_tags(person.tags, models.tags.PersonTag.Wiki)
+            }
+        ):
+            link = wikidata.resolve_wikipedia(url)
+            if not link.needs_review and link.qid is not None:
+                qids.add(link.qid)
+            else:
+                yield f"cannot check Wikidata entity type for unresolved Wikipedia link: {url}"
+    for qid in sorted(qids):
+        if not wikidata.is_valid_qid(qid):
+            continue
+        entity = wikidata.get_item(qid).entity
+        if entity is None:
+            # Type evaluation is indeterminate; preserve an existing IgnoreLint.
+            yield f"cannot check Wikidata entity type: {qid} has no public item"
+        elif not wikidata_evidence.is_human(entity):
+            # Do not call can_use_item here: the wrapper must see the issue even
+            # when ignored, so it does not remove the exception as unused.
+            yield (
+                f"Wikidata {qid} is not unambiguously an individual human; "
+                f"review https://www.wikidata.org/wiki/{entity['id']}"
+            )
+
+
+@LINT.add(
+    "wikidata_from_wikipedia",
+    required_resources={LintResource.NETWORK, LintResource.SLOW},
+)
+def wikidata_from_wikipedia(person: Person, cfg: LintConfig) -> Iterable[LintResult]:
+    """Add a missing identity link from the Person's existing Wikipedia links."""
+    if (
+        person.is_invalid()
+        or person.type is PersonType.alias
+        or wikidata_evidence.stored_qids(person)
+    ):
+        return
+    urls = sorted(
+        {tag.text for tag in person.get_tags(person.tags, models.tags.PersonTag.Wiki)}
+    )
+    if not urls:
+        return
+    qids: set[str] = set()
+    for url in urls:
+        link = wikidata.resolve_wikipedia(url)
+        if link.needs_review:
+            yield f"Wikipedia link needs identity review before adding Wikidata: {url}"
+            return
+        if link.qid is None:
+            yield f"No Wikidata item for Wikipedia link: {url}"
+            return
+        qids.add(link.qid)
+    resolved_qids: set[str] = set()
+    for qid in sorted(qids):
+        entity = wikidata.get_item(qid).entity
+        if entity is None:
+            yield f"Wikidata {qid} has no public item"
+            return
+        if not wikidata_evidence.can_use_item(person, entity):
+            # Reported separately by wikidata_entity_type, which can be ignored
+            # without disabling link inference.
+            return
+        resolved_qids.add(entity["id"])
+    if len(resolved_qids) != 1:
+        yield f"Wikipedia links resolve to different Wikidata identities: {sorted(resolved_qids)}"
+        return
+    qid = next(iter(resolved_qids))
+    yield add_tag_issue(
+        f"add Wikidata {qid} from Wikipedia: {', '.join(urls)}",
+        person,
+        models.tags.PersonTag.Wikidata(qid),
+    )
+
+
+@LINT.add(
+    "wikidata_profile", required_resources={LintResource.NETWORK, LintResource.SLOW}
+)
+def wikidata_profile(person: Person, cfg: LintConfig) -> Iterable[LintResult]:
+    """Fill unambiguous missing years and identifiers; report disagreements."""
+    if person.is_invalid() or person.type is PersonType.alias:
+        return
+    qids = wikidata_evidence.stored_qids(person)
+    if len(qids) > 1:
+        return  # Resolve the wikidata_tags identity conflict before importing facts.
+    for qid in sorted(qids):
+        if not wikidata.is_valid_qid(qid):
+            continue  # Reported by the model's offline lint.
+        item = wikidata.get_item(qid)
+        entity = item.entity
+        if entity is None:
+            yield f"Wikidata {qid} has no public item"
+            continue
+        if entity["id"] != qid:
+            yield f"Wikidata {qid} redirects to {entity['id']}; review the identifier"
+            continue
+        if not wikidata_evidence.can_use_item(person, entity):
+            continue
+        for field, comparison in wikidata_evidence.compare_person(
+            person, entity
+        ).items():
+            source = f"https://www.wikidata.org/w/index.php?oldid={entity['lastrevid']}"
+            if field == "ol_id":
+                yield from _wikidata_openlibrary(person, qid, comparison, source)
+                continue
+            if field == "orcid" and comparison["status"] == "missing_local":
+                orcid_id = comparison["external"][0]
+                yield add_tag_issue(
+                    f"add ORCID from Wikidata {qid}: https://orcid.org/{orcid_id}; "
+                    f"{source}",
+                    person,
+                    models.tags.PersonTag.ORCID(orcid_id),
+                )
+                continue
+            if field in ("birth", "death") and comparison["status"] == "missing_local":
+                year = comparison["suggested"]
+                yield field_issue(
+                    f"fill {field} year {year} from Wikidata {qid}: {source}",
+                    person,
+                    field,
+                    year,
+                )
+                continue
+            if comparison["status"] in {"conflict", "review", "missing_local"}:
+                if field in ("birth", "death"):
+                    external = " | ".join(
+                        wikidata_evidence.describe_date_statement(statement)
+                        for statement in comparison["statements"]
+                    )
+                else:
+                    external = repr(comparison["external"])
+                yield (
+                    f"Wikidata {qid} {field}: {comparison['status']}; "
+                    f"local {comparison['local']!r}, external {external}; "
+                    f"review statements at {source}"
+                )
+
+
+def _wikidata_openlibrary(
+    person: Person, qid: str, comparison: dict[str, Any], source: str
+) -> Iterable[LintResult]:
+    status = comparison["status"]
+    links = ", ".join(comparison["links"])
+    if status == "missing_local":
+        yield field_issue(
+            f"fill primary Open Library ID from Wikidata {qid}: {links}; {source}",
+            person,
+            "ol_id",
+            comparison["suggested"],
+        )
+    elif status == "missing_additional":
+        for oid in comparison["missing"]:
+            yield add_tag_issue(
+                f"add extra Open Library ID from Wikidata {qid}: "
+                f"https://openlibrary.org/authors/{oid}; "
+                f"primary https://openlibrary.org/authors/{person.ol_id}; {source}",
+                person,
+                models.tags.PersonTag.OpenLibrary(oid),
+            )
+    elif status == "choose_primary":
+        yield (
+            f"Wikidata {qid}: choose the Open Library author record with the most data "
+            f"as ol_id; retain the others as OpenLibrary tags: {links}; {source}"
+        )
+    elif status == "review":
+        yield (
+            f"Wikidata {qid} ol_id: review; local {comparison['local']!r}, "
+            f"external {comparison['external']!r}; {links}; {source}"
+        )
+
+
+@LINT.add("openlibrary_tags")
+def openlibrary_tags(person: Person, cfg: LintConfig) -> Iterable[LintResult]:
+    for tag in person.get_tags(person.tags, models.tags.PersonTag.OpenLibrary):
+        if tag.text == person.ol_id:
+            yield remove_tag_issue(
+                f"remove extra OpenLibrary tag duplicating primary: "
+                f"https://openlibrary.org/authors/{tag.text}",
+                person,
+                tag,
+            )
 
 
 @LINT.add("soft_redirect")
