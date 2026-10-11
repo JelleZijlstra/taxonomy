@@ -597,6 +597,8 @@ def get_type_tag_requiredness(
                 and nam.is_patronym()
                 and not nam.nomenclature_status.is_variant()
             ):
+                if nam.has_type_tag(TypeTag.EtymologyDetail):
+                    return TypeTagRequiredness(Requiredness.required)
                 return TypeTagRequiredness(
                     requiredness=_derived_tag_requiredness(
                         nam,

@@ -1009,10 +1009,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[Lint
                             ce.mapped_name = new_name
             case Group.species:
                 root_name = corrected_name.split()[-1]
-                if root_name not in ce.mapped_name.get_root_name_forms() and not (
-                    ce.mapped_name.corrected_original_name is not None
-                    and root_name == ce.mapped_name.corrected_original_name.split()[-1]
-                ):
+                if not _matches_species_root_name(ce.mapped_name, root_name):
                     yield f"mapped_name root_name does not match: {root_name} vs {ce.mapped_name.root_name}"
                     if cfg.interactive and getinput.yes_no(
                         f"Add incorrect subsequent spelling for {ce}?"
@@ -1057,6 +1054,13 @@ def infer_mapped_name(ce: ClassificationEntry) -> Name | None:
     return None
 
 
+def _matches_species_root_name(nam: Name, root_name: str) -> bool:
+    return root_name in nam.get_root_name_forms() or (
+        nam.corrected_original_name is not None
+        and root_name == nam.corrected_original_name.split()[-1]
+    )
+
+
 def get_genera_with_shared_species(genera: Iterable[Name]) -> Iterable[Taxon]:
     taxa = set()
     for genus in genera:
@@ -1096,9 +1100,58 @@ def get_filtered_possible_mapped_names(
     candidates = sorted(candidates, key=lambda c: c.get_score())
     best_score = candidates[0].get_score()
     matching = list(takewhile(lambda c: c.get_score() == best_score, candidates))
+    synonym_root_name = None
+    if ce.rank.is_synonym and ce.get_group() is Group.species:
+        corrected_name = ce.get_corrected_name()
+        if corrected_name is not None:
+            synonym_root_name = corrected_name.split()[-1]
+            matching = _prefer_synonym_spellings(
+                matching, candidates, synonym_root_name
+            )
     if len(matching) > 1 and resolve_variants:
-        return list({c.name.resolve_variant() for c in matching})
+        resolved: set[Name] = set()
+        for candidate in matching:
+            nam = candidate.name.resolve_variant()
+            # Resolving tied spellings must not reintroduce the spelling mismatch
+            # that selecting an existing variant just avoided.
+            if (
+                synonym_root_name is not None
+                and _matches_species_root_name(candidate.name, synonym_root_name)
+                and not _matches_species_root_name(nam, synonym_root_name)
+            ):
+                nam = candidate.name
+            resolved.add(nam)
+        return list(resolved)
     return [c.name for c in matching]
+
+
+def _prefer_synonym_spellings(
+    matching: list[CandidateName], candidates: list[CandidateName], root_name: str
+) -> list[CandidateName]:
+    # Synonyms can reuse an existing spelling in another combination. Preserve
+    # the inferred nominal identity: an unrelated exact epithet must not displace
+    # it merely because the original name has a different spelling.
+    preferred: dict[Name, CandidateName] = {}
+    for candidate in matching:
+        alternatives = []
+        if not _matches_species_root_name(candidate.name, root_name):
+            nominal_name = candidate.name.resolve_variant()
+            alternatives = [
+                other
+                for other in candidates
+                if other.name.group is Group.species
+                and _matches_species_root_name(other.name, root_name)
+                and other.name.resolve_variant() == nominal_name
+            ]
+        if alternatives:
+            best_score = alternatives[0].get_score()
+            for other in alternatives:
+                if other.get_score() != best_score:
+                    break
+                preferred[other.name] = other
+        else:
+            preferred[candidate.name] = candidate
+    return list(preferred.values())
 
 
 def print_candidate_report(ce: ClassificationEntry) -> None:

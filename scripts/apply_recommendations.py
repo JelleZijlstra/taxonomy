@@ -24,7 +24,9 @@ immediate write, the cumulative accepted subset is rebuilt against the current d
 so manifest-local references and dependencies remain available. Add
 ``--virtual-lint`` to construct the final proposed model states in memory and run
 advisory lint before the dry run or apply step. Use ``--virtual-lint-issues-only`` to
-run the same lint while printing only unresolved ``VIRTUAL_LINT_ISSUES``. Flags
+run the same lint while printing only unresolved ``VIRTUAL_LINT_ISSUES``. Virtual
+lint reports progress to stderr every 1,000 objects and at each pass boundary,
+including elapsed time. Flags
 compose: static review views run first, followed by the validated classification view,
 requested lint and dry-run output, application or per-row review,
 affected-object cleanup, and finally manual editing. The only incompatible pair is ``--apply`` with
@@ -37,6 +39,8 @@ write. Validation failures that cannot be attributed to specific lines still abo
 import argparse
 import json
 import re
+import sys
+import time
 import traceback
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
@@ -1720,6 +1724,7 @@ def _validate_unique_intake_sources(
     staged_file_plan: staged_file_recommendations.RecommendationPlan,
 ) -> None:
     seen: dict[Path, tuple[int, str]] = {}
+    destinations: dict[Path, int] = {}
     actions: tuple[Any, ...] = (
         *(action for action in article_plan.actions if action.source_path is not None),
         *item_file_plan.actions,
@@ -1738,6 +1743,21 @@ def _validate_unique_intake_sources(
                 f"{previous_line} action {previous_action}"
             )
         seen[resolved] = (line, action.recommendation.action)
+        for path in (action.destination_path, getattr(action, "backup_path", None)):
+            if path is None:
+                continue
+            destination = path.resolve(strict=False)
+            if destination in destinations:
+                raise RecommendationError(
+                    f"line {line}: file destination is also used by line "
+                    f"{destinations[destination]}: {path}"
+                )
+            destinations[destination] = line
+    for source in seen.keys() & destinations.keys():
+        raise RecommendationError(
+            f"line {seen[source][0]}: intake source is also a file destination "
+            f"on line {destinations[source]}: {source}"
+        )
 
 
 def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
@@ -1755,6 +1775,20 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
         staged_file_plan = staged_file_recommendations.build_plan(
             recommendations.staged_file_rows
         )
+        replacement_ids = {
+            row.article.article_id
+            for row in recommendations.staged_file_rows
+            if row.article is not None
+        }
+        for generic_row in recommendations.generic_rows:
+            if (
+                generic_row.object.model == "Article"
+                and generic_row.object.object_id in replacement_ids
+                and generic_row.action != "manual_review"
+            ):
+                raise RecommendationError(
+                    f"line {generic_row.line_number}: Article mutation overlaps PDF replacement"
+                )
         if (
             recommendations.article_rows
             or recommendations.item_file_rows
@@ -1972,8 +2006,27 @@ def run_virtual_lint(
 ) -> None:
     proposals = build_virtual_proposals(plans)
     cfg = LintConfig(autofix=False, interactive=False)
+    started = pass_started = time.monotonic()
+
+    def report_progress(pass_number: int, completed: int, total: int) -> None:
+        nonlocal pass_started
+        if completed != 0 and completed % 1000 != 0 and completed != total:
+            return
+        now = time.monotonic()
+        if completed == 0:
+            pass_started = now
+        print(
+            f"VIRTUAL_LINT_PROGRESS pass={pass_number} checked={completed}/{total} "
+            f"elapsed={now - started:.1f}s pass_elapsed={now - pass_started:.1f}s",
+            file=sys.stderr,
+            flush=True,
+        )
+
     virtual_proposals.print_lint_results(
-        virtual_proposals.lint_proposals(proposals, cfg=cfg), issues_only=issues_only
+        virtual_proposals.lint_proposals(
+            proposals, cfg=cfg, progress_callback=report_progress
+        ),
+        issues_only=issues_only,
     )
     for model_name, by_resource in sorted(
         virtual_proposals.get_skipped_lints(proposals, cfg=cfg).items()

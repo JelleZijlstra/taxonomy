@@ -1,20 +1,25 @@
-"""Planner and executor for disposing of an uncataloged intake file safely."""
+"""Guarded intake disposition and replacement of damaged Article PDFs."""
 
 from __future__ import annotations
 
 import hashlib
+import os
 import shutil
+import tempfile
 from collections import Counter
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Protocol
 
 from taxonomy import config
+from taxonomy.db.models import Article
+from taxonomy.db.models.article.article import _getpdfcontent
 
 SCHEMA_VERSION = 1
 MOVE_TO_NOT_CATALOGED = "move_to_not_cataloged"
-ALLOWED_ACTIONS = {MOVE_TO_NOT_CATALOGED}
+REPLACE_ARTICLE_FILE = "replace_article_file"
+ALLOWED_ACTIONS = {MOVE_TO_NOT_CATALOGED, REPLACE_ARTICLE_FILE}
 ALLOWED_CONFIDENCES = {"high", "medium", "low"}
 
 
@@ -23,6 +28,9 @@ class RecommendationError(Exception):
 
 
 class OptionsLike(Protocol):
+    @property
+    def library_path(self) -> Path: ...
+
     @property
     def new_path(self) -> Path: ...
 
@@ -46,6 +54,14 @@ class FileSpec:
 
 
 @dataclass(frozen=True, slots=True)
+class ArticleFileSpec:
+    article_id: int
+    name: str
+    path: str | None
+    old_file: FileSpec
+
+
+@dataclass(frozen=True, slots=True)
 class Recommendation:
     line_number: int
     action: str
@@ -53,6 +69,7 @@ class Recommendation:
     reason: str
     evidence: tuple[Evidence, ...]
     file: FileSpec
+    article: ArticleFileSpec | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,6 +78,8 @@ class PlannedAction:
     source_path: Path
     destination_path: Path
     already_applied: bool
+    article: Article | None = None
+    backup_path: Path | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,29 +158,25 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             f"line {line_number}: unsupported schema_version {version}"
         )
     action = _required_str(data, "action", line_number)
-    if action != MOVE_TO_NOT_CATALOGED:
+    if action not in ALLOWED_ACTIONS:
         raise RecommendationError(f"line {line_number}: unsupported action {action!r}")
     confidence = _required_str(data, "confidence", line_number)
     if confidence not in ALLOWED_CONFIDENCES:
         raise RecommendationError(
             f"line {line_number}: unsupported confidence {confidence!r}"
         )
-    if set(data) != {
+    allowed_fields = {
         "schema_version",
         "action",
         "confidence",
         "reason",
         "evidence",
         "file",
-    }:
-        unknown = set(data) - {
-            "schema_version",
-            "action",
-            "confidence",
-            "reason",
-            "evidence",
-            "file",
-        }
+    }
+    if action == REPLACE_ARTICLE_FILE:
+        allowed_fields.update({"article", "old_file"})
+    if set(data) != allowed_fields:
+        unknown = set(data) - allowed_fields
         raise RecommendationError(
             f"line {line_number}: unsupported top-level field(s): "
             + ", ".join(sorted(unknown))
@@ -193,12 +208,55 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         )
     destination_name = file_data.get("destination_name")
     if destination_name is not None:
+        if action == REPLACE_ARTICLE_FILE:
+            raise RecommendationError(
+                f"line {line_number}: replacement destination comes from the Article"
+            )
         if not isinstance(destination_name, str) or not destination_name:
             raise RecommendationError(
                 f"line {line_number}: file.destination_name must be a nonempty string"
             )
         _plain_filename(
             destination_name, label="file.destination_name", line=line_number
+        )
+    article_spec = None
+    if action == REPLACE_ARTICLE_FILE:
+        article_data = _object(
+            _required(data, "article", line_number), "article", line_number
+        )
+        old_data = _object(
+            _required(data, "old_file", line_number), "old_file", line_number
+        )
+        if set(article_data) != {"id", "name", "path"} or set(old_data) != {
+            "sha256",
+            "size",
+        }:
+            raise RecommendationError(
+                f"line {line_number}: replacement requires article id/name/path and old_file sha256/size"
+            )
+        article_id = _required_int(article_data, "id", line_number)
+        path = article_data["path"]
+        if article_id <= 0 or (path is not None and not isinstance(path, str)):
+            raise RecommendationError(f"line {line_number}: invalid Article id or path")
+        old_sha = _required_str(old_data, "sha256", line_number).lower()
+        old_size = _required_int(old_data, "size", line_number)
+        if (
+            old_size <= 0
+            or len(old_sha) != 64
+            or any(c not in "0123456789abcdef" for c in old_sha)
+        ):
+            raise RecommendationError(
+                f"line {line_number}: invalid old_file size or sha256"
+            )
+        if old_sha == sha256:
+            raise RecommendationError(
+                f"line {line_number}: replacement must differ from old file"
+            )
+        article_spec = ArticleFileSpec(
+            article_id,
+            _required_str(article_data, "name", line_number),
+            path,
+            FileSpec("", old_sha, old_size),
         )
     return Recommendation(
         line_number,
@@ -213,6 +271,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
             source_root,
             destination_name,
         ),
+        article_spec,
     )
 
 
@@ -245,7 +304,10 @@ def _check_file(path: Path, spec: FileSpec, *, line: int, label: str) -> None:
 
 
 def build_plan(
-    recommendations: Iterable[Recommendation], *, options: OptionsLike | None = None
+    recommendations: Iterable[Recommendation],
+    *,
+    options: OptionsLike | None = None,
+    get_article: Callable[[int], Article] = Article,
 ) -> RecommendationPlan:
     resolved_options: OptionsLike = options or config.get_options()
     destination_root = resolved_options.new_path / "Not to be cataloged"
@@ -267,6 +329,23 @@ def build_plan(
                 f"line {line}: staged file resolves outside "
                 f"{recommendation.file.source_root}: {source}"
             )
+        if recommendation.action == REPLACE_ARTICLE_FILE:
+            action = _plan_replacement(
+                recommendation, source, resolved_options, get_article
+            )
+            paths = (
+                {action.destination_path.resolve(), action.backup_path.resolve()}
+                if action.backup_path
+                else {action.destination_path.resolve()}
+            )
+            if resolved_source in seen_sources or paths & seen_destinations:
+                raise RecommendationError(
+                    f"line {line}: duplicate replacement source or destination"
+                )
+            seen_sources.add(resolved_source)
+            seen_destinations.update(paths)
+            actions.append(action)
+            continue
         destination_name = recommendation.file.destination_name or source.name
         _plain_filename(destination_name, label="destination filename", line=line)
         destination = destination_root / destination_name
@@ -310,13 +389,178 @@ def build_plan(
         if destination.exists():
             action = replace(action, already_applied=True)
         actions.append(action)
+    if seen_sources & seen_destinations:
+        raise RecommendationError(
+            "a staged-file destination is another action's source"
+        )
     return RecommendationPlan(
         tuple(actions), Counter(row.recommendation.action for row in actions)
     )
 
 
+def _plan_replacement(
+    row: Recommendation,
+    source: Path,
+    options: OptionsLike,
+    get_article: Callable[[int], Article],
+) -> PlannedAction:
+    spec = row.article
+    assert spec is not None
+    article = get_article(spec.article_id)
+    line = row.line_number
+    if article.name != spec.name or article.path != spec.path or not article.ispdf():
+        raise RecommendationError(
+            f"line {line}: Article identity, path or PDF kind changed"
+        )
+    destination = options.library_path / article.relative_path() / article.name
+    backup = (
+        options.new_path
+        / "Not to be cataloged"
+        / f"replaced-article-{spec.article_id}-{spec.old_file.sha256}.pdf"
+    )
+    if not destination.resolve().is_relative_to(options.library_path.resolve()):
+        raise RecommendationError(f"line {line}: Article path escapes library")
+    if not backup.resolve().is_relative_to(options.new_path.resolve()):
+        raise RecommendationError(f"line {line}: backup escapes disposition folder")
+    if any(path.is_symlink() for path in (source, destination, backup)):
+        raise RecommendationError(f"line {line}: symlinked files are not supported")
+    if len({path.resolve() for path in (source, destination, backup)}) != 3:
+        raise RecommendationError(f"line {line}: replacement paths overlap")
+    if not destination.is_file():
+        raise RecommendationError(f"line {line}: existing Article PDF is missing")
+    installed = _file_digest(destination) == (row.file.size, row.file.sha256)
+    if not installed:
+        _check_file(destination, spec.old_file, line=line, label="old Article file")
+    if backup.exists():
+        _check_file(backup, spec.old_file, line=line, label="backup")
+    elif installed:
+        raise RecommendationError(
+            f"line {line}: replacement is present but guarded old-file backup is missing"
+        )
+    if source.exists():
+        _check_file(source, row.file, line=line, label="replacement source")
+        with source.open("rb") as file:
+            if file.read(5) != b"%PDF-":
+                raise RecommendationError(f"line {line}: replacement is not a PDF")
+    elif not installed:
+        raise RecommendationError(f"line {line}: replacement source is missing")
+    return PlannedAction(row, source, destination, installed, article, backup)
+
+
+def _copy_verified(
+    source: Path, destination: Path, spec: FileSpec, *, line: int
+) -> None:
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=destination.parent, delete=False) as file:
+            temporary = Path(file.name)
+            with source.open("rb") as incoming:
+                shutil.copyfileobj(incoming, file)
+            file.flush()
+            os.fsync(file.fileno())
+        _check_file(temporary, spec, line=line, label="temporary copy")
+        temporary.replace(destination)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def _refresh_article(article: Article) -> None:
+    _getpdfcontent.cache_clear()
+    article.index_pdf_for_search(force_extract=True)
+
+
+def _execute_replacement(
+    action: PlannedAction, refresh_article: Callable[[Article], None]
+) -> None:
+    row = action.recommendation
+    spec = row.article
+    article = action.article
+    assert spec is not None and article is not None and action.backup_path is not None
+    if not article.is_virtual:
+        article.reload()
+    if article.name != spec.name or article.path != spec.path or not article.ispdf():
+        raise RecommendationError(
+            f"line {row.line_number}: Article changed after planning"
+        )
+    # Revalidate every byte guard at execution, including retry after indexing failure.
+    installed = _file_digest(action.destination_path) == (
+        row.file.size,
+        row.file.sha256,
+    )
+    if action.source_path.exists():
+        _check_file(
+            action.source_path,
+            row.file,
+            line=row.line_number,
+            label="replacement source",
+        )
+    if action.backup_path.exists():
+        _check_file(
+            action.backup_path, spec.old_file, line=row.line_number, label="backup"
+        )
+    if not installed:
+        _check_file(
+            action.destination_path,
+            spec.old_file,
+            line=row.line_number,
+            label="old Article file",
+        )
+        _check_file(
+            action.source_path,
+            row.file,
+            line=row.line_number,
+            label="replacement source",
+        )
+        action.backup_path.parent.mkdir(parents=True, exist_ok=True)
+        if not action.backup_path.exists():
+            _copy_verified(
+                action.destination_path,
+                action.backup_path,
+                spec.old_file,
+                line=row.line_number,
+            )
+        _check_file(
+            action.destination_path,
+            spec.old_file,
+            line=row.line_number,
+            label="old Article file",
+        )
+        _copy_verified(
+            action.source_path, action.destination_path, row.file, line=row.line_number
+        )
+    else:
+        _check_file(
+            action.backup_path, spec.old_file, line=row.line_number, label="backup"
+        )
+    refresh_article(article)
+    # Retain staged bytes on auxiliary failure so the same row can finish on retry.
+    if action.source_path.exists():
+        _check_file(
+            action.source_path,
+            row.file,
+            line=row.line_number,
+            label="replacement source",
+        )
+        action.source_path.unlink()
+
+
 def print_review_table(rows: Iterable[Recommendation]) -> None:
     for row in rows:
+        if row.article is not None:
+            print(
+                f"line={row.line_number} action={row.action} confidence={row.confidence} Article={row.article.article_id} name={row.article.name!r} path={row.article.path!r} source={row.file.source_path!r}"
+            )
+            print(
+                f"  old sha256={row.article.old_file.sha256} size={row.article.old_file.size}; replacement sha256={row.file.sha256} size={row.file.size}"
+            )
+            print(
+                "  Preserve old PDF in Not to be cataloged; refresh PDF text and search index."
+            )
+            print(f"  Reason: {row.reason}")
+            for evidence in row.evidence:
+                print(f"  {evidence.kind}: {evidence.text}")
+            continue
         print(
             f"line={row.line_number} action={row.action} "
             f"confidence={row.confidence} source_root={row.file.source_root!r} "
@@ -325,7 +569,12 @@ def print_review_table(rows: Iterable[Recommendation]) -> None:
         )
 
 
-def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
+def execute_plan(
+    plan: RecommendationPlan,
+    *,
+    apply: bool,
+    refresh_article: Callable[[Article], None] = _refresh_article,
+) -> None:
     for action in plan.actions:
         status = (
             "ALREADY_APPLIED"
@@ -333,12 +582,15 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
             else ("APPLY" if apply else "WOULD_MOVE")
         )
         print(
-            f"{status} action={MOVE_TO_NOT_CATALOGED} "
+            f"{status} action={action.recommendation.action} "
             f"source={str(action.source_path)!r} "
             f"destination={str(action.destination_path)!r} "
             f"sha256={action.recommendation.file.sha256}"
         )
         if not apply:
+            continue
+        if action.recommendation.action == REPLACE_ARTICLE_FILE:
+            _execute_replacement(action, refresh_article)
             continue
         action.destination_path.parent.mkdir(parents=True, exist_ok=True)
         if not action.destination_path.exists():
@@ -346,6 +598,6 @@ def execute_plan(plan: RecommendationPlan, *, apply: bool) -> None:
         elif action.source_path.exists():
             action.source_path.unlink()
     mode = "Applied" if apply else "Dry run"
-    print(f"{mode}: {len(plan.actions)} {MOVE_TO_NOT_CATALOGED} recommendation(s).")
+    print(f"{mode}: {len(plan.actions)} staged-file recommendation(s).")
     if not apply:
         print("No database or filesystem changes made. Pass --apply to execute.")

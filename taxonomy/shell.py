@@ -2991,7 +2991,7 @@ def fill_namedafter(label: str = "patronym_masculine") -> None:
     )
     nams = list(
         Name.select_valid().filter(
-            Name.type_tags.contains(f"[{TypeTag.EtymologyDetail._tag},"),
+            Name.type_tags.contains(f"[{TypeTag.NoEtymology._tag},"),
             ~Name.type_tags.contains(f"[{TypeTag.NamedAfter._tag},"),
             Name.species_name_complex == sc,
         )

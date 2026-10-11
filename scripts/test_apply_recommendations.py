@@ -2424,3 +2424,76 @@ def test_cleanup_continues_after_lint_failure_and_reports_residual_issues(
     assert "CleanupObject:1: broken lint" in captured.out
     assert "CleanupObject:2 has residual lint" in captured.out
     assert "total=3 clean=1 incomplete=2" in captured.out
+
+
+def test_replacement_action_registration_and_interactions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from taxonomy.applicator import staged_file
+
+    row = {
+        "schema_version": 1,
+        "action": "replace_article_file",
+        "confidence": "high",
+        "reason": "Replace incomplete PDF with verified full source.",
+        "evidence": [{"kind": "source", "text": "Both pages verified."}],
+        "article": {"id": 1, "name": "Source.pdf", "path": None},
+        "old_file": {"sha256": "a" * 64, "size": 10},
+        "file": {"source_path": "replacement.pdf", "sha256": "b" * 64, "size": 20},
+    }
+    mutation = {
+        "schema_version": 1,
+        "action": "set_field",
+        "confidence": "high",
+        "reason": "Conflicting rename.",
+        "evidence": [{"kind": "source", "text": "Test."}],
+        "object": {"model": "Article", "id": 1, "label": "Source.pdf"},
+        "field": "name",
+        "old_value": "Source.pdf",
+        "new_value": "Other.pdf",
+    }
+    manifest = tmp_path / "rows.jsonl"
+    manifest.write_text(json.dumps(row) + "\n" + json.dumps(mutation) + "\n")
+    parsed = apply_recommendations.read_recommendations(manifest)
+    assert parsed.count == 2
+    assert parsed.staged_file_rows[0].action == "replace_article_file"
+    monkeypatch.setattr(
+        staged_file,
+        "build_plan",
+        lambda _rows: staged_file.RecommendationPlan((), Counter()),
+    )
+    with pytest.raises(
+        apply_recommendations.RecommendationError, match="overlaps PDF replacement"
+    ):
+        apply_recommendations.build_plans(parsed)
+
+
+def test_intake_rejects_cross_family_file_destinations(tmp_path: Path) -> None:
+    action = SimpleNamespace(
+        source_path=tmp_path / "source1",
+        destination_path=tmp_path / "destination",
+        recommendation=SimpleNamespace(line_number=1, action="create_article"),
+    )
+    conflicting = SimpleNamespace(
+        source_path=tmp_path / "source2",
+        destination_path=tmp_path / "destination",
+        recommendation=SimpleNamespace(line_number=2, action="replace_article_file"),
+    )
+    with pytest.raises(
+        apply_recommendations.RecommendationError, match="destination is also used"
+    ):
+        apply_recommendations._validate_unique_intake_sources(
+            cast(Any, SimpleNamespace(actions=(action,))),
+            cast(Any, SimpleNamespace(actions=())),
+            cast(Any, SimpleNamespace(actions=(conflicting,))),
+        )
+    conflicting.destination_path = tmp_path / "source1"
+    with pytest.raises(
+        apply_recommendations.RecommendationError,
+        match="intake source is also a file destination",
+    ):
+        apply_recommendations._validate_unique_intake_sources(
+            cast(Any, SimpleNamespace(actions=(action,))),
+            cast(Any, SimpleNamespace(actions=())),
+            cast(Any, SimpleNamespace(actions=(conflicting,))),
+        )

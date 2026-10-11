@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from typing import Any, TypeVar, cast
 
@@ -172,8 +173,13 @@ def lint_proposals(
     *,
     cfg: LintConfig = LintConfig(autofix=False, interactive=False),
     max_fix_rounds: int = 10,
+    progress_callback: Callable[[int, int, int], None] | None = None,
 ) -> tuple[ProposalLintResult, ...]:
-    """Run lint and safely simulate structured fixes against virtual proposals."""
+    """Run lint and safely simulate structured fixes against virtual proposals.
+
+    Progress receives the one-based pass, completed objects, and total objects at
+    the start of each pass and after each object.
+    """
     if max_fix_rounds < 1:
         raise ValueError("max_fix_rounds must be positive")
     base_cfg = replace(
@@ -198,7 +204,9 @@ def lint_proposals(
         ):
             for _round_index in range(max_fix_rounds):
                 round_fix_count = 0
-                for proposal in proposals:
+                if progress_callback is not None:
+                    progress_callback(_round_index + 1, 0, len(proposals))
+                for proposal_index, proposal in enumerate(proposals, 1):
                     model = proposal.model
                     simulated_this_pass: list[LintIssue] = []
                     run_cfg = replace(
@@ -235,6 +243,10 @@ def lint_proposals(
                     latest_messages[id(model)] = messages
                     simulated_by_model[id(model)].extend(simulated_this_pass)
                     round_fix_count += len(simulated_this_pass)
+                    if progress_callback is not None:
+                        progress_callback(
+                            _round_index + 1, proposal_index, len(proposals)
+                        )
                 if round_fix_count == 0:
                     break
                 for model_type in model_types:

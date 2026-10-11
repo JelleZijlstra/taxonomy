@@ -17,6 +17,7 @@ from taxonomy.db.models.classification_entry.lint import (
     _is_misspelling_of,
     check_auxiliary_name,
     check_mapped_name,
+    check_mapped_name_inference,
     check_mapped_name_matches_other_ces,
     check_missing_mapped_name,
     check_needs_auxiliary_name,
@@ -137,6 +138,64 @@ def test_candidate_search_matches_source_author_separator(separator: str) -> Non
         assert ce.year == "1887"
         ce.authority = "Dobson"
         assert list(get_filtered_possible_mapped_names(ce)) == [available]
+
+
+@pytest.mark.parametrize("rank", [Rank.synonym_species, Rank.species])
+@pytest.mark.parametrize("spelling_count", [0, 1, 2])
+def test_candidate_search_preserves_synonym_spelling_within_nominal_name(
+    rank: Rank, spelling_count: int
+) -> None:
+    original = _make_name("sonneratii")
+    original.corrected_original_name = "Sorex sonneratii"
+    original.nomenclature_status = NomenclatureStatus.available
+    original.year = "1827"
+    original.original_parent = Name.virtual(corrected_original_name="Sorex")
+    spelling = _make_name("sonnerati", NameTag.IncorrectSubsequentSpellingOf(original))
+    spelling.corrected_original_name = "Galemys sonnerati"
+    spelling.nomenclature_status = NomenclatureStatus.incorrect_subsequent_spelling
+    spelling.year = "1848"
+    unrelated = _make_name("sonnerati")
+    unrelated.corrected_original_name = "Diplomesodon sonnerati"
+    unrelated.nomenclature_status = NomenclatureStatus.available
+    unrelated.year = "2018"
+    ce = ClassificationEntry.virtual(
+        article=Article.virtual(name="Jentink", year="1888"),
+        name="Sorex sonnerati",
+        rank=rank,
+        mapped_name=original,
+        tags=(),
+    )
+    candidates = [original, unrelated]
+    spellings = [spelling]
+    if spelling_count == 2:
+        spellings.append(
+            spelling.virtual_copy(corrected_original_name="Blarina sonnerati")
+        )
+    candidates.extend(spellings[:spelling_count])
+    with (
+        patch(
+            "taxonomy.db.models.classification_entry.lint.get_possible_mapped_names",
+            return_value=candidates,
+        ),
+        patch.object(Taxon, "select_valid", return_value=_FakeQuery()),
+        patch.object(ClassificationEntry, "get_children", return_value=_FakeQuery()),
+    ):
+        expected = (
+            spellings[:spelling_count]
+            if spelling_count and rank.is_synonym
+            else [original]
+        )
+        assert set(get_filtered_possible_mapped_names(ce)) == set(expected)
+        if spelling in expected:
+            cfg = LintConfig(autofix=False, interactive=False)
+            if spelling_count == 1:
+                issues = list(check_mapped_name_inference(ce, cfg))
+                assert any(
+                    isinstance(issue, LintIssue) and issue.fix for issue in issues
+                )
+            ce.mapped_name = spelling
+            assert list(check_mapped_name_inference(ce, cfg)) == []
+            assert list(check_mapped_name(ce, cfg)) == []
 
 
 @pytest.mark.parametrize(
