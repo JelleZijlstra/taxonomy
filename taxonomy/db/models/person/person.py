@@ -712,16 +712,12 @@ class Person(BaseModel):
                 if not parsing.matches_grammar(
                     self.given_names, parsing.pinyin_given_names_pattern
                 ):
-                    yield (
-                        f"{self}: invalid pinyin in given names: {self.given_names!r}"
-                    )
+                    yield f"{self}: invalid pinyin in given names: {self.given_names!r}"
                 if not parsing.matches_grammar(
                     self.given_names.lower(),
                     parsing.pinyin_given_names_lowercased_pattern,
                 ):
-                    yield (
-                        f"{self}: invalid pinyin in given names: {self.given_names!r}"
-                    )
+                    yield f"{self}: invalid pinyin in given names: {self.given_names!r}"
             if not parsing.matches_grammar(
                 self.family_name, parsing.chinese_family_name_pattern
             ):
@@ -781,9 +777,7 @@ class Person(BaseModel):
         for person in (
             # https://github.com/JelleZijlstra/clirm/pull/5
             # static analysis: ignore[incompatible_argument]
-            cls.select_valid()
-            .filter(cls.suffix != None)
-            .order_by(cls.family_name)
+            cls.select_valid().filter(cls.suffix != None).order_by(cls.family_name)
         ):
             if (
                 person.suffix is not None
@@ -1015,8 +1009,15 @@ class Person(BaseModel):
         while True:
             command = getinput.get_line(
                 "command> ",
-                validate=lambda command: command
-                in ("s", "skip", "move", "", "h", "hard_redirect", ""),
+                validate=lambda command: command in (
+                    "s",
+                    "skip",
+                    "move",
+                    "",
+                    "h",
+                    "hard_redirect",
+                    "",
+                ),
                 allow_none=True,
                 mouse_support=False,
                 history_key="reassign_references",

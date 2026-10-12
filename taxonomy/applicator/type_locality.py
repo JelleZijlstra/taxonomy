@@ -1089,8 +1089,9 @@ def build_plan(
             and stratigraphic_unit is None
             and target.latitude is None
             and target.longitude is None
-            and target.location_name
-            == _expected_general_location_name(region, min_period)
+            and target.location_name == _expected_general_location_name(
+                region, min_period
+            )
         ):
             use_general_factory = True
         found_location = find_location(target.location_name)
