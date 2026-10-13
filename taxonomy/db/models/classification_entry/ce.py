@@ -125,7 +125,7 @@ class ClassificationEntry(BaseModel):
         print(f"{self}: set page {existing} -> {page}")
 
     def get_corrected_name(self) -> str | None:
-        for tag in self.get_tags(self.tags, ClassificationEntryTag.CorrectedName):
+        for tag in self.get_tags(self.tags, ClassificationEntryTag.NormalizedName):
             return tag.text
         if corrected_name := self.get_corrected_name_without_tags():
             return corrected_name
@@ -598,7 +598,7 @@ class ClassificationEntry(BaseModel):
         words = self.name.split()
         if len(words) == 3:
             self.add_tag(
-                ClassificationEntryTag.CorrectedName(f"{words[0]} {words[2].lower()}")
+                ClassificationEntryTag.NormalizedName(f"{words[0]} {words[2].lower()}")
             )
         else:
             print("Cannot add Kerr subgeneric tag to this name.")
@@ -691,7 +691,7 @@ class ClassificationEntry(BaseModel):
 class ClassificationEntryTag(ADT):
     CommentFromSource(text=Markdown, tag=1)  # type: ignore[name-defined]
     TextualRank(text=Managed, tag=2)  # type: ignore[name-defined]
-    CorrectedName(text=Managed, tag=3)  # type: ignore[name-defined]
+    NormalizedName(text=Managed, tag=3)  # type: ignore[name-defined]
     PageLink(url=URL, page=Managed, tag=4)  # type: ignore[name-defined]
     TypeSpecimenData(  # type: ignore[name-defined]
         text=SpecimenDetailText,

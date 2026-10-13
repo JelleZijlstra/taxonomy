@@ -90,15 +90,15 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
         and not ce.rank.needs_textual_rank
     ):
         yield "unexpected TextualRank tag"
-    if counts[ClassificationEntryTag.CorrectedName] > 1:
-        yield "multiple CorrectedName tags"
+    if counts[ClassificationEntryTag.NormalizedName] > 1:
+        yield "multiple NormalizedName tags"
     elif (
-        counts[ClassificationEntryTag.CorrectedName] == 1
+        counts[ClassificationEntryTag.NormalizedName] == 1
         and ce.get_corrected_name_without_tags() == ce.get_corrected_name()
     ):
-        yield "unnecessary CorrectedName tag"
-    if counts[ClassificationEntryTag.ReferencedUsage] > 1:
-        yield "multiple ReferencedUsage tags"
+        yield "unnecessary NormalizedName tag"
+    # A synonym account can cite several earlier usages. Validate each link
+    # below rather than requiring the source to have only one citation.
     if counts[type(ClassificationEntryTag.AuxiliaryName)] > 1:
         yield "multiple AuxiliaryName tags"
     if counts[ClassificationEntryTag.VerbatimParent] > 1:
@@ -190,9 +190,9 @@ def check_tags(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[LintResult]
                 tag, ce.article, cfg, ce, allow_missing_page=True
             )
             new_tags.append(tag)
-        elif isinstance(tag, ClassificationEntryTag.CorrectedName):
+        elif isinstance(tag, ClassificationEntryTag.NormalizedName):
             if ce.get_corrected_name_without_tags() == tag.text:
-                yield "removing redundant CorrectedName tag"
+                yield "removing redundant NormalizedName tag"
             else:
                 new_tags.append(tag)
 
@@ -271,7 +271,13 @@ MISSPELLING_TAGS = (
 
 
 def _is_misspelling_of(misspelling: Name, correct: Name) -> bool:
-    return correct in _get_misspelling_targets(misspelling)
+    # The principal account may map to a later combination of the target.
+    # Still require a spelling relationship; taxonomic synonymy is insufficient.
+    return any(
+        target.resolve_variant(unavailable_version=False)
+        == correct.resolve_variant(unavailable_version=False)
+        for target in _get_misspelling_targets(misspelling)
+    )
 
 
 def _get_misspelling_targets(misspelling: Name) -> set[Name]:
@@ -286,11 +292,22 @@ def _get_misspelling_targets(misspelling: Name) -> set[Name]:
 
 def _get_same_level_ces(ce: ClassificationEntry) -> Iterable[ClassificationEntry]:
     if ce.parent is not None:
-        yield from ce.parent.get_children()
+        siblings = ce.parent.get_children()
     else:
-        yield from ClassificationEntry.select_valid().filter(
+        siblings = ClassificationEntry.select_valid().filter(
             article=ce.article, parent=None
         )
+    for sibling in siblings:
+        if ce.is_virtual:
+            if not sibling.is_virtual:
+                sibling = ClassificationEntry.resolve_reference(sibling.id)
+            if (
+                sibling.is_invalid()
+                or sibling.article != ce.article
+                or sibling.parent != ce.parent
+            ):
+                continue
+        yield sibling
 
 
 @LINT.add("needs_auxiliary_name", required_resources={LintResource.SLOW})
@@ -389,6 +406,9 @@ def check_missing_mapped_name(
     candidates = list(get_filtered_possible_mapped_names(ce))
     if len(candidates) == 1:
         inferred = candidates[0]
+        if not _candidate_matches_stated_authority(ce, inferred):
+            yield f"candidate {inferred} does not match stated authority {ce.authority!r}; leaving mapping unresolved"
+            return
         message = f"inferred mapped_name: {inferred}"
         yield field_issue(message, ce, "mapped_name", inferred)
     elif cfg.verbose and candidates:
@@ -905,6 +925,38 @@ def check_mapped_name_inference(
                 nam = nam_or_pair
             candidates.append(nam)
     candidates = list(_expand_candidates(candidates))
+    usages = list(ce.get_tags(ce.tags, ClassificationEntryTag.ReferencedUsage))
+    if (
+        usages
+        and ce.get_group() is Group.species
+        and (corrected_name := ce.get_corrected_name()) is not None
+        and _matches_species_root_name(ce.mapped_name, corrected_name.split()[-1])
+        and all(
+            not tag.ce.is_invalid()
+            and tag.ce.mapped_name is not None
+            and tag.ce.mapped_name.resolve_variant(unavailable_version=False)
+            == ce.mapped_name.resolve_variant(unavailable_version=False)
+            for tag in usages
+        )
+    ):
+        # An explicit, consistent earlier-usage link establishes nominal identity
+        # more directly than heuristic matches to other homonyms. Tag lint still
+        # checks the links themselves; this does not excuse spelling mismatches.
+        return
+    if (
+        ce.rank.is_synonym
+        and ce.get_group() is Group.species
+        and (corrected_name := ce.get_corrected_name()) is not None
+        and _matches_species_root_name(ce.mapped_name, corrected_name.split()[-1])
+        and any(
+            candidate.resolve_variant(unavailable_version=False)
+            == ce.mapped_name.resolve_variant(unavailable_version=False)
+            for candidate in candidates
+        )
+    ):
+        # A synonym need not map to its exact combination. Keep spelling and
+        # availability distinctions, and never equate taxonomic synonyms here.
+        return
     if candidates and ce.mapped_name not in candidates:
         yield f"mapped_name {ce.mapped_name} not in inferred candidates {candidates}"
         if ce.rank.is_synonym and not LINT.is_ignoring_lint(
@@ -938,6 +990,10 @@ def check_predates_mapped_name(
         return
     if ce.rank.is_synonym:
         return  # ignore synonyms for now
+    if ce.article == ce.mapped_name.original_citation:
+        # Different date precision on the Article and Name cannot make an
+        # occurrence predate its own original publication.
+        return
     if (ce.article.is_unpublished(), ce.article.get_date_object()) < (
         (
             ce.mapped_name.original_citation.is_unpublished()
@@ -971,10 +1027,7 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[Lint
             if target := ce.mapped_name.get_tag_target(
                 models.name.NameTag.UnavailableVersionOf
             ):
-                if (
-                    ce.article.year >= target.year
-                    and ce.article != ce.mapped_name.original_citation
-                ):
+                if _postdates_available_version(ce, ce.mapped_name, target):
                     message = (
                         f"mapped to unavailable version of {target}, but postdates it"
                     )
@@ -1023,13 +1076,31 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[Lint
                 ):
                     yield f"mapped_name corrected_original_name does not match: {corrected_name} vs {ce.mapped_name.corrected_original_name}"
                     mapped_root = ce.mapped_name.resolve_variant()
-                    alternatives = [
-                        nam
+                    candidates = (
+                        nam if nam.is_virtual else Name.resolve_reference(nam.id)
                         for nam in Name.select_valid().filter(
                             Name.taxon == ce.mapped_name.taxon,
                             Name.corrected_original_name == corrected_name,
                         )
-                        if nam.resolve_variant() == mapped_root
+                    )
+                    alternatives = [
+                        nam
+                        for nam in candidates
+                        if not nam.is_invalid()
+                        and nam.taxon == ce.mapped_name.taxon
+                        and nam.corrected_original_name == corrected_name
+                        and nam.resolve_variant() == mapped_root
+                        and not _emendation_postdates_source(ce, nam)
+                        # Do not select an unavailable exact combination that
+                        # this same lint would immediately replace again.
+                        and not (
+                            (
+                                available := nam.get_tag_target(
+                                    models.name.NameTag.UnavailableVersionOf
+                                )
+                            )
+                            and _postdates_available_version(ce, nam, available)
+                        )
                     ]
                     if alternatives:
                         alternatives = sorted(
@@ -1047,11 +1118,48 @@ def check_mapped_name(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[Lint
         yield "missing mapped_name"
 
 
+def _emendation_postdates_source(ce: ClassificationEntry, nam: Name) -> bool:
+    # An ordinary combination or misspelling can be taken over by an earlier CE.
+    # An emendation is a distinct act and cannot explain an earlier occurrence.
+    return (
+        nam.nomenclature_status
+        in (
+            NomenclatureStatus.justified_emendation,
+            NomenclatureStatus.unjustified_emendation,
+        )
+        and nam.year is not None
+        and ce.article.year is not None
+        and nam.get_date_object() > ce.article.get_date_object()
+    )
+
+
+def _postdates_available_version(
+    ce: ClassificationEntry, unavailable: Name, available: Name
+) -> bool:
+    source_year = ce.article.year
+    available_year = available.year
+    return (
+        source_year is not None
+        and available_year is not None
+        and source_year >= available_year
+        and ce.article != unavailable.original_citation
+    )
+
+
 def infer_mapped_name(ce: ClassificationEntry) -> Name | None:
     nams = list(get_filtered_possible_mapped_names(ce))
-    if len(nams) == 1:
+    if len(nams) == 1 and _candidate_matches_stated_authority(ce, nams[0]):
         return nams[0]
     return None
+
+
+def _candidate_matches_stated_authority(ce: ClassificationEntry, nam: Name) -> bool:
+    # A sole spelling match is not sufficient to overwrite an explicit conflicting
+    # attribution. Include the original nominal author for ordinary combinations.
+    return ce.authority is None or ce.authority.replace(" and ", " & ") in {
+        nam.taxonomic_authority(),
+        nam.resolve_variant().taxonomic_authority(),
+    }
 
 
 def _matches_species_root_name(nam: Name, root_name: str) -> bool:
@@ -1089,7 +1197,9 @@ def get_filtered_possible_mapped_names(
         else:
             nam = nam_or_pair
             metadata = CandidateMetadata()
-        if nam in seen_names:
+        if ce.is_virtual and not nam.is_virtual:
+            nam = Name.resolve_reference(nam.id)
+        if nam in seen_names or _emendation_postdates_source(ce, nam):
             continue
         seen_names.add(nam)
         candidates.append(CandidateName(ce, nam, metadata))
@@ -1208,9 +1318,17 @@ class CandidateName:
             corrected_name = self.ce.name
         ce_group = self.ce.get_group()
         if self.name.corrected_original_name != corrected_name:
-            score += 20
+            # Synonym entries can map to another combination of the same name.
+            # An exact combination must not overwhelm authorship and context
+            # when it belongs to a different homonym.
+            score += 10 if self.ce.rank.is_synonym else 20
 
-        if self.name.original_citation != self.ce.article:
+        if self.name.original_citation != self.ce.article or (
+            self.ce.rank.is_synonym
+            and self.name.corrected_original_name != corrected_name
+        ):
+            # A combination established by the enclosing account is not thereby
+            # the name cited in an older synonym entry in that account.
             score += 50
         else:
             mapped_ce = self.name.get_mapped_classification_entry()
@@ -1459,8 +1577,6 @@ def get_candidates_from_names_for_bare_synonym(
     check_year: bool = True,
 ) -> Iterable[Name]:
     for nam in nams:
-        if ce.year is None:
-            continue
         if fuzzy:
             condition = (
                 models.name_complex.normalize_root_name_for_homonymy(
@@ -1472,7 +1588,7 @@ def get_candidates_from_names_for_bare_synonym(
             condition = corrected_name in nam.get_root_name_forms()
         if not condition:
             continue
-        if check_year:
+        if check_year and ce.year is not None:
             try:
                 ce_year = int(ce.year)
             except ValueError:
@@ -1544,6 +1660,40 @@ def get_species_group_mapped_names(
                         count += 1
                         yield nam, CandidateMetadata(is_sister_genus=True)
 
+    if ce.rank is not None and ce.rank.is_synonym:
+        root_name = corrected_name.rsplit(maxsplit=1)[-1]
+        normalized_root_name = models.name_complex.normalize_root_name_for_homonymy(
+            root_name, None
+        )
+        # Exact combinations can be homonyms. Consider the existing mapping,
+        # subject to normal scoring, even when a direct match exists.
+        if (
+            mapped is not None
+            and not mapped.is_invalid()
+            and mapped.group is Group.species
+            and _root_name_matches(mapped, normalized_root_name)
+        ):
+            yield mapped, CandidateMetadata()
+        if (
+            ce.parent is not None
+            and ce.parent.mapped_name is not None
+            and (mapped is None or ce.authority is not None or ce.year is not None)
+        ):
+            # Help infer missing mappings or disambiguate explicit citations.
+            # A historical account may lump distinct nominal names: without
+            # citation metadata, its modern taxon should not displace an
+            # existing synonym mapping merely because it contains this epithet.
+            try:
+                taxon = ce.parent.mapped_name.taxon.parent_of_rank(Rank.species)
+            except ValueError:
+                pass
+            else:
+                for nam in taxon.all_names():
+                    if nam.group is Group.species and _root_name_matches(
+                        nam, normalized_root_name
+                    ):
+                        yield nam, CandidateMetadata()
+
 
 def _root_name_matches(nam: Name, root_name: str) -> bool:
     if nam.root_name == root_name:
@@ -1580,10 +1730,10 @@ def check_corrected_name(
                     message = (
                         f"infer corrected name from other CE: {other_corrected_name}"
                     )
-                    tag = ClassificationEntryTag.CorrectedName(other_corrected_name)
+                    tag = ClassificationEntryTag.NormalizedName(other_corrected_name)
                     yield add_tag_issue(message, ce, tag)
                     return
-        yield "cannot infer corrected name; add CorrectedName tag"
+        yield "cannot infer corrected name; add NormalizedName tag"
         return
     if ce.get_corrected_name_without_tags() is None and not re.search(
         r"^[A-Z]\. ", ce.name
@@ -1609,7 +1759,9 @@ def check_corrected_name(
             case Group.species:
                 if ce.rank.is_synonym and re.fullmatch(r"[a-z]+", corrected_name):
                     return
-                if not re.fullmatch(r"[A-Z][a-z]+( [a-z]+){1,3}", corrected_name):
+                if not re.fullmatch(
+                    r"[A-Z][a-z]+( (?:[a-z]+|[a-z]-[a-z]+)){1,3}", corrected_name
+                ):
                     yield f"incorrect species name format: {corrected_name}"
             case Group.high:
                 if not re.fullmatch(
@@ -1808,6 +1960,7 @@ def infer_page_from_mapped_name(
         ClassificationEntryTag.PageLink(url=tag.url, page=tag.page)
         for tag in ce.mapped_name.type_tags
         if isinstance(tag, TypeTag.AuthorityPageLink)
+        and tag.page in models.name.page.get_unique_page_text(ce.page)
     ]
     new_tags = [tag for tag in new_tags if tag not in ce.tags]
     if not new_tags:
@@ -2186,11 +2339,12 @@ def infer_data_from_mapped(
             matching = [
                 tag
                 for tag in ce.get_tags(ce.tags, ce_tag_type)
-                if tag.text == detail.text
+                if detail_lint.normalized_text(tag)
+                == detail_lint.normalized_text(detail)
             ]
             if not matching:
                 new_tag = ce_tag_type(
-                    text=detail.text,
+                    text=detail_lint.normalized_text(detail),
                     **{
                         field: getattr(detail, field)
                         for field in DETAIL_METADATA_FIELDS
@@ -2309,10 +2463,17 @@ def check_parent_rank(ce: ClassificationEntry, cfg: LintConfig) -> Iterable[Lint
         # primary CE that the source apparently intended. check_auxiliary_name
         # validates that relationship.
         return
+    parent = ce.parent
+    seen = set()
+    while parent.rank is Rank.informal and parent.parent is not None:
+        if parent.id in seen:
+            return  # The parent_cycle lint reports this independently.
+        seen.add(parent.id)
+        parent = parent.parent
     match ce.rank:
         case Rank.subspecies | Rank.variety:
-            if ce.parent.rank is not Rank.species and not (
-                ce.rank is Rank.variety and ce.parent.rank is Rank.subspecies
+            if parent.rank is not Rank.species and not (
+                ce.rank is Rank.variety and parent.rank is Rank.subspecies
             ):
                 message = f"parent rank {ce.parent.rank.name} does not match child rank {ce.rank.name}"
                 corrected_name = ce.get_corrected_name()
@@ -2378,12 +2539,14 @@ def is_acceptable_year(
 def check_needs_referenced_usage(
     ce: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[LintResult]:
-    for tag in ce.get_tags(ce.tags, ClassificationEntryTag.ReferencedUsage):
+    usages = list(ce.get_tags(ce.tags, ClassificationEntryTag.ReferencedUsage))
+    if usages:
         if ce.year is not None and ce.year.isnumeric():
-            message = is_acceptable_year(int(ce.year), [tag.ce.article])
+            message = is_acceptable_year(
+                int(ce.year), [tag.ce.article for tag in usages]
+            )
             if message is not None:
-                yield f"{message} for referenced usage {tag.ce}"
-        break
+                yield f"{message} for referenced usages {[tag.ce for tag in usages]}"
     else:
         if ce.mapped_name is None:
             return
@@ -2438,9 +2601,13 @@ def original_parent_matches(ce: ClassificationEntry, cfg: LintConfig) -> Iterabl
         models.name.NameTag.MisidentificationOf,
         models.name.NameTag.SubsequentUsageOf,
     )
-    if _resolve_name(ce_parent_genus.mapped_name, tag_classes) != _resolve_name(
-        mapped_original_parent, tag_classes
-    ):
+    # Historical generic spellings and emendations may differ between the
+    # species combination and its source heading without changing identity.
+    source_parent = _resolve_name(ce_parent_genus.mapped_name, tag_classes)
+    original_parent = _resolve_name(mapped_original_parent, tag_classes)
+    if source_parent.resolve_variant(
+        tags=MISSPELLING_TAGS
+    ) != original_parent.resolve_variant(tags=MISSPELLING_TAGS):
         message = f"original parent genus {mapped_original_parent} does not match CE parent genus {ce_parent_genus.mapped_name}"
         yield message
 
@@ -2450,6 +2617,13 @@ def infer_detail_pages(
     obj: ClassificationEntry, cfg: LintConfig
 ) -> Iterable[LintResult]:
     yield from detail_lint.infer_detail_pages(obj)
+
+
+@LINT.add("duplicate_details")
+def check_duplicate_details(
+    obj: ClassificationEntry, cfg: LintConfig
+) -> Iterable[LintResult]:
+    yield from detail_lint.clean_duplicate_details(obj)
 
 
 @LINT.add(

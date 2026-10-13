@@ -112,9 +112,10 @@ def test_builder_lowers_materialization_and_source_quotes() -> None:
         evidence=[DraftEvidence("source_page", "Family account on page 12")],
     ) as source:
         source.add_entry(
-            "Endodontidae",
+            "ENDODONTIDAE",
             Rank.family,
             page="12",
+            normalized_name="Endodontidae",
             materialize=True,
             materialize_parent_taxon_id=123,
             type_locality_quote="Valley below the inward-facing cliffs.",
@@ -130,6 +131,7 @@ def test_builder_lowers_materialization_and_source_quotes() -> None:
             "tag": "TypeSpecimenData",
             "arguments": {"text": "Holotype: USNM 123, adult male."},
         },
+        {"tag": "NormalizedName", "arguments": {"text": "Endodontidae"}},
         {"tag": "Materialize", "arguments": {"parent_taxon_id": 123}},
         {
             "tag": "EtymologyDetail",
@@ -146,6 +148,7 @@ def test_builder_lowers_materialization_and_source_quotes() -> None:
         find_objects_by_match=lambda _model, _match: [],
     )
     tags = plan.actions[0].new_value["tags"]
+    assert ClassificationEntryTag.NormalizedName("Endodontidae") in tags
     assert (
         ClassificationEntryTag.TypeSpecimenData("Holotype: USNM 123, adult male.")
         in tags

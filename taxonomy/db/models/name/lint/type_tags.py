@@ -489,7 +489,8 @@ def _check_detail_type_tag(
             matching = [
                 other
                 for other in ce.get_tags(ce.tags, ce_tag_type)
-                if other.text == tag.text
+                if detail_lint.normalized_text(other)
+                == detail_lint.normalized_text(tag)
             ]
             if not matching:
                 yield f"{tag} has classification entry {ce} whose {ce_tag_type.__name__} does not match text"
@@ -1430,6 +1431,11 @@ def check_collector_lifespan(nam: Name, cfg: LintConfig) -> Iterable[str]:
 @LINT.add("detail_pages")
 def infer_detail_pages(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
     yield from detail_lint.infer_detail_pages(obj)
+
+
+@LINT.add("duplicate_details")
+def check_duplicate_details(obj: Name, cfg: LintConfig) -> Iterable[LintResult]:
+    yield from detail_lint.clean_duplicate_details(obj)
 
 
 @LINT.add(

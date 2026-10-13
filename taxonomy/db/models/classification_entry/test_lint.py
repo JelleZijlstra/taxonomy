@@ -16,19 +16,24 @@ from taxonomy.db.models.classification_entry.ce import (
 from taxonomy.db.models.classification_entry.lint import (
     _is_misspelling_of,
     check_auxiliary_name,
+    check_corrected_name,
     check_mapped_name,
     check_mapped_name_inference,
     check_mapped_name_matches_other_ces,
     check_missing_mapped_name,
     check_needs_auxiliary_name,
+    check_needs_referenced_usage,
     check_parent_cycle,
     check_parent_rank,
+    check_predates_mapped_name,
     check_tags,
     check_verbatim_parent,
+    get_candidates_from_names_for_bare_synonym,
     get_filtered_possible_mapped_names,
     get_species_group_mapped_names,
     infer_duplicate,
     materialize_classification_entry,
+    original_parent_matches,
 )
 from taxonomy.db.models.lint_types import LintIssue
 from taxonomy.db.models.name import Name, NameTag
@@ -36,6 +41,22 @@ from taxonomy.db.models.name.lint.ce_mapping import infer_tags_from_mapped_entri
 from taxonomy.db.models.person import AuthorTag
 
 _ARTICLE = Article.virtual(name="classification source")
+
+
+@pytest.mark.parametrize("same_source", [True, False])
+def test_predates_mapped_name_respects_original_source(*, same_source: bool) -> None:
+    source = Article.virtual(name="source", year="1894-04")
+    original = source if same_source else Article.virtual(name="other", year="1894")
+    name = Name.virtual(original_citation=original, year="1894")
+    ce = ClassificationEntry.virtual(
+        article=source, mapped_name=name, rank=Rank.species
+    )
+    with (
+        patch.object(Article, "is_unpublished", return_value=False),
+        patch.object(Name, "__str__", return_value="test name"),
+    ):
+        issues = list(check_predates_mapped_name.linter(ce, LintConfig()))
+    assert bool(issues) is not same_source
 
 
 class _FakeQuery(list[Any]):
@@ -47,7 +68,7 @@ def test_candidate_search_includes_new_exact_spelling_proposal() -> None:
     base = _make_name("gracilis")
     combination = _make_name("gracilis", NameTag.NameCombinationOf(base))
     combination.corrected_original_name = "Dopasia gracilis"
-    ce = ClassificationEntry.virtual(mapped_name=combination)
+    ce = ClassificationEntry.virtual(mapped_name=combination, rank=Rank.species)
     taxon = Taxon.virtual(base_name=base)
     with (
         patch.object(Name, "select_valid", return_value=_FakeQuery()),
@@ -196,6 +217,179 @@ def test_candidate_search_preserves_synonym_spelling_within_nominal_name(
             ce.mapped_name = spelling
             assert list(check_mapped_name_inference(ce, cfg)) == []
             assert list(check_mapped_name(ce, cfg)) == []
+
+
+@pytest.mark.parametrize("rank", [Rank.species, Rank.synonym_species])
+@pytest.mark.parametrize("same_nominal", [False, True])
+def test_inference_accepts_equivalent_synonym_combination_only(
+    rank: Rank, *, same_nominal: bool
+) -> None:
+    base = _make_name("torridus")
+    candidate = _make_name(
+        "torridus", *([NameTag.NameCombinationOf(base)] if same_nominal else [])
+    )
+    # Sharing a taxon is insufficient: taxonomic synonyms are distinct Names.
+    candidate.taxon = base.taxon
+    ce = ClassificationEntry.virtual(
+        article=_ARTICLE,
+        name="Onychomys torridus",
+        rank=rank,
+        mapped_name=base,
+        tags=(),
+    )
+    with patch(
+        "taxonomy.db.models.classification_entry.lint.get_filtered_possible_mapped_names",
+        return_value=[candidate],
+    ):
+        issues = list(
+            check_mapped_name_inference(
+                ce, LintConfig(autofix=False, interactive=False)
+            )
+        )
+    assert bool(issues) == (not same_nominal or not rank.is_synonym)
+
+
+@pytest.mark.parametrize("initially_correct", [False, True])
+def test_synonym_inference_considers_context_despite_exact_homonym(
+    *, initially_correct: bool
+) -> None:
+    correct = _make_name("leucogaster")
+    correct.corrected_original_name = "Hypudaeus leucogaster"
+    correct.taxon.valid_name = "Onychomys leucogaster"
+    wrong = _make_name("leucogaster")
+    wrong.corrected_original_name = "Hesperomys leucogaster"
+    wrong.taxon.valid_name = "Sooretamys angouya"
+    for name in (correct, wrong):
+        name.year = "1841"
+        name.nomenclature_status = NomenclatureStatus.available
+    wrong.year = "1845"
+    correct.author_tags = (AuthorTag.Author(Person.virtual(family_name="Wied")),)  # type: ignore[assignment]
+    wrong.author_tags = (AuthorTag.Author(Person.virtual(family_name="Wagner")),)  # type: ignore[assignment]
+    article = Article.virtual(name="Onychomys revision", year="1914")
+    parent = ClassificationEntry.virtual(
+        article=article,
+        name="Onychomys leucogaster",
+        rank=Rank.species,
+        mapped_name=correct,
+    )
+    ce = ClassificationEntry.virtual(
+        article=article,
+        name="Hesperomys leucogaster",
+        year="1841",
+        authority="Wied",
+        rank=Rank.synonym_species,
+        parent=parent,
+        mapped_name=correct if initially_correct else wrong,
+        tags=(),
+    )
+    with (
+        patch.object(Name, "select_valid", return_value=_FakeQuery([wrong])),
+        patch.object(Taxon, "select_valid", return_value=_FakeQuery()),
+        patch.object(Taxon, "all_names", return_value=[correct]),
+        patch.object(Taxon, "get_derived_field", return_value=None),
+        patch.object(ClassificationEntry, "get_children", return_value=_FakeQuery()),
+    ):
+        candidates = list(get_species_group_mapped_names(ce, ce.name))
+        assert correct in [name for name, _ in candidates]
+        assert list(get_filtered_possible_mapped_names(ce)) == [correct]
+        issues = list(
+            check_mapped_name_inference(
+                ce, LintConfig(autofix=False, interactive=False)
+            )
+        )
+        assert bool(issues) is not initially_correct
+
+
+def test_synonym_account_taxon_does_not_override_an_uncited_nominal_mapping() -> None:
+    nominal = _make_name("abrasus")
+    nominal.corrected_original_name = "Dysopes abrasus"
+    nominal.year = "1826"
+    nominal.nomenclature_status = NomenclatureStatus.available
+    other = _make_name("abrasus")
+    other.corrected_original_name = "Eumops abrasus"
+    parent = ClassificationEntry.virtual(rank=Rank.species, mapped_name=other)
+    ce = ClassificationEntry.virtual(
+        article=Article.virtual(year="1932"),
+        name="Dysopes abrasus",
+        rank=Rank.synonym_species,
+        mapped_name=nominal,
+        parent=parent,
+        tags=(),
+    )
+    with (
+        patch.object(Name, "select_valid", return_value=_FakeQuery([nominal])),
+        patch.object(Taxon, "select_valid", return_value=_FakeQuery()),
+        patch.object(Taxon, "all_names", return_value=[other]) as all_names,
+    ):
+        candidates = list(get_species_group_mapped_names(ce, ce.name))
+        assert {name for name, _ in candidates} == {nominal}
+        all_names.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("name", "valid"),
+    [
+        ("Somateria v-nigra", True),
+        ("Polygonia c-album", True),
+        ("Somateria v--nigra", False),
+        ("Somateria V-nigra", False),
+    ],
+)
+def test_corrected_name_single_letter_prefix(name: str, *, valid: bool) -> None:
+    ce = ClassificationEntry.virtual(
+        name=name, rank=Rank.species, tags=(), article=_ARTICLE
+    )
+    with patch.object(
+        ClassificationEntry, "get_corrected_name_without_tags", return_value=name
+    ):
+        issues = list(
+            check_corrected_name(ce, LintConfig(autofix=False, interactive=False))
+        )
+    assert bool(issues) is not valid
+
+
+def test_referenced_usage_year_considers_all_cited_sources() -> None:
+    usages = [
+        ClassificationEntry.virtual(article=Article.virtual(year=str(year)))
+        for year in (1830, 1850)
+    ]
+    ce = ClassificationEntry.virtual(
+        year="1850",
+        tags=tuple(ClassificationEntryTag.ReferencedUsage(usage) for usage in usages),
+    )
+    cfg = LintConfig(autofix=False, interactive=False)
+    assert list(check_needs_referenced_usage(ce, cfg)) == []
+    ce.year = "1900"
+    assert len(list(check_needs_referenced_usage(ce, cfg))) == 1
+
+
+def test_tags_allow_distinct_referenced_usages() -> None:
+    usages = [
+        ClassificationEntry.virtual(
+            name="Mus musculus", rank=Rank.species, article=_ARTICLE
+        )
+        for _ in range(2)
+    ]
+    ce = ClassificationEntry.virtual(
+        article=_ARTICLE,
+        name="Mus musculus",
+        rank=Rank.synonym_species,
+        tags=tuple(sorted(ClassificationEntryTag.ReferencedUsage(u) for u in usages)),
+    )
+    assert list(check_tags(ce, LintConfig(autofix=False, interactive=False))) == []
+
+
+@pytest.mark.parametrize(("year", "matches"), [(None, True), ("1877", False)])
+def test_bare_synonym_without_year_can_match_context(
+    year: str | None, *, matches: bool
+) -> None:
+    name = _make_name("albus")
+    name.year = "1777"
+    ce = ClassificationEntry.virtual(year=year)
+    assert list(get_candidates_from_names_for_bare_synonym([name], ce, "albus")) == (
+        [name] if matches else []
+    )
+    assert list(get_candidates_from_names_for_bare_synonym([name], ce, "ater")) == []
 
 
 @pytest.mark.parametrize(
@@ -401,6 +595,82 @@ def test_is_misspelling_of() -> None:
     )
 
     assert _is_misspelling_of(misspelling, correct)
+
+
+def test_auxiliary_spelling_target_accepts_combination_not_taxonomic_synonym() -> None:
+    base = _make_name("correct")
+    combination = _make_name("correct", NameTag.NameCombinationOf(base))
+    misspelling = _make_name("corect", NameTag.IncorrectSubsequentSpellingOf(base))
+    unrelated = _make_name("correct")
+    unrelated.taxon = base.taxon
+    assert _is_misspelling_of(misspelling, combination)
+    assert not _is_misspelling_of(misspelling, unrelated)
+    assert not _is_misspelling_of(combination, base)
+
+
+@pytest.mark.parametrize("same_identity", [False, True])
+def test_original_parent_accepts_spelling_variant_not_homonym(
+    *, same_identity: bool
+) -> None:
+    base = _make_name("Genus")
+    base.group = Group.genus
+    original = _make_name("Genus", NameTag.IncorrectSubsequentSpellingOf(base))
+    source = _make_name(
+        "Genus", *([NameTag.UnjustifiedEmendationOf(base)] if same_identity else [])
+    )
+    original.group = source.group = Group.genus
+    source.taxon = base.taxon
+    species = _make_name("species")
+    species.original_parent = original
+    parent = ClassificationEntry.virtual(
+        article=_ARTICLE, name="Genus", rank=Rank.genus, mapped_name=source, tags=()
+    )
+    ce = ClassificationEntry.virtual(
+        article=_ARTICLE,
+        name="Genus species",
+        rank=Rank.species,
+        mapped_name=species,
+        parent=parent,
+        tags=(),
+    )
+    assert bool(list(original_parent_matches(ce, LintConfig()))) == (not same_identity)
+
+
+@pytest.mark.parametrize(
+    "case", ["consistent", "conflicting", "unmapped", "removed", "spelling"]
+)
+def test_inference_respects_consistent_explicit_usage(case: str) -> None:
+    base = _make_name("albus")
+    homonym = _make_name("albus")
+    homonym.taxon = base.taxon
+    usage = ClassificationEntry.virtual(
+        article=_ARTICLE,
+        name="Canis albus",
+        rank=Rank.species,
+        mapped_name=base,
+        tags=(),
+        status=ClassificationEntryStatus.valid,
+    )
+    if case == "conflicting":
+        usage.mapped_name = homonym
+    elif case == "unmapped":
+        usage.mapped_name = None
+    elif case == "removed":
+        usage.status = ClassificationEntryStatus.removed
+    ce = ClassificationEntry.virtual(
+        article=_ARTICLE,
+        name="albi" if case == "spelling" else "albus",
+        rank=Rank.synonym_species,
+        mapped_name=base,
+        tags=(ClassificationEntryTag.ReferencedUsage(usage),),
+    )
+    with patch(
+        "taxonomy.db.models.classification_entry.lint.get_filtered_possible_mapped_names",
+        return_value=[homonym],
+    ):
+        assert bool(list(check_mapped_name_inference(ce, LintConfig()))) == (
+            case != "consistent"
+        )
 
 
 def test_missing_mapped_name_exposes_structured_fix_and_decorator_code() -> None:
@@ -1050,3 +1320,34 @@ def test_needs_auxiliary_name_autofix() -> None:
         tag.ce
         for tag in child.get_tags(child.tags, ClassificationEntryTag.VerbatimParent)
     ] == [misspelled_ce]
+
+
+@pytest.mark.parametrize(
+    ("source_year", "expect_fix"), [("1850", False), ("1820", True)]
+)
+def test_exact_combination_does_not_cycle_to_unavailable_name(
+    source_year: str, *, expect_fix: bool
+) -> None:
+    available = _make_name("example")
+    available.corrected_original_name = "Vulpes example"
+    available.year = "1830"
+    unavailable = _make_name("example", NameTag.UnavailableVersionOf(available))
+    unavailable.corrected_original_name = "Canis example"
+    unavailable.taxon = available.taxon
+    unavailable.original_citation = Article.virtual(name="earlier source", year="1820")
+    ce = ClassificationEntry.virtual(
+        name="Canis example",
+        rank=Rank.species,
+        page="1",
+        mapped_name=available,
+        article=Article.virtual(name="source", year=source_year),
+        tags=(),
+    )
+    with (
+        patch.object(Name, "select_valid", return_value=_FakeQuery([unavailable])),
+        patch.object(Name, "__str__", return_value="example name"),
+        patch.object(Name, "get_root_name_forms", return_value={"example"}),
+    ):
+        issues = list(check_mapped_name.linter(ce, LintConfig()))
+    fixes = [issue for issue in issues if isinstance(issue, LintIssue) and issue.fix]
+    assert bool(fixes) is expect_fix

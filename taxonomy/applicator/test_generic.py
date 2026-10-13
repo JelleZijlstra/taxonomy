@@ -1,3 +1,4 @@
+from collections import Counter
 from collections.abc import Mapping
 from unittest.mock import Mock
 
@@ -21,8 +22,9 @@ from taxonomy.db.models import (
     Person,
     Region,
 )
+from taxonomy.db.models.classification_entry.ce import ClassificationEntryTag
 from taxonomy.db.models.location import LocationStatus
-from taxonomy.db.models.name import NameTag
+from taxonomy.db.models.name import NameTag, TypeTag
 from taxonomy.db.models.occurrence_record import OccurrenceRecordTag
 from taxonomy.db.models.region import RegionTag
 from taxonomy.db.models.tags import LocationTag, PersonTag
@@ -1663,6 +1665,27 @@ def test_structured_tag_accepts_legacy_constructor_name() -> None:
     assert tag.label == "coordinate_provenance"
 
 
+@pytest.mark.parametrize(
+    "data",
+    [
+        {"tag": "NormalizedName", "arguments": {"text": "Sorex araneus"}},
+        {"tag": "CorrectedName", "arguments": {"text": "Sorex araneus"}},
+        [3, "Sorex araneus"],
+    ],
+)
+def test_normalized_name_preserves_manifest_and_storage_compatibility(
+    data: object,
+) -> None:
+    tag = recommendations._decode_tag(
+        ClassificationEntry.tags, data, context="test tag"
+    )
+
+    assert isinstance(tag, ClassificationEntryTag.NormalizedName)
+    assert tag.serialize() == [3, "Sorex araneus"]
+    ce = ClassificationEntry.virtual(name="Sorex araneus (L.)", tags=(tag,))
+    assert ce.get_corrected_name() == "Sorex araneus"
+
+
 def test_later_action_can_edit_created_object_by_ref() -> None:
     edit = _common(recommendations.SET_FIELD, "comment")
     edit.update(
@@ -1862,6 +1885,72 @@ def test_plan_can_be_applied_to_virtual_copy_without_mutating_original() -> None
     assert proposed.contexts == ("generic manifest line 1",)
 
 
+@pytest.mark.parametrize("schema", [1, 2])
+def test_virtual_tag_removal_remaps_existing_references(schema: int) -> None:
+    article = Article.virtual(name="source")
+    ce = ClassificationEntry.virtual(name="entry", article=article, tags=())
+    removed = TypeTag.LocationDetail("old quote", article, classification_entry=ce)
+    retained = TypeTag.LocationDetail("retained quote", article)
+    name = Name.virtual(
+        root_name="Original",
+        original_name="Original",
+        corrected_original_name="Original",
+        type_tags=(removed, retained),
+    )
+    tag = {
+        "tag": "LocationDetail",
+        "arguments": {
+            "text": "old quote",
+            "source": {"model": "Article", "id": 1, "label": "source"},
+            "classification_entry": {
+                "model": "ClassificationEntry",
+                "id": 2,
+                "label": "entry",
+            },
+        },
+    }
+    data = _common(recommendations.REMOVE_TAG, "type_tags")
+    data.update({"object": {"model": "Name", "id": 3, "label": "Original"}, "tag": tag})
+    if schema == 2:
+        data.update(
+            {
+                "schema_version": 2,
+                "action": recommendations.UPDATE_OBJECT,
+                "changes": [
+                    {"field": "type_tags", "operation": "remove", "value": tag}
+                ],
+            }
+        )
+        del data["field"]
+        del data["tag"]
+    else:
+        data["tag"] = removed.serialize()
+    row = recommendations.parse_recommendation(data, 1)
+    plan = recommendations.RecommendationPlan(
+        actions=(
+            recommendations.PlannedAction(
+                row,
+                name,
+                (removed, retained),
+                (retained,),
+                already_applied=False,
+                changes=(
+                    (("remove", "type_tags", (removed, retained), (retained,)),)
+                    if schema == 2
+                    else ()
+                ),
+            ),
+        ),
+        action_counts=Counter({row.action: 1}),
+    )
+    builder = ProposalBuilder()
+    builder.copy(ce, context="earlier CE update")
+    recommendations.add_virtual_models(plan, builder)
+    proposed = next(p.model for p in builder.build() if isinstance(p.model, Name))
+    assert proposed.type_tags == (retained,)
+    assert name.type_tags == (removed, retained)
+
+
 def test_tag_mutations_canonicalize_unordered_adt_fields() -> None:
     later = LocationTag.IgnoreLint("nominatim_coordinates")
     earlier = LocationTag.IgnoreLint("coordinate_collision")
@@ -2058,3 +2147,42 @@ def test_rename_rejects_name_taken_by_earlier_manifest_create() -> None:
             get_unique_constraints=lambda _model: (("name",),),
             find_objects_by_unique_constraint=lambda _model, _fields, _values: [],
         )
+
+
+@pytest.mark.parametrize(
+    "name", ["Borchers Fauna", "Renamed Borchers Fauna", "Unrelated drift"]
+)
+def test_manual_review_retries_with_guarded_companion_rename(name: str) -> None:
+    manual = _common(recommendations.MANUAL_REVIEW, "unused")
+    manual.pop("field")
+    update = _common(recommendations.UPDATE_OBJECT, "unused")
+    update["schema_version"] = 2
+    update.pop("field")
+    update["changes"] = [
+        {
+            "field": "name",
+            "operation": "set",
+            "old_value": "Borchers Fauna",
+            "new_value": "Renamed Borchers Fauna",
+        }
+    ]
+    rows = [
+        recommendations.parse_recommendation(manual, 1),
+        recommendations.parse_recommendation(update, 2),
+    ]
+    location = _make_location(name=name)
+    if name == "Unrelated drift":
+        with pytest.raises(recommendations.RecommendationError, match="changed from"):
+            recommendations.build_plan(
+                rows,
+                model_registry={"Location": Location},
+                get_object=lambda _model, _id: location,
+            )
+    else:
+        plan = recommendations.build_plan(
+            rows,
+            model_registry={"Location": Location},
+            get_object=lambda _model, _id: location,
+        )
+        assert plan.actions[0].object is location
+        assert plan.actions[1].already_applied is (name == "Renamed Borchers Fauna")

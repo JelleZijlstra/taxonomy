@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 from typing import Any, cast
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 import pytest
 from clirm import VirtualReferenceError
@@ -810,41 +810,30 @@ def test_location_detail_coordinates_must_match_existing_tag() -> None:
 
 
 def test_nominate_subspecies_does_not_readd_merged_location_detail() -> None:
-    source = cast(models.Article, object())
-    parent_ce = cast(models.ClassificationEntry, object())
-    child_ce = cast(
-        models.ClassificationEntry,
-        SimpleNamespace(
-            rank=Rank.subspecies,
-            parent=parent_ce,
-            article=source,
-            type_locality="Pantar",
-            tags=(),
-            citation=None,
-        ),
+    source = models.Article.virtual(name="source")
+    parent_ce = models.ClassificationEntry.virtual(article=source, rank=Rank.species)
+    combination_name = Name.virtual(group=Group.species)
+    child_ce = models.ClassificationEntry.virtual(
+        rank=Rank.subspecies,
+        parent=parent_ce,
+        article=source,
+        type_locality="Pantar",
+        tags=(),
+        citation=None,
+        mapped_name=combination_name,
     )
     location_tag = TypeTag.LocationDetail(
         "Pantar", source, classification_entry=parent_ce
     )
-    tag_name = SimpleNamespace(
-        type_tags=(location_tag,),
-        original_citation=None,
-        get_tags=lambda values, tag_type: (
-            tag for tag in values if isinstance(tag, tag_type)
-        ),
-    )
-    combination_name = SimpleNamespace(
-        group=Group.species,
-        get_classification_entries=lambda: [child_ce],
-        resolve_variant=lambda **_: tag_name,
-        get_mapped_classification_entry=lambda: None,
-    )
-
-    messages = list(
-        infer_tags_from_mapped_entries(
-            cast(Name, combination_name), LintConfig(autofix=False)
+    tag_name = Name.virtual(type_tags=(location_tag,), original_citation=None)
+    with (
+        patch.object(Name, "get_classification_entries", return_value=[child_ce]),
+        patch.object(Name, "resolve_variant", return_value=tag_name),
+        patch.object(Name, "get_mapped_classification_entry", return_value=None),
+    ):
+        messages = list(
+            infer_tags_from_mapped_entries(combination_name, LintConfig(autofix=False))
         )
-    )
 
     assert messages == []
 

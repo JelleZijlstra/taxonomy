@@ -5,12 +5,16 @@ import pytest
 
 from taxonomy.db.constants import ArticleKind, ArticleType, Group, Rank, Status
 from taxonomy.db.models import Article
+from taxonomy.db.models import detail as detail_lint
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.classification_entry.ce import (
     DETAIL_METADATA_FIELDS,
     DETAIL_TAGS,
     ClassificationEntry,
     ClassificationEntryTag,
+)
+from taxonomy.db.models.classification_entry.lint import (
+    check_duplicate_details as check_duplicate_ce_details,
 )
 from taxonomy.db.models.classification_entry.lint import (
     check_tags,
@@ -170,6 +174,116 @@ def test_detail_sync_both_directions_and_idempotence(
     ce.tags = (ce_type("quotation"),) if existing else ()  # type: ignore[assignment]
     _apply(infer_data_from_mapped.linter(ce, _CFG))
     assert ce.tags == (ce_type("quotation", **_METADATA),)
+    assert list(infer_data_from_mapped.linter(ce, _CFG)) == []
+
+
+@pytest.mark.parametrize(("name_type", "ce_type"), DETAIL_TAG_TO_CE_TAG.items())
+@pytest.mark.parametrize("clean_name", [False, True])
+@pytest.mark.parametrize("reverse_order", [False, True])
+def test_normalized_duplicate_details_stay_removed(
+    monkeypatch: pytest.MonkeyPatch,
+    name_type: type[TypeTag],
+    ce_type: type[ClassificationEntryTag],
+    *,
+    clean_name: bool,
+    reverse_order: bool,
+) -> None:
+    name, ce = _models(monkeypatch)
+    # Name 46519 and CE 365126 had both forms, with a page link on only
+    # the straight-quote version. Linting either side must break the loop.
+    raw = "Plée’s monkey was called “carita blanca.”"
+    clean = 'Plée\'s monkey was called "carita blanca."'
+    name_tags = [
+        name_type(raw, ce.article, classification_entry=ce, page="12"),
+        name_type(clean, ce.article, classification_entry=ce, **_METADATA),
+    ]
+    ce_tags = [ce_type(raw, page="12"), ce_type(clean, **_METADATA)]
+    if reverse_order:
+        name_tags.reverse()
+        ce_tags.reverse()
+    name.type_tags = (*name.type_tags, *name_tags)  # type: ignore[assignment]
+    ce.tags = tuple(ce_tags)  # type: ignore[assignment]
+    owner = name if clean_name else ce
+    before = name.type_tags if clean_name else ce.tags
+    issues = list(
+        type_tags.check_duplicate_details.linter(name, _CFG)
+        if clean_name
+        else check_duplicate_ce_details.linter(ce, _CFG)
+    )
+    assert (name.type_tags if clean_name else ce.tags) == before
+    _apply(issues)
+
+    for _ in range(3):
+        _apply(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG))
+        _apply(infer_data_from_mapped.linter(ce, _CFG))
+        assert list(detail_lint.clean_duplicate_details(owner)) == []
+        tags = (
+            list(name.get_tags(name.type_tags, name_type))
+            if clean_name
+            else list(ce.get_tags(ce.tags, ce_type))
+        )
+        assert len(tags) == 1
+        assert tags[0].text == clean
+        assert all(
+            getattr(tags[0], field) == value for field, value in _METADATA.items()
+        )
+
+    _apply(detail_lint.clean_duplicate_details(ce if clean_name else name))
+    assert list(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG)) == []
+    assert list(infer_data_from_mapped.linter(ce, _CFG)) == []
+    assert list(type_tags.check_type_tags_for_name.linter(name, _CFG)) == []
+
+
+@pytest.mark.parametrize("on_name", [False, True])
+@pytest.mark.parametrize(
+    "difference", ["text", "source", "classification_entry", *DETAIL_METADATA_FIELDS]
+)
+def test_duplicate_cleanup_preserves_distinct_details(
+    monkeypatch: pytest.MonkeyPatch, difference: str, *, on_name: bool
+) -> None:
+    name, ce = _models(monkeypatch)
+    owner: Name | ClassificationEntry
+    if on_name:
+        owner = name
+        field = "type_tags"
+        first = TypeTag.EtymologyDetail(
+            "quotation", ce.article, classification_entry=ce, **_METADATA
+        )
+    else:
+        if difference in ("source", "classification_entry"):
+            return  # These fields exist only on Name details.
+        owner = ce
+        field = "tags"
+        first = ClassificationEntryTag.EtymologyDetail("quotation", **_METADATA)
+    if difference == "source":
+        second = first.replace(source=Article.virtual())
+    elif difference == "classification_entry":
+        second = first.replace(classification_entry=ClassificationEntry.virtual())
+    else:
+        second = first.replace(**{difference: "different"})
+    setattr(owner, field, (first, second))
+    assert list(detail_lint.clean_duplicate_details(owner)) == []
+    assert getattr(owner, field) == (first, second)
+
+
+@pytest.mark.parametrize("from_name", [False, True])
+def test_new_detail_transfer_normalizes_text(
+    monkeypatch: pytest.MonkeyPatch, *, from_name: bool
+) -> None:
+    name, ce = _models(monkeypatch)
+    if from_name:
+        name.type_tags = (  # type: ignore[assignment]
+            *name.type_tags,
+            TypeTag.EtymologyDetail("“quoted”", ce.article, classification_entry=ce),
+        )
+        _apply(infer_data_from_mapped.linter(ce, _CFG))
+        (tag,) = ce.tags
+    else:
+        ce.tags = (ClassificationEntryTag.EtymologyDetail("“quoted”"),)  # type: ignore[assignment]
+        _apply(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG))
+        (tag,) = name.get_tags(name.type_tags, TypeTag.EtymologyDetail)
+    assert tag.text == '"quoted"'
+    assert list(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG)) == []
     assert list(infer_data_from_mapped.linter(ce, _CFG)) == []
 
 

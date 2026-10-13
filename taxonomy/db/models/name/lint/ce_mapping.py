@@ -5,6 +5,7 @@ from collections.abc import Callable, Iterable, Sequence
 from typing import TypeVar
 
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank, Status
+from taxonomy.db.models import detail as detail_lint
 from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.classification_entry.ce import (
     DETAIL_METADATA_FIELDS,
@@ -190,11 +191,12 @@ def _location_detail_covers_classification_entry(
 def _infer_detail_from_classification_entry(
     nam: Name, expected: TypeTag, ce: ClassificationEntry
 ) -> Iterable[LintResult]:
+    expected = expected.replace(text=detail_lint.normalized_text(expected))
     matching = [
         tag
         for tag in nam.get_tags(nam.type_tags, type(expected))
         if tag.source == expected.source
-        and tag.text == expected.text
+        and detail_lint.normalized_text(tag) == expected.text
         and tag.classification_entry in (None, ce)
     ]
     if not matching:
@@ -223,7 +225,11 @@ def _infer_detail_from_classification_entry(
 
 @LINT.add("infer_tags_from_mapped_entries")
 def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
-    ces = list(nam.get_classification_entries())
+    ces = [
+        ce if ce.is_virtual else ClassificationEntry.resolve_reference(ce.id)
+        for ce in nam.get_classification_entries()
+    ]
+    ces = [ce for ce in ces if not ce.is_invalid() and ce.mapped_name == nam]
     if not ces:
         return
     tag_name = nam.resolve_variant(unavailable_version=False)

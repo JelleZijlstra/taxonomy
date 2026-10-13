@@ -20,8 +20,9 @@ cleanup, after its automatic formatting and lint cleanup. Use
 ``--review-each`` to review every
 row in file order and choose yes (apply it immediately), no (skip it), or edit
 (open its affected database object and skip the automated recommendation). Before each
-immediate write, the cumulative accepted subset is rebuilt against the current database
-so manifest-local references and dependencies remain available. Add
+immediate write, only that row is rebuilt against the current database. Resolved
+references to earlier creations are retained without replaying their recommendations.
+Rows already applied according to their guards are skipped without prompting. Add
 ``--virtual-lint`` to construct the final proposed model states in memory and run
 advisory lint before the dry run or apply step. Use ``--virtual-lint-issues-only`` to
 run the same lint while printing only unresolved ``VIRTUAL_LINT_ISSUES``. Virtual
@@ -45,7 +46,7 @@ import traceback
 from collections import Counter
 from collections.abc import Callable, Iterable, Mapping
 from contextlib import nullcontext
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any, Literal, Self, cast
 
@@ -200,6 +201,7 @@ class AppliedObjectRecorder:
 @dataclass(frozen=True, slots=True)
 class ExecutionResult:
     affected_objects: tuple[BaseModel, ...]
+    references: Mapping[str, BaseModel] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -545,6 +547,7 @@ class IndividualReviewItem:
         "coverage",
     ]
     edit_object: Any | None
+    already_applied: bool = False
 
 
 def _validate_proposed_location_name_uniqueness(
@@ -1370,6 +1373,48 @@ def _location_edit_object(action: location_recommendations.PlannedAction) -> Any
     return action.target
 
 
+def _plan_references(plans: AnyRecommendationPlans) -> Mapping[str, BaseModel]:
+    if isinstance(plans, UnifiedRecommendationPlan):
+        return plans.references
+    return plans[1].references or {}
+
+
+def _already_applied_lines(plans: AnyRecommendationPlans) -> set[int]:
+    families: tuple[Any, ...]
+    if isinstance(plans, UnifiedRecommendationPlan):
+        families = (
+            plans.article,
+            plans.item_file,
+            plans.staged_file,
+            plans.taxon,
+            plans.generic,
+            plans.location,
+            plans.type_locality,
+        )
+    else:
+        families = plans
+    states: dict[int, list[bool]] = {}
+    for plan in families:
+        if isinstance(plan, type_recommendations.RecommendationPlan) and (
+            plan.location_tag_updates or plan.serialized_location_tag_updates
+        ):
+            # These companion changes have no row identity; retain prompts rather
+            # than accidentally skipping unapplied work on a shared Location.
+            continue
+        for attribute in (
+            "actions",
+            "updates",
+            "type_locality_validity_updates",
+            "regional_origin_updates",
+        ):
+            for action in getattr(plan, attribute, ()):
+                row = action.recommendation
+                if row.action in {"manual_review", "no_action"}:
+                    continue
+                states.setdefault(row.line_number, []).append(action.already_applied)
+    return {line for line, flags in states.items() if all(flags)}
+
+
 def _resolve_individual_review_items(
     recommendations: Recommendations,
     plans: AnyRecommendationPlans,
@@ -1386,8 +1431,9 @@ def _resolve_individual_review_items(
     generic_objects = {
         action.recommendation.line_number: action.object
         for action in generic_plan.actions
-        if action.recommendation.object.object_id is not None
+        if not getattr(action.object, "is_virtual", False)
     }
+    already_applied_lines = _already_applied_lines(plans)
     location_objects = {
         action.recommendation.line_number: _location_edit_object(action)
         for action in location_plan.actions
@@ -1425,7 +1471,15 @@ def _resolve_individual_review_items(
             edit_object = None
         if edit_object is not None and not callable(getattr(edit_object, "edit", None)):
             edit_object = None
-        items.append(IndividualReviewItem(row.line_number, row, family, edit_object))
+        items.append(
+            IndividualReviewItem(
+                row.line_number,
+                row,
+                family,
+                edit_object,
+                already_applied=row.line_number in already_applied_lines,
+            )
+        )
     return tuple(items)
 
 
@@ -1547,9 +1601,16 @@ def review_recommendations_individually(
     selected_lines: set[int] = set()
     affected_objects: list[BaseModel] = []
     print(
-        "Reviewing recommendations in file order. Yes rebuilds and applies the cumulative accepted subset immediately; no skips the recommendation; edit opens the affected object and skips the automated recommendation. Earlier changes are not rolled back if review is interrupted later."
+        "Reviewing recommendations in file order. Yes validates and applies only this recommendation immediately; no skips the recommendation; edit opens the affected object and skips the automated recommendation. Earlier changes are not rolled back if review is interrupted later."
     )
     for index, item in enumerate(items, start=1):
+        if item.already_applied:
+            print(
+                f"SKIP_ALREADY_APPLIED line={item.line_number} action={item.recommendation.action}"
+            )
+            if item.edit_object is not None:
+                affected_objects.append(item.edit_object)
+            continue
         print()
         _print_individual_recommendation(item, index=index, total=len(items))
         print()
@@ -1575,7 +1636,7 @@ def review_recommendations_individually(
         if choice == "yes":
             selected_lines.add(item.line_number)
             try:
-                result = apply_selected(selected_lines)
+                result = apply_selected({item.line_number})
             except Exception:
                 selected_lines.remove(item.line_number)
                 print()
@@ -1760,7 +1821,11 @@ def _validate_unique_intake_sources(
         )
 
 
-def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
+def build_plans(
+    recommendations: Recommendations,
+    *,
+    initial_references: Mapping[str, BaseModel] | None = None,
+) -> AnyRecommendationPlans:
     # Validate every family before any executor is allowed to write.
     try:
         article_plan = article_recommendations.build_plan(recommendations.article_rows)
@@ -1797,14 +1862,16 @@ def build_plans(recommendations: Recommendations) -> AnyRecommendationPlans:
             _validate_unique_intake_sources(
                 article_plan, item_file_plan, staged_file_plan
             )
-        if _uses_unified_plan(recommendations):
+        if initial_references or _uses_unified_plan(recommendations):
             builder = virtual_proposals.ProposalBuilder()
             new_citation_groups: dict[str, CitationGroup] = {}
-            references: dict[str, BaseModel] = dict(
-                article_recommendations.add_virtual_models(
-                    article_plan, builder, new_citation_groups=new_citation_groups
-                )
+            references: dict[str, BaseModel] = dict(initial_references or {})
+            article_references = article_recommendations.add_virtual_models(
+                article_plan, builder, new_citation_groups=new_citation_groups
             )
+            if references.keys() & article_references.keys():
+                raise RecommendationError("duplicate Article reference")
+            references.update(article_references)
             taxon_plan = taxon_recommendations.build_plan(
                 recommendations.taxon_rows, initial_references=references
             )
@@ -2111,7 +2178,13 @@ def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionRes
             return ExecutionResult(
                 _deduplicate_objects(
                     (*observed, *_declared_affected_objects(plans, replacements))
-                )
+                ),
+                references={
+                    ref: generic_recommendations._replace_created_models(
+                        obj, replacements
+                    )
+                    for ref, obj in plans.references.items()
+                },
             )
 
         article_plan, generic_plan, location_plan, type_plan = plans
@@ -2128,6 +2201,7 @@ def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionRes
                 print()
             print("LOCATION PLAN")
             location_recommendations.execute_plan(location_plan, apply=apply)
+        replacements = {}
         if generic_plan.action_counts:
             if (
                 article_plan.action_counts
@@ -2136,12 +2210,20 @@ def execute_plans(plans: AnyRecommendationPlans, *, apply: bool) -> ExecutionRes
             ):
                 print()
             print("GENERIC PLAN")
-            generic_recommendations.execute_plan(generic_plan, apply=apply)
+            replacements.update(
+                generic_recommendations.execute_plan(generic_plan, apply=apply)
+            )
     if not apply:
         return ExecutionResult(())
     observed = recorder.objects if isinstance(recorder, AppliedObjectRecorder) else ()
     return ExecutionResult(
-        _deduplicate_objects((*observed, *_declared_affected_objects(plans, {})))
+        _deduplicate_objects(
+            (*observed, *_declared_affected_objects(plans, replacements))
+        ),
+        references={
+            ref: generic_recommendations._replace_created_models(obj, replacements)
+            for ref, obj in (generic_plan.references or {}).items()
+        },
     )
 
 
@@ -2284,15 +2366,38 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
     if individual_items is not None:
         begin_output()
         applied_count = 0
+        assert plans is not None
+        resolved_references = {
+            ref: obj
+            for ref, obj in _plan_references(plans).items()
+            if not getattr(obj, "is_virtual", False)
+        }
+        # Index once: selecting a row must not rescan or replay the accepted prefix.
+        individual_rows = {
+            row.line_number: replace(
+                Recommendations((), (), (), ()), **cast(Any, {f"{family}_rows": (row,)})
+            )
+            for family, row in _all_recommendation_rows(recommendations)
+        }
+
+        required_references = {
+            row.line_number: set(generic_recommendations._iter_refs(asdict(row)))
+            for _, row in _all_recommendation_rows(recommendations)
+        }
 
         def apply_selected(selected_lines: set[int]) -> ExecutionResult:
             nonlocal applied_count
-            selected = _filter_recommendations(recommendations, selected_lines)
+            (line_number,) = selected_lines
+            selected = individual_rows[line_number]
             try:
-                # Rebuild the cumulative accepted subset after every choice. Earlier
-                # rows are idempotent, while retaining them makes their manifest-local
-                # references available to the newly accepted row.
-                selected_plans = build_plans(selected)
+                selected_plans = build_plans(
+                    selected,
+                    initial_references={
+                        ref: resolved_references[ref]
+                        for ref in required_references[line_number]
+                        if ref in resolved_references
+                    },
+                )
             except RecommendationError as exc:
                 if applied_count:
                     raise RecommendationError(
@@ -2302,6 +2407,7 @@ def _run(args: argparse.Namespace, parser: argparse.ArgumentParser) -> None:
                     f"the selected recommendation failed database validation; no automated changes were made: {exc}"
                 ) from exc
             result = execute_plans(selected_plans, apply=True)
+            resolved_references.update(result.references)
             applied_count += 1
             return result
 
@@ -2397,7 +2503,7 @@ def main() -> None:
         "--review-each",
         action="store_true",
         help=(
-            "validate the complete manifest, then review each row in file order with yes (revalidate and apply immediately), no (skip), or edit (open the affected object and skip); cumulative accepted rows preserve manifest-local dependencies"
+            "validate the complete manifest, then review each row in file order with yes (revalidate and apply immediately), no (skip), or edit (open the affected object and skip); resolved references preserve dependencies without replaying earlier rows; already-applied rows are skipped"
         ),
     )
     parser.add_argument(

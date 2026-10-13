@@ -84,8 +84,9 @@ External information includes one field:
 
 And the following tags:
 
-- _CorrectedName_: The name normalized to a standard format, e.g. clearing up diacritics
-  and unusual casing. This is used to find the mapped name.
+- _NormalizedName_: The name normalized to a standard format, e.g. clearing up
+  diacritics and unusual casing. This is used to find the mapped name. It is not for
+  correcting misspellings: those should map to the corresponding Name for that spelling.
 - _CommentFromDatabase_: A comment with some information provided by the database editor
   about this name.
 

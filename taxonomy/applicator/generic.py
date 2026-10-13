@@ -54,8 +54,8 @@ ALLOWED_ACTIONS = {
 ALLOWED_CONFIDENCES = {"high", "medium", "low"}
 
 # Structured recommendation manifests use constructor names because they are easier
-# to review than numeric ADT tags. Keep manifests written before the GraphQL tag-name
-# cleanup executable; persisted database values already use the unchanged numeric tags.
+# to review than numeric ADT tags. Keep manifests executable after constructor renames;
+# persisted database values already use the unchanged numeric tags.
 _LEGACY_ADT_MEMBER_NAMES = {
     ("ArticleTag", "ArticleISSN"): "ISSN",
     ("ArticleTag", "BiblioNoteArticle"): "BiblioNote",
@@ -66,6 +66,7 @@ _LEGACY_ADT_MEMBER_NAMES = {
     ("CitationGroupTag", "IgnoreLintCitationGroup"): "IgnoreLint",
     ("CitationGroupTag", "OnlineRepository"): "Repository",
     ("ClassificationEntryTag", "AgeClassCE"): "AgeClass",
+    ("ClassificationEntryTag", "CorrectedName"): "NormalizedName",
     ("ClassificationEntryTag", "IgnoreLintClassificationEntry"): "IgnoreLint",
     ("ClassificationEntryTag", "LSIDCE"): "LSID",
     ("IssueDateTag", "CommentIssueDate"): "Comment",
@@ -1550,6 +1551,20 @@ def build_plan(
                     and change["field"] == model.label_field
                     and isinstance(change["new_value"], str)
                 )
+            if row.action == MANUAL_REVIEW:
+                # A companion update may rename this same object. Accept that
+                # explicitly guarded final label on retry, but not arbitrary drift.
+                allowed_object_labels.update(
+                    change["new_value"]
+                    for companion in original_rows
+                    if companion.action == UPDATE_OBJECT
+                    and companion.object == row.object
+                    for change in companion.changes
+                    if change["operation"] == "set"
+                    and change["field"] == model.label_field
+                    and change["old_value"] == row.object.label
+                    and isinstance(change["new_value"], str)
+                )
             if label not in allowed_object_labels and not (
                 allow_manual_label_changes and row.action == MANUAL_REVIEW
             ):
@@ -2940,6 +2955,15 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
                 }
                 new_value = _replace_created_models(new_value, replacements)
                 if operation in {"add", "remove", "normalize"}:
+                    # The copied object's tags still reference persisted models,
+                    # while the planned delta already references their proposals.
+                    setattr(
+                        proposal,
+                        field_name,
+                        _replace_created_models(
+                            getattr(proposal, field_name), replacements
+                        ),
+                    )
                     new_value = _compose_tag_edit(
                         proposal,
                         field_name,
@@ -2961,6 +2985,11 @@ def add_virtual_models(plan: RecommendationPlan, builder: ProposalBuilder) -> No
         }
         new_value = _replace_created_models(new_value, replacements)
         if row.action in {ADD_TAG, REMOVE_TAG}:
+            setattr(
+                proposal,
+                row.field,
+                _replace_created_models(getattr(proposal, row.field), replacements),
+            )
             new_value = _compose_tag_edit(
                 proposal,
                 row.field,

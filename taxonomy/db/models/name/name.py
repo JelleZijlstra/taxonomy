@@ -530,7 +530,28 @@ class Name(BaseModel):
                         ):
                             return f"{stem}idae"
         else:
-            return infer_corrected_original_name(self.original_name, self.group)
+            inferred = infer_corrected_original_name(self.original_name, self.group)
+            if (
+                self.group is Group.species
+                and self.original_rank in (Rank.subspecies, Rank.variety)
+                and inferred is not None
+                and len(inferred.split()) == 2
+            ):
+                ce = self.get_mapped_classification_entry()
+                if (
+                    ce is not None
+                    and ce.article == self.original_citation
+                    and ce.rank is self.original_rank
+                    and ce.name == self.original_name
+                    and (expanded := ce.get_name_to_use_as_normalized_original_name())
+                    is not None
+                ):
+                    parts = expanded.split()
+                    if len(parts) == 3 and [parts[0], parts[-1]] == inferred.split():
+                        # Preserve the literal binomial while retaining the species
+                        # supplied by its source-local infraspecific placement.
+                        return expanded
+            return inferred
         return None
 
     def get_value_for_field(self, field: str, default: str | None = None) -> Any:
@@ -2297,11 +2318,22 @@ class Name(BaseModel):
         self,
     ) -> Iterable[models.ClassificationEntry]:
         if self.original_citation is None:
-            return []
-        return models.ClassificationEntry.select_valid().filter(
+            return
+        for candidate in models.ClassificationEntry.select_valid().filter(
             models.ClassificationEntry.mapped_name == self,
             models.ClassificationEntry.article == self.original_citation,
-        )
+        ):
+            ce = (
+                candidate
+                if candidate.is_virtual
+                else models.ClassificationEntry.resolve_reference(candidate.id)
+            )
+            if (
+                not ce.is_invalid()
+                and ce.mapped_name == self
+                and ce.article == self.original_citation
+            ):
+                yield ce
 
     def get_mapped_classification_entry(self) -> models.ClassificationEntry | None:
         if self.original_citation is None:

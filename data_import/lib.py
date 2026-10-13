@@ -2185,7 +2185,7 @@ def add_classification_entries(
         if name.get("age_class"):
             tags.append(ClassificationEntryTag.AgeClass(name["age_class"]))
         if name.get("corrected_name"):
-            tags.append(ClassificationEntryTag.CorrectedName(name["corrected_name"]))
+            tags.append(ClassificationEntryTag.NormalizedName(name["corrected_name"]))
         for key, value in name.get("extra_fields", {}).items():
             value = helpers.interactive_clean_string(value, clean_whitespace=True)
             tags.append(ClassificationEntryTag.StructuredData(key, value))

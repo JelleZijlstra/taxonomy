@@ -1,18 +1,65 @@
-"""Shared page inference for Name and ClassificationEntry source detail tags."""
+"""Shared cleanup and page inference for source detail tags."""
 
 import re
 from collections.abc import Iterable, Sequence
 
 from taxonomy import adt
-from taxonomy.db import detail_pages, models
+from taxonomy.db import detail_pages, helpers, models
+from taxonomy.db.constants import StringCleanupOption
 from taxonomy.db.models.base import LintConfig, LintResource
 from taxonomy.db.models.lint import (
     field_fix,
+    field_issue,
     fixes_issue,
     replace_tag_fix,
     replace_tag_issue,
 )
 from taxonomy.db.models.lint_types import LintResult
+
+
+def normalized_text(tag: adt.ADT) -> str:
+    """Use the same noninteractive text cleanup as general field lint."""
+    options = helpers.get_string_cleanup_options(type(tag).__annotations__["text"])
+    return helpers.interactive_clean_string(
+        tag.text,
+        normalize_sex_symbols=StringCleanupOption.normalize_sex_symbols in options,
+        normalize_detail_ocr=StringCleanupOption.normalize_detail_ocr in options,
+        interactive=False,
+    )
+
+
+def clean_duplicate_details(
+    owner: models.Name | models.ClassificationEntry,
+) -> Iterable[LintResult]:
+    field = "type_tags" if isinstance(owner, models.Name) else "tags"
+    original = getattr(owner, field)
+    details = _details(owner)
+    normalized = [
+        tag.replace(text=normalized_text(tag)) if tag in details else tag
+        for tag in original
+    ]
+    new_tags = []
+    for index, tag in enumerate(normalized):
+        if original[index] in details and tag in normalized[:index]:
+            continue
+        if original[index] in details and any(
+            type(other) is type(tag) and other.text == tag.text
+            # Only remove a quotation if another tag preserves every populated
+            # field, including its source and ClassificationEntry provenance.
+            and all(
+                getattr(tag, attr) in (None, getattr(other, attr))
+                for attr in type(tag)._attributes
+                if attr != "text"
+            )
+            and other != tag
+            for other in normalized
+        ):
+            continue
+        new_tags.append(tag)
+    if tuple(new_tags) != tuple(original):
+        yield field_issue(
+            "normalize and remove redundant detail tags", owner, field, tuple(new_tags)
+        )
 
 
 def _numbered_pages(page: str | None) -> set[str]:

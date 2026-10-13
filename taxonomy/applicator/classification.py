@@ -224,7 +224,7 @@ class ArticleDraft(AbstractContextManager["ArticleDraft"]):
         if age_class is not None:
             add_tag("AgeClass", age=age_class)
         if normalized_name is not None:
-            add_tag("CorrectedName", text=normalized_name)
+            add_tag("NormalizedName", text=normalized_name)
         if materialize_parent_taxon_id is not None and not materialize:
             raise ClassificationDraftError(
                 "materialize_parent_taxon_id requires materialize=True"

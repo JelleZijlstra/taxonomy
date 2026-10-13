@@ -275,6 +275,7 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[LintResult]
         return
     if nam.original_rank is Rank.synonym:
         return
+    dupes: Iterable[Name]
     if nam.original_rank is Rank.synonym_species:
         dupes = Name.select_valid().filter(
             Name.taxon == nam.taxon, Name.root_name == nam.root_name
@@ -286,11 +287,20 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[LintResult]
             Name.corrected_original_name == nam.corrected_original_name,
         )
     base = nam.resolve_variant()
+    if nam.is_virtual:
+        # Queries return persisted rows, including this proposal's own origin.
+        # Resolve them before comparing dates or the proposed nominal identity.
+        dupes = [
+            dupe if dupe.is_virtual else Name.resolve_reference(dupe.id)
+            for dupe in dupes
+        ]
     earlier = sorted(
         [
             dupe
             for dupe in dupes
-            if dupe.get_date_object() < nam.get_date_object()
+            if dupe != nam
+            and not dupe.is_invalid()
+            and dupe.get_date_object() < nam.get_date_object()
             and dupe.resolve_variant() == base
         ],
         key=lambda dupe: (dupe.get_date_object(), dupe.id),
@@ -347,15 +357,22 @@ def mark_incorrect_subsequent_spelling_as_name_combination(
         return
     original_root_name = nam.corrected_original_name.split()[-1]
     target = nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf)
-    existing = [
-        nam
-        for nam in Name.select_valid().filter(
+    candidates = (
+        candidate if candidate.is_virtual else Name.resolve_reference(candidate.id)
+        for candidate in Name.select_valid().filter(
             Name.root_name == nam.root_name,
             Name.group == nam.group,
             Name.taxon == nam.taxon,
         )
-        if nam.get_tag_target(NameTag.IncorrectSubsequentSpellingOf) == target
-        and nam.root_name == original_root_name
+    )
+    existing = [
+        candidate
+        for candidate in candidates
+        if not candidate.is_invalid()
+        and candidate.group == nam.group
+        and candidate.taxon == nam.taxon
+        and candidate.get_tag_target(NameTag.IncorrectSubsequentSpellingOf) == target
+        and candidate.root_name == original_root_name
     ]
     if not existing:
         return

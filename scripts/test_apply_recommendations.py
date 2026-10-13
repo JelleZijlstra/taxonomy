@@ -1151,7 +1151,7 @@ def test_individual_review_failure_does_not_hide_earlier_applied_rows(
         selected_lines: set[int],
     ) -> apply_recommendations.ExecutionResult:
         applied_selections.append(set(selected_lines))
-        if selected_lines == {1, 2}:
+        if selected_lines == {2}:
             raise RuntimeError("simulated failure")
         return apply_recommendations.ExecutionResult(())
 
@@ -1160,21 +1160,25 @@ def test_individual_review_failure_does_not_hide_earlier_applied_rows(
             items, apply_selected=apply_selected, choose=lambda **kwargs: "yes"
         )
 
-    assert applied_selections == [{1}, {1, 2}]
+    assert applied_selections == [{1}, {2}]
     assert "Earlier accepted changes" in capsys.readouterr().out
 
 
-def test_review_each_replans_cumulative_selected_rows_and_applies_each_immediately(
+def test_review_each_replans_only_current_row_and_applies_each_immediately(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
     _write(path, [_generic_manual_row(), _location_row()])
     build_calls: list[list[int]] = []
     events: list[str] = []
-    fake_plans = (object(), object(), object())
+    fake_plans = (
+        object(),
+        generic_recommendations.RecommendationPlan((), Counter()),
+        object(),
+    )
 
     def build_plans(
-        recommendations: apply_recommendations.Recommendations,
+        recommendations: apply_recommendations.Recommendations, **kwargs: Any
     ) -> tuple[object, object, object]:
         build_calls.append(
             [
@@ -1199,7 +1203,7 @@ def test_review_each_replans_cumulative_selected_rows_and_applies_each_immediate
         apply_selected: Callable[[set[int]], apply_recommendations.ExecutionResult],
     ) -> apply_recommendations.IndividualReviewResult:
         first = apply_selected({1})
-        second = apply_selected({1, 2})
+        second = apply_selected({2})
         return apply_recommendations.IndividualReviewResult(
             frozenset({1, 2}),
             apply_recommendations.ExecutionResult(
@@ -1237,7 +1241,7 @@ def test_review_each_replans_cumulative_selected_rows_and_applies_each_immediate
 
     apply_recommendations.main()
 
-    assert build_calls == [[1, 2], [1], [1, 2]]
+    assert build_calls == [[1, 2], [1], [2]]
     assert events == ["virtual lint", "apply", "apply"]
 
 
@@ -1246,7 +1250,11 @@ def test_review_each_abort_before_yes_does_not_apply_rows(
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
     _write(path, [_generic_manual_row()])
-    fake_plans = (object(), object(), object())
+    fake_plans = (
+        object(),
+        generic_recommendations.RecommendationPlan((), Counter()),
+        object(),
+    )
     build_count = 0
 
     def build_plans(recommendations: object) -> tuple[object, object, object]:
@@ -1716,7 +1724,11 @@ def test_review_each_combines_with_review_manual_and_edit_manual(
 ) -> None:
     path = tmp_path / "recommendations.jsonl"
     _write(path, [_generic_manual_row()])
-    fake_plans = (object(), object(), object())
+    fake_plans = (
+        object(),
+        generic_recommendations.RecommendationPlan((), Counter()),
+        object(),
+    )
     manual_items = (object(),)
     events: list[str] = []
 
@@ -1737,7 +1749,9 @@ def test_review_each_combines_with_review_manual_and_edit_manual(
         lambda recommendations: events.append("review manual"),
     )
     monkeypatch.setattr(
-        apply_recommendations, "build_plans", lambda recommendations: fake_plans
+        apply_recommendations,
+        "build_plans",
+        lambda recommendations, **kwargs: fake_plans,
     )
     monkeypatch.setattr(
         apply_recommendations,
@@ -2497,3 +2511,166 @@ def test_intake_rejects_cross_family_file_destinations(tmp_path: Path) -> None:
             cast(Any, SimpleNamespace(actions=())),
             cast(Any, SimpleNamespace(actions=(conflicting,))),
         )
+
+
+@pytest.mark.parametrize("schema_version", [1, 2])
+def test_review_each_keeps_created_references_without_replaying_mutated_parent(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, schema_version: int
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    rows = [
+        _classification_entry_row(ref="parent", name="Mus", rank="genus", page="1"),
+        _classification_entry_row(
+            ref="child",
+            name="Mus testus",
+            rank="species",
+            page="2",
+            parent={"model": "ClassificationEntry", "ref": "parent", "label": "Mus"},
+        ),
+        _classification_entry_row(
+            ref="other",
+            name="Mus alter",
+            rank="species",
+            page="3",
+            parent={"model": "ClassificationEntry", "ref": "parent", "label": "Mus"},
+        ),
+    ]
+    for row in rows:
+        row["schema_version"] = schema_version
+        if schema_version == 2:
+            row["match"] = {"name": cast(dict[str, Any], row["values"])["name"]}
+    _write(path, rows)
+    article = Article.virtual(name="Example article")
+    monkeypatch.setattr(generic_recommendations, "_get_object", lambda *args: article)
+    original_build = generic_recommendations.build_plan
+    built_rows: list[list[int]] = []
+
+    def build_generic(rows: Any, **kwargs: Any) -> Any:
+        built_rows.append([row.line_number for row in rows])
+        return original_build(
+            rows,
+            **kwargs,
+            find_objects_by_label=lambda *args: [],
+            find_objects_by_match=lambda *args: [],
+            get_unique_constraints=lambda model: (),
+        )
+
+    monkeypatch.setattr(generic_recommendations, "build_plan", build_generic)
+    created: list[ClassificationEntry] = []
+
+    def create_object(model: Any, values: Any) -> ClassificationEntry:
+        obj = model.virtual(**values)
+        if created:
+            assert obj.parent is created[0]
+            # Replaying the parent's original creation would now fail its guards.
+            created[0].page = "1-2"
+        created.append(obj)
+        return obj
+
+    monkeypatch.setattr(
+        generic_recommendations,
+        "execute_plan",
+        partial(generic_recommendations.execute_plan, create_object=create_object),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "review_recommendations_individually",
+        partial(
+            apply_recommendations.review_recommendations_individually,
+            choose=lambda **kwargs: "yes",
+        ),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--review-each"]
+    )
+    apply_recommendations.main()
+    assert built_rows == [[1, 2, 3], [1], [2], [3]]
+    assert len(created) == 3
+    assert created[0].page == "1-2"
+
+
+def test_review_each_skips_applied_rows_without_prompting(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    row = _classification_entry_row(ref="existing", name="Mus", rank="genus", page="1")
+    _write(path, [row])
+    article = Article.virtual(name="Example article")
+    ce = ClassificationEntry.virtual(
+        article=article, name="Mus", rank=Rank.genus, page="1"
+    )
+    monkeypatch.setattr(generic_recommendations, "_get_object", lambda *args: article)
+    generic_plan = generic_recommendations.build_plan(
+        apply_recommendations.read_recommendations(path).generic_rows,
+        find_objects_by_label=lambda *args: [ce],
+    )
+    plans = (
+        article_recommendations.RecommendationPlan((), Counter()),
+        generic_plan,
+        location_recommendations.RecommendationPlan((), Counter()),
+        object(),
+    )
+    items = apply_recommendations._resolve_individual_review_items(
+        apply_recommendations.read_recommendations(path), cast(Any, plans)
+    )
+    assert items[0].already_applied
+    result = apply_recommendations.review_recommendations_individually(
+        items,
+        apply_selected=lambda lines: pytest.fail("applied an existing row"),
+        choose=lambda **kwargs: pytest.fail("prompted for an existing row"),
+    )
+    assert not result.applied_lines
+    assert "SKIP_ALREADY_APPLIED line=1 action=create_object" in capsys.readouterr().out
+
+
+def test_review_each_rejects_dependency_on_declined_creation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "recommendations.jsonl"
+    _write(
+        path,
+        [
+            _classification_entry_row(ref="parent", name="Mus", rank="genus", page="1"),
+            _classification_entry_row(
+                ref="child",
+                name="Mus testus",
+                rank="species",
+                page="2",
+                parent={
+                    "model": "ClassificationEntry",
+                    "ref": "parent",
+                    "label": "Mus",
+                },
+            ),
+        ],
+    )
+    article = Article.virtual(name="Example article")
+    monkeypatch.setattr(generic_recommendations, "_get_object", lambda *args: article)
+    monkeypatch.setattr(
+        generic_recommendations,
+        "build_plan",
+        partial(
+            generic_recommendations.build_plan,
+            find_objects_by_label=lambda *args: [],
+            get_unique_constraints=lambda model: (),
+        ),
+    )
+    choices: Iterator[Literal["yes", "no", "edit"]] = iter(("no", "yes"))
+    monkeypatch.setattr(
+        apply_recommendations,
+        "review_recommendations_individually",
+        partial(
+            apply_recommendations.review_recommendations_individually,
+            choose=lambda **kwargs: next(choices),
+        ),
+    )
+    monkeypatch.setattr(
+        apply_recommendations,
+        "execute_plans",
+        lambda *args, **kwargs: pytest.fail("must not write"),
+    )
+    monkeypatch.setattr(
+        sys, "argv", ["apply_recommendations.py", str(path), "--review-each"]
+    )
+    with pytest.raises(SystemExit):
+        apply_recommendations.main()
