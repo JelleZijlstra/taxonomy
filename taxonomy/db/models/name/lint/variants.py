@@ -94,8 +94,7 @@ def maybe_take_over_name(
 ) -> Iterable[LintResult]:
     if (
         nam.get_mapped_classification_entry() is not None
-        and nam.nomenclature_status
-        in (
+        and nam.nomenclature_status in (
             NomenclatureStatus.name_combination,
             NomenclatureStatus.incorrect_subsequent_spelling,
         )

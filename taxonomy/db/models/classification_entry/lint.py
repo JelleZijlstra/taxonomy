@@ -1116,8 +1116,7 @@ def _emendation_postdates_source(ce: ClassificationEntry, nam: Name) -> bool:
     # An ordinary combination or misspelling can be taken over by an earlier CE.
     # An emendation is a distinct act and cannot explain an earlier occurrence.
     return (
-        nam.nomenclature_status
-        in (
+        nam.nomenclature_status in (
             NomenclatureStatus.justified_emendation,
             NomenclatureStatus.unjustified_emendation,
         )

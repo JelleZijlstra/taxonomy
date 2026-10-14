@@ -964,7 +964,9 @@ def _check_all_type_tags(
 
         case TypeTag.StructuredVerbatimCitation():
             if nam.original_citation is not None:
-                yield "has StructuredVerbatimCitation tag but also has original_citation"
+                yield (
+                    "has StructuredVerbatimCitation tag but also has original_citation"
+                )
                 return []
 
     return [*tags, tag]

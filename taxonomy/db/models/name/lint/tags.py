@@ -90,9 +90,7 @@ def _check_preoccupation_tag(
             my_genus = get_parent(nam)
             senior_genus = get_parent(senior_name)
             if my_genus != senior_genus:
-                yield (
-                    f"{nam} is marked as a secondary homonym of {senior_name}, but is not currently placed in the same genus"
-                )
+                yield f"{nam} is marked as a secondary homonym of {senior_name}, but is not currently placed in the same genus"
         elif isinstance(tag, NameTag.PreoccupiedBy):
             if my_original is not None and my_original == senior_original:
                 new_tag = NameTag.PrimaryHomonymOf(tag.name, comment=tag.comment)
@@ -944,9 +942,7 @@ def _check_as_emended_name(nam: Name, cfg: LintConfig) -> Iterable[str]:
         return
     original = as_emended_target.get_tag_target(NameTag.JustifiedEmendationOf)
     if original is None:
-        yield (
-            f"as_emended target {as_emended_target} lacks a justified emendation tag"
-        )
+        yield f"as_emended target {as_emended_target} lacks a justified emendation tag"
         return
     if original != nam:
         yield f"incorrect original spelling traces back to {original}, not this name"
@@ -1070,8 +1066,7 @@ def check_infrasubspecific(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
     else:
         if any(
             isinstance(tag, NameTag.Condition)
-            and tag.status
-            in (
+            and tag.status in (
                 NomenclatureStatus.infrasubspecific,
                 NomenclatureStatus.not_published_with_a_generic_name,
             )

@@ -101,7 +101,7 @@ def item_file_for_authority_link(nam: Name, cfg: LintConfig) -> Iterable[str]:
         seen.update(matches)
         for itf in matches:
             message = f"authority page link points to existing ItemFile {itf}"
-            yield (message)
+            yield message
             if cfg.interactive:
                 print(f"{nam}: {message}")
                 itf.burst()
@@ -187,7 +187,9 @@ def _check_bhl_item_matches(
     if not citation_item_ids:
         return
     if item_id not in citation_item_ids:
-        yield f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
+        yield (
+            f"BHL item mismatch: {item_id} (name) not in {citation_item_ids} (citation)"
+        )
         replacement = [
             page
             for page in get_candidate_bhl_pages(nam, verbose=False)

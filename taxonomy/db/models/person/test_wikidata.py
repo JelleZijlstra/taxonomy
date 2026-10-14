@@ -127,8 +127,9 @@ def test_date_precision(
     [
         [date_claim(before=1)],
         [
-            date_claim()
-            | {"qualifiers": {"P1480": [{"datavalue": {"value": {"id": "Q5727902"}}}]}}
+            date_claim() | {
+                "qualifiers": {"P1480": [{"datavalue": {"value": {"id": "Q5727902"}}}]}
+            }
         ],
         [date_claim(), date_claim("+1901-00-00T00:00:00Z")],
     ],

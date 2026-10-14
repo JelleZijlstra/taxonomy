@@ -276,9 +276,7 @@ def _check_homonym_list(
     already_variant_of = {
         # Types don't communicate that these are all tags that have a name attribute
         # static analysis: ignore[attribute_is_never_set]
-        tag.name
-        for tag in nam.tags
-        if isinstance(tag, relevant_tags)
+        tag.name for tag in nam.tags if isinstance(tag, relevant_tags)
     }
 
     for senior_homonym in relevant_names:
