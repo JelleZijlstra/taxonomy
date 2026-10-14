@@ -322,8 +322,8 @@ class TypeTagRequiredness:
     requiredness: Requiredness
     message: str | None = None
     must_be_from_original_citation: bool = False
-    alternative_with_citation: TypeTagCons | None = None
-    alternative: TypeTagCons | None = None
+    alternative_with_citation: type[TypeTag] | None = None
+    alternative: type[TypeTag] | None = None
 
 
 def get_type_tag_status(

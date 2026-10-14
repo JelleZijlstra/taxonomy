@@ -1959,6 +1959,8 @@ class Name(BaseModel):
             if no_tag is not None:
                 # Explicit editing action: only add source-bearing absence tags
                 # for derived data, never absence assertions for source details.
+                # These constructors are source-bearing No* ADT variants.
+                # static analysis: ignore[incompatible_call]
                 new_tag = no_tag(source=self.original_citation)
                 print(f"Adding tag: {new_tag!r}")
                 assert isinstance(new_tag, TypeTag)

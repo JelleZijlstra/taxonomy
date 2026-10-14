@@ -342,6 +342,7 @@ def extract_organ(text: str) -> list[Evidence[TypeTag]]:
             )
             for item in result
         ]
+    # static analysis: ignore[incompatible_return_value]
     return list(dict.fromkeys(result))
 
 

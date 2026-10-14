@@ -1,7 +1,7 @@
 """Compare source quotations with derived data; infer only unambiguous additions."""
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from functools import cache
 
 from taxonomy.db import helpers
@@ -17,7 +17,7 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import add_tag_issue
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.name import derived_tags as extract
-from taxonomy.db.models.name.name import Name, TypeTag, TypeTagCons
+from taxonomy.db.models.name.name import Name, TypeTag
 from taxonomy.db.models.person import Person
 
 from .base import LINT
@@ -61,14 +61,18 @@ def _compatible(item: extract.Evidence[TypeTag], tag: TypeTag) -> bool:
     )
 
 
-def _organ_supported(value: TypeTag, existing: list[TypeTag]) -> bool:
+def _organ_supported(value: TypeTag, existing: Sequence[TypeTag]) -> bool:
+    # static analysis: ignore[attribute_is_never_set]
     organs = {tag.organ for tag in existing}
+    # static analysis: ignore[attribute_is_never_set]
     if value.organ in organs:
         return True
     # A whole skeleton may be represented either as one tag or as skull plus
     # postcranium. This is a difference of representation, not source evidence.
+    # static analysis: ignore[attribute_is_never_set]
     if value.organ in (SpecimenOrgan.skull, SpecimenOrgan.postcranial_skeleton):
         return SpecimenOrgan.skeleton in organs
+    # static analysis: ignore[attribute_is_never_set]
     if value.organ is SpecimenOrgan.skeleton:
         return {SpecimenOrgan.skull, SpecimenOrgan.postcranial_skeleton} <= organs
     return False
@@ -76,7 +80,7 @@ def _organ_supported(value: TypeTag, existing: list[TypeTag]) -> bool:
 
 def _check(
     nam: Name,
-    tag_cls: TypeTagCons,
+    tag_cls: type[TypeTag],
     extractor: Callable[[str], list[extract.Evidence[TypeTag]]],
     *,
     location: bool = False,

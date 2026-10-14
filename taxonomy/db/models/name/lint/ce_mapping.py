@@ -238,6 +238,7 @@ def infer_tags_from_mapped_entries(nam: Name, cfg: LintConfig) -> Iterable[LintR
             for ce_tag in ce.tags:
                 if not isinstance(ce_tag, ce_tag_type):
                     continue
+                # static analysis: ignore[incompatible_call]
                 tag = tag_type(
                     text=ce_tag.text,
                     source=ce.article,

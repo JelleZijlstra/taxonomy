@@ -463,6 +463,7 @@ def _check_detail_type_tag(
                         and text_to_match in other.text
                     )
                 )
+                # static analysis: ignore[attribute_is_never_set]
                 and other.classification_entry is not None
                 and all(
                     getattr(tag, field) in (None, getattr(other, field))

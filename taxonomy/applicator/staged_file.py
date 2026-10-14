@@ -165,7 +165,7 @@ def parse_recommendation(data: dict[str, Any], line_number: int) -> Recommendati
         raise RecommendationError(
             f"line {line_number}: unsupported confidence {confidence!r}"
         )
-    allowed_fields = {
+    allowed_fields: set[str] = {
         "schema_version",
         "action",
         "confidence",

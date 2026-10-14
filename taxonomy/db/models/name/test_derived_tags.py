@@ -456,6 +456,7 @@ def test_altitude_ambiguous_decimal_and_horizontal_offset() -> None:
 
 def test_skull_and_skeleton_means_postcranium() -> None:
     evidence = extract.extract_organ("Skin, skull, and skeleton.")
+    # static analysis: ignore[attribute_is_never_set]
     assert {item.value.organ for item in evidence} == {
         SpecimenOrgan.skin,
         SpecimenOrgan.skull,

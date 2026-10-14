@@ -67,7 +67,9 @@ def test_detail_serialization_preserves_stored_positions(
     if tag_type is TypeTag.SpecimenDetail:
         suffix = [456, *suffix]
         old.append(456)
+        # static analysis: ignore[attribute_is_never_set]
         assert TypeTag.unserialize(old).classification_entry.id == 456
+        # static analysis: ignore[attribute_is_never_set]
         assert TypeTag.unserialize(old).comment is None
     else:
         suffix.append(456)
@@ -168,11 +170,13 @@ def test_detail_sync_both_directions_and_idempotence(
     assert len(issues) == 1
     _apply(issues)
     (detail,) = name.get_tags(name.type_tags, name_type)
+    # static analysis: ignore[attribute_is_never_set]
     assert detail.classification_entry == ce
     assert all(getattr(detail, field) == value for field, value in _METADATA.items())
     assert list(ce_mapping.infer_tags_from_mapped_entries.linter(name, _CFG)) == []
     ce.tags = (ce_type("quotation"),) if existing else ()  # type: ignore[assignment]
     _apply(infer_data_from_mapped.linter(ce, _CFG))
+    # static analysis: ignore[incompatible_call]
     assert ce.tags == (ce_type("quotation", **_METADATA),)
     assert list(infer_data_from_mapped.linter(ce, _CFG)) == []
 
@@ -194,9 +198,12 @@ def test_normalized_duplicate_details_stay_removed(
     raw = "Plée’s monkey was called “carita blanca.”"
     clean = 'Plée\'s monkey was called "carita blanca."'
     name_tags = [
+        # static analysis: ignore[incompatible_call]
         name_type(raw, ce.article, classification_entry=ce, page="12"),
+        # static analysis: ignore[incompatible_call]
         name_type(clean, ce.article, classification_entry=ce, **_METADATA),
     ]
+    # static analysis: ignore[incompatible_call]
     ce_tags = [ce_type(raw, page="12"), ce_type(clean, **_METADATA)]
     if reverse_order:
         name_tags.reverse()
@@ -313,6 +320,7 @@ def test_detail_page_cleanup_inference_and_validation(
     monkeypatch: pytest.MonkeyPatch, tag_type: type[TypeTag]
 ) -> None:
     name, ce = _models(monkeypatch)
+    # static analysis: ignore[incompatible_call]
     tag = tag_type("quotation", ce.article, comment="p. 12", translation="translation")
     issues, tags = _finish(type_tags._check_detail_type_tag(tag, name, _CFG, {}))
     assert issues == []
@@ -338,6 +346,7 @@ def test_ce_detail_page_cleanup(
     _, ce = _models(monkeypatch)
     ce.tags = (ce_type("quotation", comment="p. 12", translation="translation"),)  # type: ignore[assignment]
     _apply(check_tags.linter(ce, _CFG))
+    # static analysis: ignore[incompatible_call]
     assert ce.tags == (ce_type("quotation", page="12", translation="translation"),)
 
 
@@ -349,6 +358,7 @@ def test_detail_checks_ce_provenance_text_and_metadata(
 ) -> None:
     name, ce = _models(monkeypatch)
     ce.tags = (ce_type("quotation", **_METADATA),)  # type: ignore[assignment]
+    # static analysis: ignore[incompatible_call]
     tag = name_type("quotation", ce.article, classification_entry=ce)
     issues, tags = _finish(type_tags._check_detail_type_tag(tag, name, _CFG, {}))
     assert issues == []
@@ -401,6 +411,7 @@ def test_sync_preserves_conflicting_metadata(
     ce_type: type[ClassificationEntryTag],
 ) -> None:
     name, ce = _models(monkeypatch)
+    # static analysis: ignore[incompatible_call]
     detail = name_type("quotation", ce.article, classification_entry=ce, page="13")
     name.type_tags = (*name.type_tags, detail)  # type: ignore[assignment]
     ce.tags = (ce_type("quotation", page="12"),)  # type: ignore[assignment]
@@ -409,6 +420,7 @@ def test_sync_preserves_conflicting_metadata(
     assert len(name_issues) == len(ce_issues) == 1
     assert all(isinstance(issue, str) for issue in [*name_issues, *ce_issues])
     assert detail in name.type_tags
+    # static analysis: ignore[incompatible_call]
     assert ce.tags == (ce_type("quotation", page="12"),)
 
 

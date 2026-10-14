@@ -101,8 +101,11 @@ def _same_context(
         return False
     if isinstance(owner, models.Name):
         return (
+            # static analysis: ignore[attribute_is_never_set]
             left.classification_entry is None
+            # static analysis: ignore[attribute_is_never_set]
             or right.classification_entry is None
+            # static analysis: ignore[attribute_is_never_set]
             or left.classification_entry == right.classification_entry
         )
     return True
@@ -132,13 +135,16 @@ def _move_annotation(
     fixes = [
         replace_tag_fix(owner, tag, tag.replace(text=text, page=page), field=field)
     ]
+    # static analysis: ignore[attribute_is_never_set]
     if isinstance(owner, models.Name) and tag.classification_entry is not None:
+        # static analysis: ignore[attribute_is_never_set]
         ce = tag.classification_entry
         if ce.article == tag.source:
             if isinstance(tag, models.name.TypeTag.LocationDetail):
                 if ce.type_locality == tag.text:
                     fixes.append(field_fix(ce, "type_locality", text))
             else:
+                # static analysis: ignore[incompatible_argument]
                 ce_tag_type = models.name.name.DETAIL_TAG_TO_CE_TAG[type(tag)]
                 for ce_tag in ce.get_tags(ce.tags, ce_tag_type):
                     if ce_tag.text != tag.text:
@@ -163,21 +169,24 @@ def infer_detail_pages(
         annotation = detail_pages.extract_page_annotation(tag.text)
         if annotation is not None:
             text, page = annotation
+            # static analysis: ignore[attribute_is_never_set]
             if tag.page is not None and tag.page != page:
+                # static analysis: ignore[attribute_is_never_set]
                 yield f"{tag} has page annotation {page!r} conflicting with page {tag.page!r}"
             elif not _page_within_source(_source(owner, tag), page):
                 yield f"{tag} has page annotation {page!r} outside its source's page range; leaving quotation unchanged"
             else:
                 yield from _move_annotation(owner, tag, text, page, field)
             continue
+        # static analysis: ignore[attribute_is_never_set]
         if tag.page is not None:
             continue
         donors = [
-            (other.text, other.page)
-            for other in details
-            if other is not tag
-            and other.page is not None
-            and _same_context(owner, tag, other)
+            # static analysis: ignore[attribute_is_never_set]
+            (other.text, other.page) for other in details if other is not tag
+            # static analysis: ignore[attribute_is_never_set]
+            and other.page is not None and _same_context(owner, tag, other)
+            # static analysis: ignore[attribute_is_never_set]
             and _page_within_source(_source(owner, other), other.page)
         ]
         inferred_page = detail_pages.page_from_containing_quotes(tag.text, donors)
@@ -202,10 +211,15 @@ def _known_pages(
     for tag in details:
         if _source(owner, tag) != source:
             continue
+        # static analysis: ignore[attribute_is_never_set]
         pages.update(_numbered_pages(tag.page))
+        # static analysis: ignore[attribute_is_never_set]
         if tag.page_link and len(_numbered_pages(tag.page)) == 1:
+            # static analysis: ignore[attribute_is_never_set]
             links.add((tag.page, tag.page_link))
+        # static analysis: ignore[attribute_is_never_set]
         if isinstance(owner, models.Name) and tag.classification_entry is not None:
+            # static analysis: ignore[attribute_is_never_set]
             ces.add(tag.classification_entry)
     if isinstance(owner, models.Name):
         ces.update(owner.get_classification_entries())
@@ -241,6 +255,7 @@ def infer_detail_pages_from_text(
         return
     details = _details(owner)
     field = "type_tags" if isinstance(owner, models.Name) else "tags"
+    # static analysis: ignore[attribute_is_never_set]
     sources = {_source(owner, tag) for tag in details if tag.page is None}
     for source in sources:
         if source is None:
@@ -249,6 +264,7 @@ def infer_detail_pages_from_text(
         known, links = _known_pages(owner, source, details)
         bhl = detail_pages.cached_bhl_pages(known, links, source.url) if known else ()
         for tag in details:
+            # static analysis: ignore[attribute_is_never_set]
             if tag.page is not None or _source(owner, tag) != source:
                 continue
             # Explicit annotations, including conflicts, belong to the cheap lint.
@@ -264,6 +280,7 @@ def infer_detail_pages_from_text(
             if not evidence or len({page.page for page in evidence}) != 1:
                 continue
             page = evidence[0].page
+            # static analysis: ignore[attribute_is_never_set]
             if any(link == tag.page_link and number != page for number, link in links):
                 continue
             if page is not None and not _page_within_source(source, page):
@@ -271,6 +288,7 @@ def infer_detail_pages_from_text(
             updated = tag.replace(page=page)
             if bhl_match.page is not None:
                 link = bhl_match.page.page_link
+                # static analysis: ignore[attribute_is_never_set]
                 if tag.page_link is not None and tag.page_link != link:
                     continue
                 updated = updated.replace(page_link=link)

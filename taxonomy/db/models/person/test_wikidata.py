@@ -474,10 +474,9 @@ def test_profile_lint_requires_network_and_preserves_conflicting_local_dates(
     monkeypatch.setattr(
         api, "get_item", Mock(return_value=item(claims={"P569": [date_claim()]}))
     )
-    assert lint.wikidata_profile.required_resources == {
-        LintResource.NETWORK,
-        LintResource.SLOW,
-    }
+    assert lint.wikidata_profile.required_resources == frozenset(
+        {LintResource.NETWORK, LintResource.SLOW}
+    )
     issues = list(
         lint.wikidata_profile.linter(p, LintConfig(autofix=True, interactive=False))
     )
