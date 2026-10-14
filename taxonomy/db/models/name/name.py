@@ -15,9 +15,11 @@ from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
+    Literal,
     NotRequired,
     Self,
     TypeAlias,
+    Union,
     assert_never,
 )
 
@@ -1959,8 +1961,6 @@ class Name(BaseModel):
             if no_tag is not None:
                 # Explicit editing action: only add source-bearing absence tags
                 # for derived data, never absence assertions for source details.
-                # These constructors are source-bearing No* ADT variants.
-                # static analysis: ignore[incompatible_call]
                 new_tag = no_tag(source=self.original_citation)
                 print(f"Adding tag: {new_tag!r}")
                 assert isinstance(new_tag, TypeTag)
@@ -3142,7 +3142,7 @@ SOURCE_TAGS = (
     TypeTag.NomenclatureDetail,
     TypeTag.DescriptionDetail,
 )
-DETAIL_TAG_TO_CE_TAG: dict[type[TypeTag], type[ClassificationEntryTag]] = {
+DETAIL_TAG_TO_CE_TAG = {
     TypeTag.SpecimenDetail: ClassificationEntryTag.TypeSpecimenData,
     TypeTag.TypeSpeciesDetail: ClassificationEntryTag.TypeSpeciesDetail,
     TypeTag.CollectionDetail: ClassificationEntryTag.CollectionDetail,
@@ -3161,9 +3161,24 @@ SPECIMEN_TAGS = (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
 
 if TYPE_CHECKING:
     TypeTagCons: TypeAlias = Any
+    SourceTag: TypeAlias = Any
+    SourceTagCons: TypeAlias = Any
+    SourceAbsenceTagCons: TypeAlias = Any
     NameTagCons: TypeAlias = Any
 else:
     TypeTagCons = TypeTag._Constructors
+    SourceTag = Union[*SOURCE_TAGS]
+    SourceTagCons = Literal[*SOURCE_TAGS]
+    SourceAbsenceTagCons = Literal[
+        TypeTag.NoEtymology,
+        TypeTag.NoLocation,
+        TypeTag.NoSpecimen,
+        TypeTag.NoDate,
+        TypeTag.NoAge,
+        TypeTag.NoGender,
+        TypeTag.NoOrgan,
+        TypeTag.NoCollector,
+    ]
     NameTagCons = NameTag._Constructors
 
 

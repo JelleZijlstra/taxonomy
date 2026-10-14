@@ -2337,7 +2337,6 @@ def infer_data_from_mapped(
                 == detail_lint.normalized_text(detail)
             ]
             if not matching:
-                # static analysis: ignore[incompatible_call]
                 new_tag = ce_tag_type(
                     text=detail_lint.normalized_text(detail),
                     **{

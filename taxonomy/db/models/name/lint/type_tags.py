@@ -452,6 +452,7 @@ def _check_detail_type_tag(
                 r"^(?:from|in)\s+", "", text_to_match, flags=re.IGNORECASE
             ).removesuffix(".")
         for other in tags_by_type.get(type(tag), ()):
+            assert isinstance(other, SOURCE_TAGS)
             if (
                 other is not tag
                 and other.source == tag.source
@@ -463,7 +464,6 @@ def _check_detail_type_tag(
                         and text_to_match in other.text
                     )
                 )
-                # static analysis: ignore[attribute_is_never_set]
                 and other.classification_entry is not None
                 and all(
                     getattr(tag, field) in (None, getattr(other, field))

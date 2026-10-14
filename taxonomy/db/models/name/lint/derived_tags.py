@@ -61,18 +61,16 @@ def _compatible(item: extract.Evidence[TypeTag], tag: TypeTag) -> bool:
     )
 
 
-def _organ_supported(value: TypeTag, existing: Sequence[TypeTag]) -> bool:
-    # static analysis: ignore[attribute_is_never_set]
+def _organ_supported(
+    value: TypeTag.Organ, existing: Sequence[TypeTag.Organ]  # type: ignore[name-defined]
+) -> bool:
     organs = {tag.organ for tag in existing}
-    # static analysis: ignore[attribute_is_never_set]
     if value.organ in organs:
         return True
     # A whole skeleton may be represented either as one tag or as skull plus
     # postcranium. This is a difference of representation, not source evidence.
-    # static analysis: ignore[attribute_is_never_set]
     if value.organ in (SpecimenOrgan.skull, SpecimenOrgan.postcranial_skeleton):
         return SpecimenOrgan.skeleton in organs
-    # static analysis: ignore[attribute_is_never_set]
     if value.organ is SpecimenOrgan.skeleton:
         return {SpecimenOrgan.skull, SpecimenOrgan.postcranial_skeleton} <= organs
     return False
@@ -81,7 +79,7 @@ def _organ_supported(value: TypeTag, existing: Sequence[TypeTag]) -> bool:
 def _check(
     nam: Name,
     tag_cls: type[TypeTag],
-    extractor: Callable[[str], list[extract.Evidence[TypeTag]]],
+    extractor: Callable[[str], Sequence[extract.Evidence[TypeTag]]],
     *,
     location: bool = False,
 ) -> Iterable[LintResult]:
@@ -95,7 +93,9 @@ def _check(
     if existing:
         for item, detail in evidence:
             if tag_cls is TypeTag.Organ:
-                compatible = _organ_supported(item.value, existing)
+                assert isinstance(item.value, TypeTag.Organ)
+                organs = list(nam.get_tags(nam.type_tags, TypeTag.Organ))
+                compatible = _organ_supported(item.value, organs)
             else:
                 compatible = any(_compatible(item, tag) for tag in existing)
             if not compatible:
