@@ -65,6 +65,7 @@ from taxonomy.upsheeter import batched, pprint_nonempty
 LIMIT_AUTH_LINKS = False
 
 MDD_ARTICLE_ID = 67057
+MAX_NAME_USAGES_LENGTH = 30_000
 
 
 @functools.cache
@@ -573,7 +574,7 @@ def get_hesp_row(
             if isinstance(tag, models.tags.TaxonTag.MDD):
                 row["Hesp_species_id"] = tag.id
                 break
-    row["Hesp_name_usages"] = " | ".join(
+    row["Hesp_name_usages"] = _format_name_usages(
         _stringify_ce(ce)
         for ce in sorted(
             name.classification_entries, key=lambda ce: ce.article.get_date_object()
@@ -584,6 +585,25 @@ def get_hesp_row(
     # TODO: MDD_subspecificEpithet
     # TODO: MDD_comments
     return {key: value.replace("\\ ", " ") for key, value in row.items()}
+
+
+def _format_name_usages(usages: Iterable[str]) -> str:
+    """Keep a complete prefix of usages, leaving room for the omitted count."""
+    parts = list(usages)
+    separator = " | "
+    length = sum(map(len, parts)) + len(separator) * max(0, len(parts) - 1)
+    if length <= MAX_NAME_USAGES_LENGTH:
+        return separator.join(parts)
+
+    total = len(parts)
+    while parts:
+        length -= len(parts.pop())
+        if parts:
+            length -= len(separator)
+        suffix = f"{total - len(parts)} omitted"
+        if length + len(separator) + len(suffix) <= MAX_NAME_USAGES_LENGTH:
+            break
+    return separator.join([*parts, f"{total - len(parts)} omitted"])
 
 
 def _stringify_ce(ce: ClassificationEntry) -> str:

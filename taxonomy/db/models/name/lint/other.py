@@ -34,12 +34,10 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import (
     LintWrapper,
     add_tag_issue,
-    field_fix,
     field_issue,
     fields_issue,
-    fixes_issue,
 )
-from taxonomy.db.models.lint_types import LintIssue, LintResult
+from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.name import required_fields
 from taxonomy.db.models.name.name import ExperimentalLintCondition as Exp
 from taxonomy.db.models.name.name import (
@@ -571,58 +569,13 @@ def duplicate_genus(name: Name) -> str:
     return f"{name.root_name} {name.taxonomic_authority()}, {name.year}, {citation}"
 
 
-def _merge_name_issue(message: str, name: Name, target: Name) -> LintIssue:
-    if name.status not in (Status.synonym, Status.dubious):
-        return LintIssue(
-            f"{message}; cannot autofix a Name with status {name.status.name}"
-        )
-    fixes = []
-    for field in Name.fields():
-        if field in {"id", "tags"}:
-            continue
-        source_value = getattr(name, field)
-        target_value = getattr(target, field)
-        if field == "type_tags" and source_value and target_value:
-            merged_tags = (
-                *target_value,
-                *(
-                    tag
-                    for tag in source_value
-                    if not isinstance(tag, TypeTag.AuthorityPageLink)
-                ),
-            )
-            if merged_tags != tuple(target_value):
-                fixes.append(field_fix(target, field, merged_tags))
-        elif source_value not in (None, ()) and target_value in (None, ()):
-            fixes.append(field_fix(target, field, source_value))
-    return fixes_issue(
-        message,
-        *fixes,
-        field_fix(name, "status", Status.redirect),
-        field_fix(name, "target", target),
-    )
-
-
-def remove_duplicate_name(key: object, name: Name, others: list[Name]) -> LintResult:
-    target = min(others, key=lambda candidate: candidate.id)
-    message = f"merge duplicate {name} into {target} (key {key!r})"
-    return _merge_name_issue(message, name, target)
-
-
-@LINT.add_duplicate_finder(
-    "duplicate_name",
-    query=Name.select_valid().filter(Name.original_citation != None),
-    fixer=remove_duplicate_name,
-)
-def duplicate_name(name: Name) -> tuple[object, ...]:
-    assert name.original_citation is not None
-    return (
-        name.original_citation.id,
-        name.original_name,
-        name.corrected_original_name,
-        name.page_described,
-        name.original_rank,
-    )
+@LINT.add_duplicate_finder("duplicate_name")
+def duplicate_name(name: Name) -> tuple[object, ...] | None:
+    if name.original_citation is None or not name.corrected_original_name:
+        return None
+    # Conflicting metadata may itself be the error. Genuine same-source homonyms
+    # require individually documented ignores, not additional key fields.
+    return (name.original_citation.id, name.corrected_original_name.casefold())
 
 
 @LINT.add("original_rank")

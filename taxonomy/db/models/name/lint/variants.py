@@ -7,7 +7,10 @@ import Levenshtein
 from taxonomy.db.constants import Group, NomenclatureStatus, Rank, Status
 from taxonomy.db.models.article import Article
 from taxonomy.db.models.base import LintConfig
-from taxonomy.db.models.classification_entry.ce import ClassificationEntry
+from taxonomy.db.models.classification_entry.ce import (
+    ClassificationEntry,
+    ClassificationEntryTag,
+)
 from taxonomy.db.models.lint import (
     LintFixError,
     add_tag_fix,
@@ -20,7 +23,8 @@ from taxonomy.db.models.lint import (
 )
 from taxonomy.db.models.lint_types import LintIssue, LintResult
 from taxonomy.db.models.name.name import ExperimentalLintCondition as Exp
-from taxonomy.db.models.name.name import Name, NameTag, TypeTag
+from taxonomy.db.models.name.name import Name, NameComment, NameTag, TypeTag
+from taxonomy.db.models.taxon import Taxon
 
 from .base import LINT
 
@@ -310,13 +314,58 @@ def check_duplicate_variants(nam: Name, cfg: LintConfig) -> Iterable[LintResult]
         can_replace = can_replace_name(nam)
         if can_replace is None:
             yield _redirect_name_issue(message, nam, earlier[0])
+        elif (
+            nomenclature_status is NomenclatureStatus.name_combination
+            and nam.year
+            and earlier[0].year
+            and nam.corrected_original_name
+            and nam.corrected_original_name == earlier[0].corrected_original_name
+            and (
+                combination := next(
+                    iter(nam.get_tags(nam.tags, NameTag.NameCombinationOf)), None
+                )
+            )
+            is not None
+        ):
+            # Retain source information that prevents removal, but do not treat
+            # a repeated combination as independently established again.
+            yield fixes_issue(
+                f"marking as subsequent usage of earlier combination {earlier[0]}",
+                remove_tag_fix(nam, combination),
+                add_tag_fix(
+                    nam,
+                    NameTag.SubsequentUsageOf(earlier[0], comment=combination.comment),
+                ),
+                field_fix(
+                    nam, "nomenclature_status", NomenclatureStatus.subsequent_usage
+                ),
+            )
         elif should_report_unreplaceable_name(nam, cfg):
             yield f"{message} (cannot replace because of: {can_replace})"
 
 
 def can_replace_name(nam: Name) -> str | None:
+    """Require the CE and nominal base to preserve all non-structural data.
+
+    Redirecting does not transfer fields or comments. Explicitly account for
+    reconstructible fields below; any other populated field requires review.
+    """
+    if nam.status not in (Status.synonym, Status.dubious):
+        return f"status {nam.status.name}"
+    identity = nam.virtual_origin or nam
+    # Comments deliberately permit invalid Names, so ordinary foreign-key lint
+    # does not move them off a redirect. Check the persisted origin in previews.
+    if any(NameComment.select().filter(NameComment.name == identity)):
+        return "has comments"
+    if any(Taxon.select_valid().filter(Taxon.base_name == identity)):
+        return "is a taxon's base name"
+    ce = nam.get_mapped_classification_entry()
+    if ce is None:
+        return "has no classification entries"
     for tag in nam.type_tags:
-        if isinstance(tag, TypeTag.AuthorityPageLink):
+        if isinstance(tag, TypeTag.AuthorityPageLink) and (
+            ClassificationEntryTag.PageLink(tag.url, tag.page) in ce.tags
+        ):
             continue
         return f"type tag {tag}"
     for tag in nam.tags:
@@ -330,10 +379,56 @@ def can_replace_name(nam: Name) -> str | None:
                 NameTag.RerankingOf,
             ),
         ):
+            if tag.comment:
+                return f"comment on {type(tag).__name__} tag"
             continue
         return f"tag {tag}"
-    if nam.get_mapped_classification_entry() is None:
-        return "has no classification entries"
+
+    article = ce.article
+    author_source = (
+        article.parent
+        if article.issupplement() and article.parent is not None
+        else article
+    )
+    base = nam.resolve_variant()
+    if base == nam:
+        return "has no resolved nominal base"
+    parent_ce = ce.get_original_parent_ce()
+    expected = {
+        "original_citation": article,
+        "original_name": ce.name,
+        "corrected_original_name": ce.get_name_to_use_as_normalized_original_name(),
+        "original_rank": ce.rank,
+        "page_described": ce.page,
+        "author_tags": author_source.author_tags,
+        "year": article.year,
+        "citation_group": article.citation_group,
+        "original_parent": parent_ce.mapped_name if parent_ce is not None else None,
+        "name_complex": base.name_complex,
+        "species_name_complex": base.species_name_complex,
+    }
+    # Callers establish nominal identity; these fields describe the record's
+    # placement and variant relationship rather than additional source evidence.
+    structural = {
+        "group",
+        "root_name",
+        "status",
+        "taxon",
+        "nomenclature_status",
+        "tags",
+        "type_tags",
+        "data",  # Legacy data is deliberately ignored.
+    }
+    for field in Name.clirm_fields:
+        if field in structural:
+            continue
+        value = getattr(nam, field)
+        if value in (None, (), ""):
+            continue
+        if field not in expected:
+            return f"extra field {field}"
+        if value != expected[field]:
+            return f"field {field} is not preserved by the classification entry or base name"
     return None
 
 

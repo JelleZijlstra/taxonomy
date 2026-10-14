@@ -2,6 +2,8 @@ import pytest
 
 from scripts import mdd_diff
 from scripts.mdd_names import (
+    MAX_NAME_USAGES_LENGTH,
+    _format_name_usages,
     _mdd_coordinates_match,
     get_name_for_type_locality,
     get_names_for_type_data,
@@ -20,6 +22,25 @@ from taxonomy.db.models import Article, Person, Region
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.name import Name, NameTag, TypeTag
 from taxonomy.db.models.person import AuthorTag
+
+
+@pytest.mark.parametrize(
+    ("usages", "expected"),
+    [
+        ([], ""),
+        (["first", "second"], "first | second"),
+        (["a" * 29_996, "b"], "a" * 29_996 + " | b"),
+        (["a" * 29_988, "b" * 30_000], "a" * 29_988 + " | 1 omitted"),
+        (["first", "b" * 29_989, "last"], "first | 2 omitted"),
+        (["a" * 30_001, "last"], "2 omitted"),
+        (["a" * 29_987, *["b" * 100] * 10], "a" * 29_987 + " | 10 omitted"),
+    ],
+)
+def test_format_name_usages(usages: list[str], expected: str) -> None:
+    result = _format_name_usages(iter(usages))
+
+    assert result == expected
+    assert len(result) <= MAX_NAME_USAGES_LENGTH
 
 
 @pytest.mark.parametrize(

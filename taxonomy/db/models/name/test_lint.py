@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from types import SimpleNamespace
 from typing import Any, cast
 from unittest.mock import Mock, patch
@@ -26,8 +27,9 @@ from taxonomy.db.models.classification_entry.ce import ClassificationEntryTag
 from taxonomy.db.models.location import Location
 from taxonomy.db.models.person import AuthorTag
 
+from .lint.base import LINT
 from .lint.ce_mapping import infer_included_species, infer_tags_from_mapped_entries
-from .lint.other import _merge_name_issue, parse_date
+from .lint.other import duplicate_name, parse_date
 from .lint.page_link import infer_bhl_page_id
 from .lint.type_locality import (
     check_coordinates,
@@ -282,42 +284,98 @@ def test_create_name_variant_issue_creates_without_interactive_cleanup() -> None
     assert ce.mapped_name is created
 
 
-def test_merge_name_issue_copies_empty_fields_and_redirects() -> None:
+@pytest.fixture
+def duplicate_names(monkeypatch: pytest.MonkeyPatch) -> Iterator[list[Name]]:
+    article = models.Article.virtual(name="source.pdf")
     taxon = models.Taxon.virtual(rank=Rank.species, valid_name="Genus species")
-    target = Name.virtual(
-        root_name="species", group=Group.species, status=Status.synonym, taxon=taxon
+    names = [
+        Name.virtual(
+            root_name="species",
+            group=Group.species,
+            status=Status.synonym,
+            nomenclature_status=NomenclatureStatus.available,
+            taxon=taxon,
+            original_citation=article,
+            original_name="Genus species",
+            corrected_original_name="Genus species",
+            page_described="10",
+            original_rank=Rank.species,
+            type_tags=(),
+        )
+        for _ in range(2)
+    ]
+    names.sort(key=lambda name: name.id)
+    monkeypatch.setattr(Name, "select_valid", lambda: names)
+    monkeypatch.setattr(Name, "__repr__", lambda name: f"Name({name.id})")
+    monkeypatch.setattr(Name, "__str__", lambda name: f"Name({name.id})")
+    LINT.clear_caches()
+    yield names
+    LINT.clear_caches()
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"original_name": "Genus Species"},
+        {"corrected_original_name": "Genus Species"},
+        {"page_described": "11", "original_rank": Rank.subspecies},
+        {"group": Group.genus},
+        {"nomenclature_status": NomenclatureStatus.misidentification},
+    ],
+)
+def test_duplicate_name_reports_without_autofix(
+    duplicate_names: list[Name], changes: dict[str, Any]
+) -> None:
+    first, second = duplicate_names
+    for field, value in changes.items():
+        setattr(second, field, value)
+    cfg = LintConfig(autofix=True, structured_autofix=True, interactive=False)
+
+    assert list(duplicate_name(first, cfg)) == []
+    issues = list(duplicate_name(second, cfg))
+
+    assert len(issues) == 1
+    assert issues[0].code == "duplicate_name"
+    assert issues[0].fix is None
+    assert second.status is Status.synonym
+    assert second.target is None
+
+    second.type_tags = (  # type: ignore[assignment]
+        TypeTag.IgnoreLint("duplicate_name", comment="Distinct homonyms"),
     )
-    duplicate = Name.virtual(
-        root_name="species",
-        group=Group.species,
-        status=Status.synonym,
-        taxon=taxon,
-        original_name="Genus species",
+    assert list(duplicate_name(second, cfg)) == []
+    assert second.status is Status.synonym
+
+
+@pytest.mark.parametrize(
+    "changes",
+    [
+        {"original_citation": None},
+        {"corrected_original_name": None},
+        {"corrected_original_name": ""},
+        {"corrected_original_name": "Genus different"},
+        {"status": Status.redirect},
+    ],
+)
+def test_duplicate_name_excludes_ineligible_or_distinct_names(
+    duplicate_names: list[Name], changes: dict[str, Any]
+) -> None:
+    for field, value in changes.items():
+        setattr(duplicate_names[1], field, value)
+    cfg = LintConfig(autofix=False, interactive=False)
+    assert list(duplicate_name(duplicate_names[1], cfg)) == []
+
+
+def test_duplicate_name_distinguishes_articles(duplicate_names: list[Name]) -> None:
+    duplicate_names[1].original_citation = models.Article.virtual(name="another.pdf")
+    assert (
+        list(
+            duplicate_name(
+                duplicate_names[1], LintConfig(autofix=False, interactive=False)
+            )
+        )
+        == []
     )
-
-    issue = _merge_name_issue("merge duplicate", duplicate, target)
-
-    assert issue.fix is not None
-    assert issue.fix.apply() is True
-    assert target.original_name == "Genus species"
-    assert duplicate.status is Status.redirect
-    assert duplicate.target is target
-    assert issue.fix.apply() is False
-
-
-def test_merge_name_issue_does_not_autofix_valid_name() -> None:
-    taxon = models.Taxon.virtual(rank=Rank.species, valid_name="Genus species")
-    target = Name.virtual(
-        root_name="species", group=Group.species, status=Status.synonym, taxon=taxon
-    )
-    duplicate = Name.virtual(
-        root_name="species", group=Group.species, status=Status.valid, taxon=taxon
-    )
-
-    issue = _merge_name_issue("merge duplicate", duplicate, target)
-
-    assert issue.fix is None
-    assert "cannot autofix a Name with status valid" in issue.message
 
 
 @pytest.mark.parametrize(
@@ -1326,3 +1384,22 @@ def test_type_tag_group_restrictions(
         assert status.message is not None
         assert type(tag).__name__ in status.message
     assert name.type_tags == (tag,)
+
+
+def test_identical_combinations_remain_warning_only(
+    duplicate_names: list[Name],
+) -> None:
+    base = Name.virtual(root_name="species")
+    for name in duplicate_names:
+        name.nomenclature_status = NomenclatureStatus.name_combination
+        name.tags = (NameTag.NameCombinationOf(base),)  # type: ignore[assignment]
+    second = duplicate_names[1]
+    issues = list(
+        duplicate_name(
+            second, LintConfig(autofix=True, structured_autofix=True, interactive=False)
+        )
+    )
+    assert len(issues) == 1
+    assert issues[0].fix is None
+    assert second.status is Status.synonym
+    assert second.target is None
