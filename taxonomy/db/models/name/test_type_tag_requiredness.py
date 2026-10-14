@@ -334,7 +334,7 @@ def test_specimen_prerequisite_requires_accessible_citation(source_state: str) -
 @pytest.mark.parametrize("evidence", ["absent", "later", "positive", "negative"])
 @pytest.mark.parametrize("year", ["2000", "2021"])
 @pytest.mark.parametrize("cfg", [CFG, EXPERIMENTAL], ids=["normal", "experimental"])
-def test_named_after_is_pending_without_etymology_prerequisite(
+def test_named_after_requiredness_with_etymology_evidence(
     evidence: str, year: str, cfg: LintConfig
 ) -> None:
     nam = make_name(year=year)
@@ -351,16 +351,19 @@ def test_named_after_is_pending_without_etymology_prerequisite(
         )
         nam.type_tags = (TypeTag.EtymologyDetail("Named for Example", source),)  # type: ignore[assignment]
     expected = Requiredness.pending_required_high_coverage
-    if evidence in ("positive", "negative") and (year == "2021" or cfg.experimental):
+    if evidence in ("later", "positive"):
+        expected = Requiredness.required
+    elif evidence == "negative" and (year == "2021" or cfg.experimental):
         expected = Requiredness.required_high_coverage
     assert (
         get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness
         is expected
     )
     nam.original_citation = None
-    assert (
-        get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness
-        is Requiredness.desired
+    assert get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness is (
+        Requiredness.required
+        if evidence in ("later", "positive")
+        else Requiredness.desired
     )
 
 
