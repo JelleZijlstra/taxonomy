@@ -6,7 +6,16 @@ import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from types import MappingProxyType
-from typing import Any, ClassVar, NotRequired, Self
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    ClassVar,
+    Literal,
+    NotRequired,
+    Self,
+    TypeAlias,
+    Union,
+)
 
 from clirm import DoesNotExist, Field, Query
 
@@ -833,6 +842,14 @@ DETAIL_TAGS = (
     ClassificationEntryTag.SourceDetail,
     ClassificationEntryTag.DescriptionDetail,
 )
+
+if TYPE_CHECKING:
+    DetailTag: TypeAlias = Any
+    DetailTagCons: TypeAlias = Any
+else:
+    DetailTag = Union[*DETAIL_TAGS]
+    DetailTagCons = Literal[*DETAIL_TAGS]
+
 
 DETAIL_METADATA_FIELDS = ("comment", "page", "translation", "page_link")
 

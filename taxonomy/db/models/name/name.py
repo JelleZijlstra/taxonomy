@@ -15,9 +15,11 @@ from typing import (
     TYPE_CHECKING,
     Any,
     ClassVar,
+    Literal,
     NotRequired,
     Self,
     TypeAlias,
+    Union,
     assert_never,
 )
 
@@ -1877,8 +1879,7 @@ class Name(BaseModel):
                     f"{spacing}{comment.get_description()}\n"
                     for comment in self.comments
                     if include_data
-                    or comment.kind
-                    not in (
+                    or comment.kind not in (
                         constants.CommentKind.structured_quote,
                         constants.CommentKind.automatic_change,
                     )
@@ -3141,7 +3142,7 @@ SOURCE_TAGS = (
     TypeTag.NomenclatureDetail,
     TypeTag.DescriptionDetail,
 )
-DETAIL_TAG_TO_CE_TAG: dict[type[TypeTag], type[ClassificationEntryTag]] = {
+DETAIL_TAG_TO_CE_TAG = {
     TypeTag.SpecimenDetail: ClassificationEntryTag.TypeSpecimenData,
     TypeTag.TypeSpeciesDetail: ClassificationEntryTag.TypeSpeciesDetail,
     TypeTag.CollectionDetail: ClassificationEntryTag.CollectionDetail,
@@ -3160,9 +3161,24 @@ SPECIMEN_TAGS = (TypeTag.SpecimenDetail, TypeTag.NoSpecimen)
 
 if TYPE_CHECKING:
     TypeTagCons: TypeAlias = Any
+    SourceTag: TypeAlias = Any
+    SourceTagCons: TypeAlias = Any
+    SourceAbsenceTagCons: TypeAlias = Any
     NameTagCons: TypeAlias = Any
 else:
     TypeTagCons = TypeTag._Constructors
+    SourceTag = Union[*SOURCE_TAGS]
+    SourceTagCons = Literal[*SOURCE_TAGS]
+    SourceAbsenceTagCons = Literal[
+        TypeTag.NoEtymology,
+        TypeTag.NoLocation,
+        TypeTag.NoSpecimen,
+        TypeTag.NoDate,
+        TypeTag.NoAge,
+        TypeTag.NoGender,
+        TypeTag.NoOrgan,
+        TypeTag.NoCollector,
+    ]
     NameTagCons = NameTag._Constructors
 
 

@@ -163,8 +163,7 @@ def check_for_lsid(nam: Name, cfg: LintConfig) -> Iterable[LintResult]:
         nam.numeric_year() < 2012
         or nam.corrected_original_name is None
         or nam.original_citation is None
-        or nam.nomenclature_status
-        in (
+        or nam.nomenclature_status in (
             NomenclatureStatus.incorrect_subsequent_spelling,
             NomenclatureStatus.name_combination,
         )
@@ -269,8 +268,7 @@ def check_data_level(nam: Name, cfg: LintConfig) -> Iterable[str]:
     missing = [
         field_name
         for field_name, status in required_fields.iter_field_statuses(nam)
-        if status.requiredness
-        in (
+        if status.requiredness in (
             required_fields.Requiredness.desired,
             required_fields.Requiredness.pending_required_high_coverage,
         )

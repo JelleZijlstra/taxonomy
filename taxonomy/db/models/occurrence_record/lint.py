@@ -519,7 +519,7 @@ def _check_verbatim_dates(
         parsed = parse_verbatim_date(tag.text)
         if parsed is None:
             if not normalized:
-                yield (f"cannot parse date from {tag.text!r}; add Date manually")
+                yield f"cannot parse date from {tag.text!r}; add Date manually"
             continue
         expected = OccurrenceRecordTag.Date(parsed)
         if expected not in normalized:
@@ -600,7 +600,7 @@ def check_source_data_tags(
         (OccurrenceRecordTag.Date, OccurrenceRecordTag.VerbatimDate),
     ):
         if record.has_tag(normalized_type) and not record.has_tag(verbatim_type):
-            yield (f"{normalized_type.__name__} requires {verbatim_type.__name__}")
+            yield f"{normalized_type.__name__} requires {verbatim_type.__name__}"
     yield from _check_verbatim_coordinates(record, cfg)
     yield from _check_verbatim_elevations(record, cfg)
     yield from _check_verbatim_dates(record, cfg)
@@ -815,7 +815,7 @@ def check_split(record: OccurrenceRecord, cfg: LintConfig) -> Iterable[str]:
         yield "TaxonomicSplitFrom points to a derived record"
     for field in ("classification_entry", "locality_text", "page", "basis"):
         if getattr(record, field) != getattr(canonical, field):
-            yield (f"{field} differs from canonical split record {canonical}")
+            yield f"{field} differs from canonical split record {canonical}"
     if record.taxon is not None and record.taxon == canonical.taxon:
         yield f"split record has the same taxon as {canonical}"
 

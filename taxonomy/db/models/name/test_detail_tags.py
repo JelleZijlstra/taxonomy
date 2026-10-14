@@ -12,6 +12,7 @@ from taxonomy.db.models.classification_entry.ce import (
     DETAIL_TAGS,
     ClassificationEntry,
     ClassificationEntryTag,
+    DetailTagCons,
 )
 from taxonomy.db.models.classification_entry.lint import (
     check_duplicate_details as check_duplicate_ce_details,
@@ -26,6 +27,7 @@ from taxonomy.db.models.name.name import (
     DETAIL_TAG_TO_CE_TAG,
     SOURCE_TAGS,
     Name,
+    SourceTagCons,
     TypeTag,
 )
 
@@ -54,7 +56,7 @@ _METADATA = {
     ],
 )
 def test_detail_serialization_preserves_stored_positions(
-    tag_type: type[TypeTag], tag_id: int
+    tag_type: SourceTagCons, tag_id: int
 ) -> None:
     old = [tag_id, "verbatim", 123]
     tag = TypeTag.unserialize(old)
@@ -67,8 +69,11 @@ def test_detail_serialization_preserves_stored_positions(
     if tag_type is TypeTag.SpecimenDetail:
         suffix = [456, *suffix]
         old.append(456)
-        assert TypeTag.unserialize(old).classification_entry.id == 456
-        assert TypeTag.unserialize(old).comment is None
+        restored = TypeTag.unserialize(old)
+        assert isinstance(restored, TypeTag.SpecimenDetail)
+        assert restored.classification_entry is not None
+        assert restored.classification_entry.id == 456
+        assert restored.comment is None
     else:
         suffix.append(456)
     assert enriched.serialize() == [tag_id, "verbatim", 123, *suffix]
@@ -83,9 +88,7 @@ def test_detail_serialization_preserves_stored_positions(
         (21, ClassificationEntryTag.EtymologyDetail),
     ],
 )
-def test_ce_detail_old_serialization(
-    tag_id: int, tag_type: type[ClassificationEntryTag]
-) -> None:
+def test_ce_detail_old_serialization(tag_id: int, tag_type: DetailTagCons) -> None:
     old = [tag_id, "verbatim"]
     tag = ClassificationEntryTag.unserialize(old)
     assert type(tag) is tag_type
@@ -155,8 +158,8 @@ def _finish(
 @pytest.mark.parametrize("existing", [False, True])
 def test_detail_sync_both_directions_and_idempotence(
     monkeypatch: pytest.MonkeyPatch,
-    name_type: type[TypeTag],
-    ce_type: type[ClassificationEntryTag],
+    name_type: SourceTagCons,
+    ce_type: DetailTagCons,
     *,
     existing: bool,
 ) -> None:
@@ -182,8 +185,8 @@ def test_detail_sync_both_directions_and_idempotence(
 @pytest.mark.parametrize("reverse_order", [False, True])
 def test_normalized_duplicate_details_stay_removed(
     monkeypatch: pytest.MonkeyPatch,
-    name_type: type[TypeTag],
-    ce_type: type[ClassificationEntryTag],
+    name_type: SourceTagCons,
+    ce_type: DetailTagCons,
     *,
     clean_name: bool,
     reverse_order: bool,
@@ -310,7 +313,7 @@ def test_original_citation_detail_survives_lint_and_sync(
 
 @pytest.mark.parametrize("tag_type", SOURCE_TAGS)
 def test_detail_page_cleanup_inference_and_validation(
-    monkeypatch: pytest.MonkeyPatch, tag_type: type[TypeTag]
+    monkeypatch: pytest.MonkeyPatch, tag_type: SourceTagCons
 ) -> None:
     name, ce = _models(monkeypatch)
     tag = tag_type("quotation", ce.article, comment="p. 12", translation="translation")
@@ -333,7 +336,7 @@ def test_detail_page_cleanup_inference_and_validation(
 
 @pytest.mark.parametrize("ce_type", DETAIL_TAGS)
 def test_ce_detail_page_cleanup(
-    monkeypatch: pytest.MonkeyPatch, ce_type: type[ClassificationEntryTag]
+    monkeypatch: pytest.MonkeyPatch, ce_type: DetailTagCons
 ) -> None:
     _, ce = _models(monkeypatch)
     ce.tags = (ce_type("quotation", comment="p. 12", translation="translation"),)  # type: ignore[assignment]
@@ -343,9 +346,7 @@ def test_ce_detail_page_cleanup(
 
 @pytest.mark.parametrize(("name_type", "ce_type"), DETAIL_TAG_TO_CE_TAG.items())
 def test_detail_checks_ce_provenance_text_and_metadata(
-    monkeypatch: pytest.MonkeyPatch,
-    name_type: type[TypeTag],
-    ce_type: type[ClassificationEntryTag],
+    monkeypatch: pytest.MonkeyPatch, name_type: SourceTagCons, ce_type: DetailTagCons
 ) -> None:
     name, ce = _models(monkeypatch)
     ce.tags = (ce_type("quotation", **_METADATA),)  # type: ignore[assignment]
@@ -396,9 +397,7 @@ def test_definition_cleanup_preserves_metadata(monkeypatch: pytest.MonkeyPatch) 
 
 @pytest.mark.parametrize(("name_type", "ce_type"), DETAIL_TAG_TO_CE_TAG.items())
 def test_sync_preserves_conflicting_metadata(
-    monkeypatch: pytest.MonkeyPatch,
-    name_type: type[TypeTag],
-    ce_type: type[ClassificationEntryTag],
+    monkeypatch: pytest.MonkeyPatch, name_type: SourceTagCons, ce_type: DetailTagCons
 ) -> None:
     name, ce = _models(monkeypatch)
     detail = name_type("quotation", ce.article, classification_entry=ce, page="13")

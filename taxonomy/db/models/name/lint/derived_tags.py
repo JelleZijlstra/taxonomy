@@ -1,7 +1,7 @@
 """Compare source quotations with derived data; infer only unambiguous additions."""
 
 import re
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from functools import cache
 
 from taxonomy.db import helpers
@@ -17,7 +17,7 @@ from taxonomy.db.models.base import LintConfig
 from taxonomy.db.models.lint import add_tag_issue
 from taxonomy.db.models.lint_types import LintResult
 from taxonomy.db.models.name import derived_tags as extract
-from taxonomy.db.models.name.name import Name, TypeTag, TypeTagCons
+from taxonomy.db.models.name.name import Name, TypeTag
 from taxonomy.db.models.person import Person
 
 from .base import LINT
@@ -61,7 +61,9 @@ def _compatible(item: extract.Evidence[TypeTag], tag: TypeTag) -> bool:
     )
 
 
-def _organ_supported(value: TypeTag, existing: list[TypeTag]) -> bool:
+def _organ_supported(
+    value: TypeTag.Organ, existing: Sequence[TypeTag.Organ]  # type: ignore[name-defined]
+) -> bool:
     organs = {tag.organ for tag in existing}
     if value.organ in organs:
         return True
@@ -76,8 +78,8 @@ def _organ_supported(value: TypeTag, existing: list[TypeTag]) -> bool:
 
 def _check(
     nam: Name,
-    tag_cls: TypeTagCons,
-    extractor: Callable[[str], list[extract.Evidence[TypeTag]]],
+    tag_cls: type[TypeTag],
+    extractor: Callable[[str], Sequence[extract.Evidence[TypeTag]]],
     *,
     location: bool = False,
 ) -> Iterable[LintResult]:
@@ -91,7 +93,9 @@ def _check(
     if existing:
         for item, detail in evidence:
             if tag_cls is TypeTag.Organ:
-                compatible = _organ_supported(item.value, existing)
+                assert isinstance(item.value, TypeTag.Organ)
+                organs = list(nam.get_tags(nam.type_tags, TypeTag.Organ))
+                compatible = _organ_supported(item.value, organs)
             else:
                 compatible = any(_compatible(item, tag) for tag in existing)
             if not compatible:

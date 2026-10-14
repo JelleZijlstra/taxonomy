@@ -29,6 +29,7 @@ from .name import (
     SPECIMEN_TAGS,
     ExperimentalLintCondition,
     Name,
+    SourceAbsenceTagCons,
     TypeTag,
     TypeTagCons,
     get_tags_from_original_citation,
@@ -322,8 +323,8 @@ class TypeTagRequiredness:
     requiredness: Requiredness
     message: str | None = None
     must_be_from_original_citation: bool = False
-    alternative_with_citation: TypeTagCons | None = None
-    alternative: TypeTagCons | None = None
+    alternative_with_citation: SourceAbsenceTagCons | None = None
+    alternative: type[TypeTag] | None = None
 
 
 def get_type_tag_status(

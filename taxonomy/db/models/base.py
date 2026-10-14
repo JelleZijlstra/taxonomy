@@ -498,16 +498,12 @@ class BaseModel(Model):
                                             parsed.scheme not in ("http", "https")
                                             or not parsed.netloc
                                         ):
-                                            yield (
-                                                f"{self}: field {field}: invalid URL: {attr_value!r}"
-                                            )
+                                            yield f"{self}: field {field}: invalid URL: {attr_value!r}"
                                     case StringKind.regex:
                                         try:
                                             re.compile(attr_value)
                                         except re.error:
-                                            yield (
-                                                f"{self}: field {field}: invalid regex: {attr_value!r}"
-                                            )
+                                            yield f"{self}: field {field}: invalid regex: {attr_value!r}"
                                     case StringKind.managed:
                                         pass
                     if overrides:
@@ -577,7 +573,9 @@ class BaseModel(Model):
                     yield f"{self}: redirect target {target} is invalid"
                 else:
                     if secondary_target is not None:
-                        yield f"{self}: double redirect to {target} -> {secondary_target}"
+                        yield (
+                            f"{self}: double redirect to {target} -> {secondary_target}"
+                        )
 
     def should_exempt_from_string_cleaning(self, field: str) -> bool:
         """If this returns True, we won't call clean_string() on the field in lint."""

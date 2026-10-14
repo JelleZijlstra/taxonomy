@@ -299,7 +299,7 @@ _PREPARATION = re.compile(
 )
 
 
-def extract_organ(text: str) -> list[Evidence[TypeTag]]:
+def extract_organ(text: str) -> list[Evidence[TypeTag.Organ]]:  # type: ignore[name-defined]
     text, _ = _field_or_prose(text, "preparations")
     if not specimen_text_is_safe(text):
         return []

@@ -1,3 +1,6 @@
+from collections.abc import Callable
+from typing import cast
+
 import pytest
 
 from taxonomy.db.constants import (
@@ -179,7 +182,7 @@ def test_detail_desirability_by_group_year_and_status(
         nam.species_name_complex = SpeciesNameComplex.virtual(
             kind=SpeciesNameKind.patronym_masculine
         )
-    desired = set()
+    desired: set[TypeTagCons] = set()
     if status is NomenclatureStatus.available:
         if group in (Group.genus, Group.species) and (
             int(year) >= 1990 or (group is Group.species and patronym)
@@ -214,7 +217,7 @@ def test_derived_desirability_by_age_and_type_kind(
     nam.species_name_complex = SpeciesNameComplex.virtual(
         kind=SpeciesNameKind.patronym_masculine
     )
-    desired = {TypeTag.NamedAfter}
+    desired: set[TypeTagCons] = {TypeTag.NamedAfter}
     if type_kind is not SpeciesGroupType.syntypes:
         if age is not AgeClass.ichno:
             desired.add(TypeTag.Organ)
@@ -294,10 +297,11 @@ def test_specimen_prerequisites_and_rollout(
             if source == "original"
             else Article.virtual(name="later.pdf")
         )
+        assert article is not None
         tag = (
             prerequisite("Specimen evidence", article)
             if prerequisite is TypeTag.SpecimenDetail
-            else prerequisite(article)
+            else TypeTag.NoSpecimen(article)
         )
         nam.type_tags = (tag,)  # type: ignore[assignment]
     if source != "original":
@@ -334,7 +338,7 @@ def test_specimen_prerequisite_requires_accessible_citation(source_state: str) -
 @pytest.mark.parametrize("evidence", ["absent", "later", "positive", "negative"])
 @pytest.mark.parametrize("year", ["2000", "2021"])
 @pytest.mark.parametrize("cfg", [CFG, EXPERIMENTAL], ids=["normal", "experimental"])
-def test_named_after_is_pending_without_etymology_prerequisite(
+def test_named_after_requiredness_with_etymology_evidence(
     evidence: str, year: str, cfg: LintConfig
 ) -> None:
     nam = make_name(year=year)
@@ -351,16 +355,19 @@ def test_named_after_is_pending_without_etymology_prerequisite(
         )
         nam.type_tags = (TypeTag.EtymologyDetail("Named for Example", source),)  # type: ignore[assignment]
     expected = Requiredness.pending_required_high_coverage
-    if evidence in ("positive", "negative") and (year == "2021" or cfg.experimental):
+    if evidence in ("later", "positive"):
+        expected = Requiredness.required
+    elif evidence == "negative" and (year == "2021" or cfg.experimental):
         expected = Requiredness.required_high_coverage
     assert (
         get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness
         is expected
     )
     nam.original_citation = None
-    assert (
-        get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness
-        is Requiredness.desired
+    assert get_type_tag_requiredness(nam, TypeTag.NamedAfter, cfg=cfg).requiredness is (
+        Requiredness.required
+        if evidence in ("later", "positive")
+        else Requiredness.desired
     )
 
 
@@ -467,11 +474,15 @@ def test_detail_status_matches_original_source_and_alternatives(
 ) -> None:
     nam = make_name()
     original = nam.original_citation
+    assert original is not None
     other = Article.virtual(name="later.pdf")
-    later_detail = tag_cls("Later evidence", other)
-    original_detail = tag_cls("Original evidence", original)
-    absent_in_original = alternative(original)
-    absent_in_other = alternative(other)
+    # These parametrized constructors share signatures that the ADT union loses.
+    detail_factory = cast("Callable[[str, Article], TypeTag]", tag_cls)
+    absence_factory = cast("Callable[[Article], TypeTag]", alternative)
+    later_detail = detail_factory("Later evidence", other)
+    original_detail = detail_factory("Original evidence", original)
+    absent_in_original = absence_factory(original)
+    absent_in_other = absence_factory(other)
     nam.type_tags = (later_detail, absent_in_other)  # type: ignore[assignment]
     status = get_type_tag_status(nam, tag_cls)
     assert not status.is_nonempty
@@ -512,6 +523,7 @@ def test_type_tag_status_accepts_unsourced_and_any_source_alternatives() -> None
 
 def test_type_tag_status_preserves_all_matches() -> None:
     nam = make_name()
+    assert nam.original_citation is not None
     tags = (
         TypeTag.LocationDetail("First quotation", nam.original_citation),
         TypeTag.LocationDetail("Second quotation", nam.original_citation),
@@ -582,6 +594,7 @@ def test_pending_requirements_are_desired_but_not_linted() -> None:
 
 def test_pending_report_counts_obligations_and_accepts_alternatives() -> None:
     nam = make_name(year="2000")
+    assert nam.original_citation is not None
     nam.type_specimen = "BMNH 1"
     nam.type_tags = (  # type: ignore[assignment]
         TypeTag.NoSpecimen(nam.original_citation),
@@ -611,6 +624,7 @@ def test_presence_lint_explains_source_and_alternative() -> None:
     from .lint.other import check_type_tags_presence
 
     nam = make_name()
+    assert nam.original_citation is not None
     other = Article.virtual(name="later.pdf")
     nam.type_tags = (  # type: ignore[assignment]
         TypeTag.SpecimenDetail("Evidence", nam.original_citation),

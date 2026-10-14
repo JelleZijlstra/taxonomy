@@ -308,8 +308,8 @@ def check_location_detail_coordinates(
 ) -> Iterable[LintResult]:
     if nam.has_conflicting_type_data("Coordinates"):
         return
-    extracted: list[  # type: ignore[name-defined]
-        tuple[TypeTag.LocationDetail, str, str, coordinate_lint.CoordinateExtent]
+    extracted: list[
+        tuple[TypeTag.LocationDetail, str, str, coordinate_lint.CoordinateExtent]  # type: ignore[name-defined]
     ] = []
     for tag in models.location.lint._get_applicable_location_detail_tags(nam):
         coordinates = helpers.extract_coordinates(tag.text)
@@ -343,8 +343,8 @@ def check_location_detail_coordinates(
                 )
         return
 
-    coordinate_tags: list[  # type: ignore[name-defined]
-        tuple[TypeTag.Coordinates, coordinate_lint.CoordinateExtent]
+    coordinate_tags: list[
+        tuple[TypeTag.Coordinates, coordinate_lint.CoordinateExtent]  # type: ignore[name-defined]
     ] = []
     for tag in nam.get_tags(nam.type_tags, TypeTag.Coordinates):
         maybe_extent = coordinate_lint.make_extent(tag.latitude, tag.longitude)

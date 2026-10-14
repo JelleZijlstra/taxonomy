@@ -2,11 +2,12 @@
 
 import re
 from collections.abc import Iterable, Sequence
+from typing import TypeAlias
 
-from taxonomy import adt
 from taxonomy.db import detail_pages, helpers, models
 from taxonomy.db.constants import StringCleanupOption
 from taxonomy.db.models.base import LintConfig, LintResource
+from taxonomy.db.models.classification_entry.ce import DetailTag as CEDetailTag
 from taxonomy.db.models.lint import (
     field_fix,
     field_issue,
@@ -15,9 +16,12 @@ from taxonomy.db.models.lint import (
     replace_tag_issue,
 )
 from taxonomy.db.models.lint_types import LintResult
+from taxonomy.db.models.name.name import SOURCE_TAGS, SourceTag
+
+DetailTag: TypeAlias = SourceTag | CEDetailTag
 
 
-def normalized_text(tag: adt.ADT) -> str:
+def normalized_text(tag: DetailTag) -> str:
     """Use the same noninteractive text cleanup as general field lint."""
     options = helpers.get_string_cleanup_options(type(tag).__annotations__["text"])
     return helpers.interactive_clean_string(
@@ -74,7 +78,7 @@ def _numbered_pages(page: str | None) -> set[str]:
     return set()
 
 
-def _details(owner: models.Name | models.ClassificationEntry) -> Sequence[adt.ADT]:
+def _details(owner: models.Name | models.ClassificationEntry) -> Sequence[DetailTag]:
     if isinstance(owner, models.Name):
         return [
             tag
@@ -89,17 +93,22 @@ def _details(owner: models.Name | models.ClassificationEntry) -> Sequence[adt.AD
 
 
 def _source(
-    owner: models.Name | models.ClassificationEntry, tag: adt.ADT
+    owner: models.Name | models.ClassificationEntry, tag: DetailTag
 ) -> models.Article:
-    return tag.source if isinstance(owner, models.Name) else owner.article
+    if isinstance(owner, models.Name):
+        assert isinstance(tag, SOURCE_TAGS)
+        return tag.source
+    return owner.article
 
 
 def _same_context(
-    owner: models.Name | models.ClassificationEntry, left: adt.ADT, right: adt.ADT
+    owner: models.Name | models.ClassificationEntry, left: DetailTag, right: DetailTag
 ) -> bool:
     if _source(owner, left) != _source(owner, right):
         return False
     if isinstance(owner, models.Name):
+        assert isinstance(left, SOURCE_TAGS)
+        assert isinstance(right, SOURCE_TAGS)
         return (
             left.classification_entry is None
             or right.classification_entry is None
@@ -124,7 +133,7 @@ def _page_within_source(source: models.Article | None, page: str) -> bool:
 
 def _move_annotation(
     owner: models.Name | models.ClassificationEntry,
-    tag: adt.ADT,
+    tag: DetailTag,
     text: str,
     page: str,
     field: str,
@@ -132,7 +141,7 @@ def _move_annotation(
     fixes = [
         replace_tag_fix(owner, tag, tag.replace(text=text, page=page), field=field)
     ]
-    if isinstance(owner, models.Name) and tag.classification_entry is not None:
+    if isinstance(tag, SOURCE_TAGS) and tag.classification_entry is not None:
         ce = tag.classification_entry
         if ce.article == tag.source:
             if isinstance(tag, models.name.TypeTag.LocationDetail):
@@ -194,7 +203,7 @@ def infer_detail_pages(
 def _known_pages(
     owner: models.Name | models.ClassificationEntry,
     source: models.Article,
-    details: Sequence[adt.ADT],
+    details: Sequence[DetailTag],
 ) -> tuple[set[str], set[tuple[str, str]]]:
     pages: set[str] = set()
     links: set[tuple[str, str]] = set()
@@ -203,9 +212,13 @@ def _known_pages(
         if _source(owner, tag) != source:
             continue
         pages.update(_numbered_pages(tag.page))
-        if tag.page_link and len(_numbered_pages(tag.page)) == 1:
+        if (
+            tag.page is not None
+            and tag.page_link
+            and len(_numbered_pages(tag.page)) == 1
+        ):
             links.add((tag.page, tag.page_link))
-        if isinstance(owner, models.Name) and tag.classification_entry is not None:
+        if isinstance(tag, SOURCE_TAGS) and tag.classification_entry is not None:
             ces.add(tag.classification_entry)
     if isinstance(owner, models.Name):
         ces.update(owner.get_classification_entries())

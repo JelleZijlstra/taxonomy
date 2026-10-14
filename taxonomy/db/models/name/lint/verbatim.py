@@ -188,9 +188,7 @@ def check_structured_verbatim_citation_fields(
         series_regex = cg_lint.get_series_regex(cg)
         if series_regex is not None:
             if tag.series is not None and not re.fullmatch(series_regex, tag.series):
-                yield (
-                    f"series {tag.series!r} does not match regex {series_regex!r} for {cg}"
-                )
+                yield f"series {tag.series!r} does not match regex {series_regex!r} for {cg}"
         elif tag.series is not None and cg.type is ArticleType.JOURNAL:
             # Only enforced for journals as per Article logic
             yield f"is in {cg}, which does not support series"
@@ -214,9 +212,7 @@ def check_structured_verbatim_citation_fields(
                 tag = new_tag
             rgx = cg_lint.get_volume_regex(cg)
             if not re.fullmatch(rgx, tag.volume):
-                yield (
-                    f"volume {tag.volume!r} does not match {cg_lint.describe_volume_regex(cg)} (CG {cg})"
-                )
+                yield f"volume {tag.volume!r} does not match {cg_lint.describe_volume_regex(cg)} (CG {cg})"
 
         # issue
         if tag.issue is not None:
@@ -236,9 +232,7 @@ def check_structured_verbatim_citation_fields(
                 tag = new_tag
             rgx = cg_lint.get_issue_regex(cg)
             if not re.fullmatch(rgx, tag.issue):
-                yield (
-                    f"issue {tag.issue!r} does not match {cg_lint.describe_issue_regex(cg)} (CG {cg})"
-                )
+                yield f"issue {tag.issue!r} does not match {cg_lint.describe_issue_regex(cg)} (CG {cg})"
 
         # pages: ensure end >= start if both numeric
         if (
@@ -271,6 +265,4 @@ def check_structured_verbatim_citation_fields(
                 except ValueError:
                     pass
             if int(end_page) < int(start_page):
-                yield (
-                    f"end_page {end_page!r} is less than start_page {start_page!r} in StructuredVerbatimCitation"
-                )
+                yield f"end_page {end_page!r} is less than start_page {start_page!r} in StructuredVerbatimCitation"

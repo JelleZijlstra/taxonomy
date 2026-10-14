@@ -452,6 +452,7 @@ def _check_detail_type_tag(
                 r"^(?:from|in)\s+", "", text_to_match, flags=re.IGNORECASE
             ).removesuffix(".")
         for other in tags_by_type.get(type(tag), ()):
+            assert isinstance(other, SOURCE_TAGS)
             if (
                 other is not tag
                 and other.source == tag.source
@@ -964,7 +965,9 @@ def _check_all_type_tags(
 
         case TypeTag.StructuredVerbatimCitation():
             if nam.original_citation is not None:
-                yield "has StructuredVerbatimCitation tag but also has original_citation"
+                yield (
+                    "has StructuredVerbatimCitation tag but also has original_citation"
+                )
                 return []
 
     return [*tags, tag]

@@ -866,8 +866,7 @@ def extract_body_parts(organs: str) -> list[TypeTag]:
     organs = organs.lower().replace("[", "").replace("]", "")
     organs = re.sub(r"sk..?ll", "skull", organs).replace("skufl", "skull").strip()
     if (
-        organs
-        in (
+        organs in (
             "skin and skull",
             "skin and cranium",
             "study skin and skull",

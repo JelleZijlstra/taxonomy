@@ -14,7 +14,13 @@ from taxonomy.db.models.classification_entry.ce import (
 )
 from taxonomy.db.models.lint import add_tag_issue, field_issue, replace_tag_issue
 from taxonomy.db.models.lint_types import LintResult
-from taxonomy.db.models.name.name import DETAIL_TAG_TO_CE_TAG, Name, NameTag, TypeTag
+from taxonomy.db.models.name.name import (
+    DETAIL_TAG_TO_CE_TAG,
+    Name,
+    NameTag,
+    SourceTag,
+    TypeTag,
+)
 from taxonomy.db.models.name.page import parse_page_text
 
 from .base import LINT
@@ -82,8 +88,8 @@ def check_duplicate_included_species(
 ) -> Iterable[LintResult]:
     if nam.group is not Group.genus:
         return
-    all_included: dict[  # type: ignore[name-defined]
-        Name, tuple[list[TypeTag.IncludedSpecies], list[TypeTag.IncludedSpecies]]
+    all_included: dict[
+        Name, tuple[list[TypeTag.IncludedSpecies], list[TypeTag.IncludedSpecies]]  # type: ignore[name-defined]
     ] = defaultdict(lambda: ([], []))
     for tag in nam.type_tags:
         if isinstance(tag, TypeTag.IncludedSpecies):
@@ -189,7 +195,7 @@ def _location_detail_covers_classification_entry(
 
 
 def _infer_detail_from_classification_entry(
-    nam: Name, expected: TypeTag, ce: ClassificationEntry
+    nam: Name, expected: SourceTag, ce: ClassificationEntry
 ) -> Iterable[LintResult]:
     expected = expected.replace(text=detail_lint.normalized_text(expected))
     matching = [
