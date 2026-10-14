@@ -82,8 +82,8 @@ def check_duplicate_included_species(
 ) -> Iterable[LintResult]:
     if nam.group is not Group.genus:
         return
-    all_included: dict[  # type: ignore[name-defined]
-        Name, tuple[list[TypeTag.IncludedSpecies], list[TypeTag.IncludedSpecies]]
+    all_included: dict[
+        Name, tuple[list[TypeTag.IncludedSpecies], list[TypeTag.IncludedSpecies]]  # type: ignore[name-defined]
     ] = defaultdict(lambda: ([], []))
     for tag in nam.type_tags:
         if isinstance(tag, TypeTag.IncludedSpecies):

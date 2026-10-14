@@ -80,6 +80,7 @@ target-version = "py314"
 select = ["ALL"]
 
 ignore = [
+  "ICN001",  # prefer descriptive module names such as datetime
   "CPY001",  # copyright is documented in the repository license
   "PLR0917", # positional arguments are part of existing APIs
   "B008",    # do not perform function calls in argument defaults
